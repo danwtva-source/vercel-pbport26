@@ -11,19 +11,19 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
     const slides = [
         { 
             name: 'Blaenavon', 
-            img: 'images/bln.png', 
+            img: 'public/images/bln.png', 
             desc: 'See projects in Blaenavon and vote for your favourite three!',
             color: 'text-purple-700'
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
-            img: 'images/tuc.png', 
+            img: 'public/images/tuc.png', 
             desc: 'See projects in Thornhill & Upper Cwmbran and vote!',
             color: 'text-teal-700' 
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
-            img: 'images/tps.png', 
+            img: 'public/images/tps.png', 
             desc: 'See projects in this area and vote for your favourite three!',
             color: 'text-pink-700' 
         }
