@@ -11,24 +11,23 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
     const slides = [
         { 
             name: 'Blaenavon', 
-            img: 'public/images/bln.png', 
+            img: 'images/bln.png', 
             desc: 'See projects in Blaenavon and vote for your favourite three!',
-            color: 'text-purple-700'
+            color: 'text-[#FFD447]' // Updated Hex from your chart
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
-            img: 'public/images/tuc.png', 
+            img: 'images/tuc.png', 
             desc: 'See projects in Thornhill & Upper Cwmbran and vote!',
-            color: 'text-teal-700' 
+            color: 'text-[#2FBF71]' // Updated Hex from your chart
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
-            img: 'public/images/tps.png', 
+            img: 'images/tps.png', 
             desc: 'See projects in this area and vote for your favourite three!',
-            color: 'text-pink-700' 
+            color: 'text-[#3A86FF]' // Updated Hex from your chart
         }
     ];
-
     const nextSlide = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
     const prevSlide = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
 
