@@ -8,24 +8,24 @@ import { Area } from '../types';
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     
-    const slides = [
+const slides = [
         { 
             name: 'Blaenavon', 
-            img: 'images/bln.png', 
+            img: 'images/bln.png',  // Removed "public/"
             desc: 'See projects in Blaenavon and vote for your favourite three!',
-            color: 'text-[#FFD447]' // Updated Hex from your chart
+            color: 'text-[#FFD447]' // Your specific Yellow/Gold
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
-            img: 'images/tuc.png', 
+            img: 'images/tuc.png',  // Removed "public/"
             desc: 'See projects in Thornhill & Upper Cwmbran and vote!',
-            color: 'text-[#2FBF71]' // Updated Hex from your chart
+            color: 'text-[#2FBF71]' // Your specific Green
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
-            img: 'images/tps.png', 
+            img: 'images/tps.png',  // Removed "public/"
             desc: 'See projects in this area and vote for your favourite three!',
-            color: 'text-[#3A86FF]' // Updated Hex from your chart
+            color: 'text-[#3A86FF]' // Your specific Blue
         }
     ];
     const nextSlide = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
