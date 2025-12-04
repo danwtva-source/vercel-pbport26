@@ -14,12 +14,12 @@ const StatusBadge: React.FC<{ status: AppStatus }> = ({ status }) => {
     if (status === 'Finalist') color = 'teal';
     if (status === 'Funded') color = 'green';
     if (status === 'Rejected' || status === 'Rejected-Stage1') color = 'red';
+    if (status === 'Withdrawn') color = 'red';
     
     return <Badge variant={color as any}>{status}</Badge>;
 };
 
 // --- UPLOAD SIMULATION ---
-// In a real app, this would upload to Firebase Storage
 const FileUploader: React.FC<{ 
     label: string; 
     currentUrl?: string; 
@@ -31,9 +31,7 @@ const FileUploader: React.FC<{
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             setUploading(true);
-            // Simulate upload delay
             setTimeout(() => {
-                // In production, use Firebase Storage getDownloadURL here
                 const fakeUrl = `https://fake-storage.com/${e.target.files![0].name}`;
                 onUpload(fakeUrl);
                 setUploading(false);
@@ -91,6 +89,67 @@ const ProfileModal: React.FC<{
                 <Input label="Role / Title" placeholder="e.g. Treasurer" value={data.roleDescription} onChange={e => setData({...data, roleDescription: e.target.value})} />
                 <Input label="Phone Number" value={data.phone} onChange={e => setData({...data, phone: e.target.value})} />
                 <Button type="submit" className="w-full shadow-lg">Save Profile Changes</Button>
+            </form>
+        </Modal>
+    );
+};
+
+// --- USER FORM MODAL (ADMIN) ---
+const UserFormModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    user: User | null; 
+    onSave: () => void;
+}> = ({ isOpen, onClose, user, onSave }) => {
+    const [formData, setFormData] = useState<Partial<User>>({
+        email: '', username: '', displayName: '', role: 'applicant', area: undefined
+    });
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (user) {
+            setFormData({ email: user.email, username: user.username || '', displayName: user.displayName, role: user.role, area: user.area });
+        } else {
+            setFormData({ email: '', username: '', displayName: '', role: 'applicant', area: undefined });
+        }
+        setPassword('');
+        setError('');
+    }, [user, isOpen]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            if (user) await api.updateUser({ ...user, ...formData } as User);
+            else await api.adminCreateUser(formData as User, password);
+            onSave();
+            onClose();
+        } catch (err: any) {
+            setError(err.message);
+        }
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create New User'}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
+                <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required disabled={!!user} />
+                {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
+                <div className="grid grid-cols-2 gap-4">
+                     <select className="px-4 py-3 rounded-xl border" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}>
+                        <option value="applicant">Applicant</option>
+                        <option value="committee">Committee</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    {formData.role === 'committee' && (
+                        <select className="px-4 py-3 rounded-xl border" value={formData.area || ''} onChange={e => setFormData({...formData, area: e.target.value as Area})}>
+                            <option value="">Select Area...</option>
+                            {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                    )}
+                </div>
+                {error && <div className="text-red-600 text-sm">{error}</div>}
+                <Button type="submit" className="w-full">{user ? 'Update' : 'Create'}</Button>
             </form>
         </Modal>
     );
@@ -670,9 +729,12 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     const [apps, setApps] = useState<Application[]>([]);
     const [settings, setSettings] = useState<PortalSettings>({ part1Live: false, part2Live: false, scoringLive: false });
     const [activeTab, setActiveTab] = useState('overview');
+    const [isSeeding, setIsSeeding] = useState(false);
     
     // Admin Action States
     const [editingApp, setEditingApp] = useState<Application | null>(null);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
     const refresh = async () => { 
         setUsers(await api.getUsers());
@@ -699,6 +761,14 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
         if(!confirm("DELETE Application? This cannot be undone.")) return;
         await api.deleteApplication(appId);
         refresh();
+    };
+
+    const handleSeed = async () => {
+        if(!confirm("Overwrite DB with Demo Data?")) return;
+        setIsSeeding(true);
+        try { await seedDatabase(); refresh(); alert("Done"); }
+        catch(e:any) { alert(e.message); }
+        finally { setIsSeeding(false); }
     };
 
     // Filtered lists
@@ -748,7 +818,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     <h3 className="font-bold text-gray-500 uppercase text-xs">Database</h3>
                     <div className="flex justify-between items-center mt-2">
                          <span className="text-lg font-bold">Data Management</span>
-                         <Button size="sm" onClick={() => { if(confirm("Reset DB?")) seedDatabase().then(refresh); }}>Seed / Reset</Button>
+                         <Button size="sm" onClick={handleSeed} disabled={isSeeding}>{isSeeding ? 'Seeding...' : 'Seed / Reset'}</Button>
                     </div>
                 </Card>
             </div>
@@ -841,6 +911,32 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                             </tbody>
                         </table>
                     </div>
+                </Card>
+            )}
+
+            {/* --- VIEW: USERS MANAGEMENT (RESTORED) --- */}
+            {activeTab === 'users' && (
+                <Card>
+                    <div className="flex justify-between mb-4">
+                        <h3 className="font-bold">Users</h3>
+                        <Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ User</Button>
+                    </div>
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b"><th className="p-2">Name</th><th className="p-2">Role</th><th className="p-2">Actions</th></tr></thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.uid} className="border-b">
+                                    <td className="p-2">{u.displayName}</td>
+                                    <td className="p-2"><Badge>{u.role}</Badge></td>
+                                    <td className="p-2">
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 font-bold mr-2">Edit</button>
+                                        <button onClick={async () => { if(confirm('Delete?')) { await api.deleteUser(u.uid); refresh(); }}} className="text-red-600 font-bold">Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <UserFormModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} user={editingUser} onSave={refresh} />
                 </Card>
             )}
 
