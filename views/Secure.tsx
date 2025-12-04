@@ -40,18 +40,20 @@ const FileUploader: React.FC<{
     };
 
     return (
-        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors relative">
             <h4 className="font-bold text-gray-700 mb-2">{label}</h4>
             {currentUrl ? (
-                <div className="mb-4">
-                    <p className="text-green-600 font-bold text-sm mb-2">✓ File Uploaded</p>
-                    <a href={currentUrl} target="_blank" rel="noreferrer" className="text-brand-purple underline text-sm">View Current File</a>
+                <div className="mb-4 bg-green-50 p-3 rounded-lg border border-green-200">
+                    <p className="text-green-700 font-bold text-sm mb-1">✓ File Successfully Attached</p>
+                    <a href={currentUrl} target="_blank" rel="noreferrer" className="text-brand-purple underline text-xs break-all block">
+                        {currentUrl}
+                    </a>
                 </div>
             ) : (
                 <p className="text-sm text-gray-500 mb-4">No file uploaded yet.</p>
             )}
             
-            <label className={`inline-block px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer shadow-sm font-bold text-sm ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
+            <label className={`inline-block px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer shadow-sm font-bold text-sm ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 text-brand-purple'}`}>
                 {uploading ? 'Uploading...' : (currentUrl ? 'Replace File' : 'Choose PDF')}
                 <input type="file" accept=".pdf" className="hidden" onChange={handleFile} disabled={disabled || uploading} />
             </label>
@@ -165,7 +167,10 @@ const PdfStage1Form: React.FC<{
 }> = ({ data, onChange, onSubmit, onCancel }) => {
     return (
         <Card className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold font-dynapuff mb-4 text-brand-purple">Stage 1: PDF Upload Mode</h2>
+            <div className="bg-brand-purple text-white p-4 rounded-t-xl -mt-6 -mx-6 mb-6">
+                <h2 className="text-2xl font-bold font-dynapuff">Stage 1: PDF Upload Mode</h2>
+            </div>
+            
             <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
                 <p className="text-sm text-blue-700">
                     <strong>Instructions:</strong> Please download the blank EOI form, fill it out on your device, and upload the completed PDF below.
@@ -322,7 +327,10 @@ const PdfStage2Form: React.FC<{
 }> = ({ data, onChange, onSubmit, onCancel }) => {
     return (
         <Card className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold font-dynapuff mb-4 text-brand-teal">Stage 2: Full App Upload Mode</h2>
+            <div className="bg-brand-teal text-white p-4 rounded-t-xl -mt-6 -mx-6 mb-6">
+                <h2 className="text-2xl font-bold font-dynapuff">Stage 2: Full App Upload Mode</h2>
+            </div>
+            
             <div className="bg-teal-50 border-l-4 border-teal-500 p-4 mb-6">
                 <p className="text-sm text-teal-700">
                     <strong>Instructions:</strong> Download the Full Application form, complete it, and upload it here.
@@ -473,11 +481,18 @@ const ScoreModal: React.FC<{
                         <div><strong>Title:</strong> {app.projectTitle}</div>
                         <div><strong>Summary:</strong> {app.summary}</div>
                         <div><strong>Amount:</strong> £{app.amountRequested}</div>
-                        {app.submissionMethod === 'upload' ? (
-                            <a href={app.stage2PdfUrl || app.pdfUrl} target="_blank" className="block p-2 bg-blue-50 text-blue-700 rounded text-center font-bold">View PDF Application</a>
-                        ) : (
-                            <div className="bg-gray-100 p-2 rounded">Digital Form Data Available</div>
-                        )}
+                        
+                        <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+                            <h5 className="font-bold text-xs uppercase mb-2">Submission Method</h5>
+                            {app.submissionMethod === 'upload' ? (
+                                <a href={app.stage2PdfUrl || app.pdfUrl} target="_blank" className="flex items-center gap-2 text-blue-600 font-bold hover:underline">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    View PDF
+                                </a>
+                            ) : (
+                                <span className="text-xs">Digital Form Data</span>
+                            )}
+                        </div>
                     </div>
                  </div>
 
@@ -662,8 +677,8 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     useEffect(() => {
         const load = async () => {
              const allApps = await api.getApplications(isAdmin ? 'All' : user.area);
-             // Committee only sees Finalists
-             setApps(allApps.filter(a => a.status === 'Finalist'));
+             // Committee sees Finalists OR manually released apps
+             setApps(allApps.filter(a => a.status === 'Finalist' || a.committeeVisible));
              setScores((await api.getScores()).filter(s => s.scorerId === user.uid));
         };
         load();
@@ -757,6 +772,11 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
         refresh();
     };
 
+    const toggleCommitteeVisibility = async (appId: string, current: boolean) => {
+        await api.updateApplication(appId, { committeeVisible: !current } as any);
+        refresh();
+    };
+
     const deleteApp = async (appId: string) => {
         if(!confirm("DELETE Application? This cannot be undone.")) return;
         await api.deleteApplication(appId);
@@ -774,6 +794,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     // Filtered lists
     const stage1Apps = apps.filter(a => ['Submitted-Stage1', 'Draft'].includes(a.status));
     const stage2Apps = apps.filter(a => ['Invited-Stage2', 'Submitted-Stage2', 'Finalist', 'Funded', 'Rejected'].includes(a.status));
+    const allDocs = apps.filter(a => a.pdfUrl || a.stage2PdfUrl); // For document view
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -824,7 +845,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
             </div>
 
             <div className="flex gap-4 mb-6 border-b">
-                {['overview', 'stage1', 'stage2', 'users'].map(t => (
+                {['overview', 'stage1', 'stage2', 'docs', 'users'].map(t => (
                     <button key={t} onClick={() => setActiveTab(t)} className={`px-6 py-3 font-bold border-b-2 transition-colors ${activeTab === t ? 'border-brand-purple text-brand-purple' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
                         {t.toUpperCase()}
                     </button>
@@ -838,7 +859,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-gray-50 text-gray-500 text-xs uppercase"><th className="p-3">Ref</th><th className="p-3">Project</th><th className="p-3">Status</th><th className="p-3">Method</th><th className="p-3">Actions</th></tr>
+                                <tr className="bg-gray-50 text-gray-500 text-xs uppercase"><th className="p-3">Ref</th><th className="p-3">Project</th><th className="p-3">Status</th><th className="p-3">File</th><th className="p-3">Committee</th><th className="p-3">Actions</th></tr>
                             </thead>
                             <tbody className="divide-y">
                                 {stage1Apps.map(a => (
@@ -846,11 +867,20 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                                         <td className="p-3 font-mono text-sm">{a.ref}</td>
                                         <td className="p-3 font-bold">{a.projectTitle}</td>
                                         <td className="p-3"><StatusBadge status={a.status} /></td>
-                                        <td className="p-3 text-sm">{a.submissionMethod}</td>
+                                        <td className="p-3 text-sm">
+                                            {a.submissionMethod === 'upload' && a.pdfUrl ? (
+                                                <a href={a.pdfUrl} target="_blank" className="text-blue-600 underline">PDF</a>
+                                            ) : 'Digital'}
+                                        </td>
+                                        <td className="p-3">
+                                            <button onClick={() => toggleCommitteeVisibility(a.id, a.committeeVisible)} className={`text-xs px-2 py-1 rounded font-bold ${a.committeeVisible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                                                {a.committeeVisible ? 'VISIBLE' : 'HIDDEN'}
+                                            </button>
+                                        </td>
                                         <td className="p-3 flex gap-2">
                                             {a.status === 'Submitted-Stage1' && (
                                                 <>
-                                                    <Button size="sm" onClick={() => updateStatus(a.id, 'Invited-Stage2')}>Accept (Invite Stage 2)</Button>
+                                                    <Button size="sm" onClick={() => updateStatus(a.id, 'Invited-Stage2')}>Accept</Button>
                                                     <Button size="sm" variant="danger" onClick={() => updateStatus(a.id, 'Rejected-Stage1')}>Reject</Button>
                                                 </>
                                             )}
@@ -880,7 +910,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-gray-50 text-gray-500 text-xs uppercase"><th className="p-3">Ref</th><th className="p-3">Project</th><th className="p-3">Status</th><th className="p-3">Stage 2 File</th><th className="p-3">Actions</th></tr>
+                                <tr className="bg-gray-50 text-gray-500 text-xs uppercase"><th className="p-3">Ref</th><th className="p-3">Project</th><th className="p-3">Status</th><th className="p-3">Committee</th><th className="p-3">Actions</th></tr>
                             </thead>
                             <tbody className="divide-y">
                                 {stage2Apps.map(a => (
@@ -891,10 +921,10 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                                             <div className="text-xs text-gray-500">{a.orgName}</div>
                                         </td>
                                         <td className="p-3"><StatusBadge status={a.status} /></td>
-                                        <td className="p-3 text-sm">
-                                            {a.submissionMethod === 'upload' 
-                                                ? <a href={a.stage2PdfUrl} target="_blank" className="text-blue-600 underline">View PDF</a> 
-                                                : 'Digital Data'}
+                                        <td className="p-3">
+                                            <button onClick={() => toggleCommitteeVisibility(a.id, a.committeeVisible)} className={`text-xs px-2 py-1 rounded font-bold ${a.committeeVisible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                                                {a.committeeVisible ? 'VISIBLE' : 'HIDDEN'}
+                                            </button>
                                         </td>
                                         <td className="p-3 flex gap-2">
                                             {a.status === 'Submitted-Stage2' && (
@@ -910,6 +940,27 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </Card>
+            )}
+
+            {/* --- VIEW: DOCS MANAGEMENT (NEW) --- */}
+            {activeTab === 'docs' && (
+                <Card>
+                    <h3 className="font-bold text-xl mb-4">Document Center</h3>
+                    <div className="grid gap-4">
+                        {allDocs.length === 0 ? <p className="text-gray-500">No documents uploaded.</p> : allDocs.map(a => (
+                            <div key={a.id} className="border p-4 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold">{a.projectTitle}</h4>
+                                    <p className="text-sm text-gray-500">{a.ref} • {a.area}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    {a.pdfUrl && <a href={a.pdfUrl} target="_blank" className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-bold text-sm hover:bg-purple-200">Stage 1 PDF</a>}
+                                    {a.stage2PdfUrl && <a href={a.stage2PdfUrl} target="_blank" className="px-4 py-2 bg-teal-100 text-teal-700 rounded-lg font-bold text-sm hover:bg-teal-200">Stage 2 PDF</a>}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </Card>
             )}
