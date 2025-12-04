@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Communities' Choice Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              dynapuff: ['DynaPuff', 'cursive'],
+              arial: ['Arial Nova', 'Arial', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                purple: '#9333ea',
+                darkPurple: '#7e22ce',
+                teal: '#14b8a6',
+                darkTeal: '#0f766e',
+                light: '#f3e8ff',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-in-out',
+              'slide-up': 'slideUp 0.4s ease-out',
+            }
+          }
+        }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@400;500;600;700&family=Arial+Nova&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-slate-50 text-slate-800 overflow-x-hidden">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script> </body>
+</html>
