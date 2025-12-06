@@ -8,8 +8,6 @@ import { User } from './types';
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  
-  // Auth State
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [emailOrUser, setEmailOrUser] = useState('');
@@ -24,13 +22,6 @@ function App() {
         const u = authMode === 'login' ? await api.login(emailOrUser, password) : await api.register(emailOrUser, password, displayName);
         setCurrentUser(u); setIsAuthOpen(false); setCurrentPage(u.role === 'admin' ? 'admin' : u.role === 'committee' ? 'committee' : 'applicant');
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleProfileClick = () => {
-      if(!currentUser) return;
-      if(currentUser.role === 'admin') setCurrentPage('admin');
-      else if(currentUser.role === 'committee') setCurrentPage('committee');
-      else setCurrentPage('applicant');
   };
 
   const renderView = () => {
@@ -56,7 +47,7 @@ function App() {
       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-lg border-b border-purple-100 shadow-sm">
         <div className="container mx-auto px-4 h-20 flex justify-between items-center">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentPage('home')}>
-                <img src={currentUser ? "images/Peoples’ Committee Portal logo 2.png" : "images/PB English Transparent.png"} 
+                <img src={currentUser ? "/images/Peoples’ Committee Portal logo 2.png" : "/images/PB English Transparent.png"} 
                      alt="Logo" className="h-12 object-contain" onError={e => e.currentTarget.style.display='none'} />
                 <span className="font-dynapuff text-brand-purple font-bold text-xl">{!currentUser && "Communities' Choice"}</span>
             </div>
@@ -68,7 +59,7 @@ function App() {
                         <Button size="sm" onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }} className="bg-purple-100 text-purple-800">Committee Portal</Button>
                     </>
                 ) : (
-                    <div className="flex items-center gap-4 cursor-pointer" onClick={handleProfileClick}>
+                    <div className="flex items-center gap-4 cursor-pointer">
                         <div className="text-right hidden sm:block">
                             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{currentUser.role}</div>
                             <div className="text-sm font-bold text-gray-800">{currentUser.displayName}</div>
