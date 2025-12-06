@@ -2,6 +2,12 @@ export type Role = 'guest' | 'applicant' | 'committee' | 'admin';
 export type Area = 'Blaenavon' | 'Thornhill & Upper Cwmbran' | 'Trevethin, Penygarn & St. Cadocs' | 'Cross-Area';
 export type AppStatus = 'Draft' | 'Submitted-Stage1' | 'Rejected-Stage1' | 'Invited-Stage2' | 'Submitted-Stage2' | 'Finalist' | 'Funded' | 'Rejected';
 
+export const AREAS: Area[] = [
+  'Blaenavon',
+  'Thornhill & Upper Cwmbran',
+  'Trevethin, Penygarn & St. Cadocs'
+];
+
 export interface User {
   uid: string;
   email: string;
@@ -28,6 +34,14 @@ export interface BudgetLine {
     item: string;
     note: string;
     cost: number;
+}
+
+export interface ScoreCriterion {
+  id: string;
+  name: string;
+  guidance: string; // Tooltip summary
+  weight: number;
+  details: string; // Full HTML guidance
 }
 
 // Admin Document System
