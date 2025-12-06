@@ -56,7 +56,7 @@ function App() {
       {/* HEADER / NAVIGATION */}
       <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
         <div className="container mx-auto px-4 h-24 flex justify-between items-center">
-            {/* Logo Section */}
+            {/* Logo Section - Logic for Public vs Portal Logo */}
             <div className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentPage('home')}>
                 <img 
                     src={currentUser ? "/images/Peoples’ Committee Portal logo 2.png" : "/images/PB English Transparent.png"} 
