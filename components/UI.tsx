@@ -106,5 +106,4 @@ export const FileCard: React.FC<{ title: string; type: string; date?: string; on
             </button>
         )}
     </div>
-
 );
