@@ -2,29 +2,36 @@ import React, { useState } from 'react';
 import { Button, Card, Input, FileCard } from '../components/UI';
 import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
 
-// --- STYLED CAROUSEL ---
+// --- STYLED CAROUSEL (Original Aesthetic) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     
-    // FIXED: Paths relative to public folder (no /public prefix)
+    // Updated to use the correct file names found in your public/images folder
+    // Note: In Vite, assets in 'public' are served from root.
     const slides = [
         { 
             name: 'Blaenavon', 
             img: '/images/bln.png', 
             desc: 'A historic town with a strong community spirit. Vote for projects that preserve our heritage and build our future.',
-            color: '#FFD447'
+            color: '#FFD447',
+            bg: 'bg-yellow-50',
+            text: 'text-yellow-800'
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
             img: '/images/tuc.png', 
             desc: 'Supporting local initiatives to improve health, wellbeing, and community spaces.',
-            color: '#2FBF71'
+            color: '#2FBF71',
+            bg: 'bg-green-50',
+            text: 'text-green-800'
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
             img: '/images/tps.png', 
             desc: 'Empowering residents to tackle local issues and create safer, greener neighbourhoods.',
-            color: '#3A86FF'
+            color: '#3A86FF',
+            bg: 'bg-blue-50',
+            text: 'text-blue-800'
         }
     ];
 
@@ -36,14 +43,19 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
         <div className="relative w-full max-w-6xl mx-auto mt-12 mb-20 px-4">
             <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20 bg-gray-900">
                 <div className="absolute inset-0">
+                    {/* Background Image with Overlay */}
                     <div className="absolute inset-0 bg-black/60 z-10"></div>
                     <img 
                         src={current.img} 
                         alt={current.name} 
                         className="absolute inset-0 w-full h-full object-cover opacity-80"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }} // Graceful fallback
+                        onError={(e) => {
+                            // Fallback if image fails
+                            e.currentTarget.style.display = 'none'; 
+                        }}
                     />
                     
+                    {/* Content */}
                     <div className="relative z-20 h-full flex flex-col justify-center items-center text-center p-8 md:p-16 text-white">
                         <span 
                             className="inline-block px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 shadow-lg"
@@ -67,17 +79,31 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
                     </div>
                 </div>
 
+                {/* Controls */}
                 <button onClick={prev} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❮</button>
                 <button onClick={next} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❯</button>
+                
+                {/* Indicators */}
+                <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center gap-3">
+                    {slides.map((_, idx) => (
+                        <button 
+                            key={idx} 
+                            onClick={() => setCurrentIndex(idx)}
+                            className={`w-3 h-3 rounded-full transition-all ${idx === currentIndex ? 'scale-150' : 'opacity-50'}`}
+                            style={{ backgroundColor: current.color }}
+                        />
+                    ))}
+                </div>
             </div>
         </div>
     );
 };
 
-// --- LANDING ---
+// --- LANDING (Restored "Hero" Aesthetic) ---
 export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
   return (
     <div className="animate-fade-in bg-white">
+      {/* Hero Section */}
       <section className="relative pt-20 pb-32 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-50 via-white to-white z-0"></div>
         <div className="container mx-auto px-4 relative z-10 text-center">
@@ -103,6 +129,7 @@ export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNa
         </div>
       </section>
 
+      {/* Carousel */}
       <AreaCarousel onNavigate={onNavigate} />
 
       {/* Info Grid */}
@@ -131,11 +158,12 @@ export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNa
   );
 };
 
-// --- PRIORITIES ---
+// --- PRIORITIES (Using Specific Area Colours) ---
 export const Priorities: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');
     const data = PRIORITY_DATA[activeTab];
 
+    // Colors provided in prompt
     const AREA_COLORS = {
         'blaenavon': '#FFD447',
         'thornhill': '#2FBF71',
@@ -144,6 +172,7 @@ export const Priorities: React.FC = () => {
     
     const currentColor = AREA_COLORS[activeTab];
 
+    // Helper for visual flair
     const getIcon = (label: string) => {
         if(label.includes('Youth')) return '🛹';
         if(label.includes('Transport')) return '🚌';
@@ -164,6 +193,7 @@ export const Priorities: React.FC = () => {
                     </p>
                 </div>
 
+                {/* Tabs */}
                 <div className="flex justify-center gap-4 mb-12 flex-wrap">
                     {[
                         { id: 'blaenavon', label: 'Blaenavon', col: '#FFD447' },
@@ -186,6 +216,7 @@ export const Priorities: React.FC = () => {
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Main Chart Card */}
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
                         <h3 className="text-2xl font-bold font-dynapuff mb-8 flex items-center gap-3">
                             <span className="w-3 h-8 rounded-full" style={{ backgroundColor: currentColor }}></span>
@@ -211,6 +242,7 @@ export const Priorities: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Top Priorities Cards */}
                     <div className="grid gap-4 content-start">
                         <div className="p-8 rounded-[2.5rem] shadow-lg mb-4 text-black" style={{ backgroundColor: currentColor }}>
                             <h3 className="text-2xl font-bold font-dynapuff mb-2">Key Focus Areas</h3>
@@ -234,7 +266,7 @@ export const Priorities: React.FC = () => {
     );
 };
 
-// --- TIMELINE ---
+// --- TIMELINE (Styled) ---
 export const Timeline: React.FC = () => {
     const events = [
         { date: 'Jan - May 2025', title: 'Have Your Say!', desc: 'Community priorities identified via public survey.', status: 'done' },
@@ -253,10 +285,13 @@ export const Timeline: React.FC = () => {
                 </div>
                 
                 <div className="relative pl-8 md:pl-0">
+                    {/* Vertical Line */}
                     <div className="absolute left-8 md:left-1/2 top-0 bottom-0 w-1 bg-gray-200 transform md:-translate-x-1/2 rounded-full"></div>
+                    
                     <div className="space-y-16">
                         {events.map((e, i) => (
                             <div key={i} className={`flex flex-col md:flex-row items-center gap-8 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''} group`}>
+                                {/* Content Side */}
                                 <div className="flex-1 w-full md:w-1/2">
                                     <div className={`bg-white p-8 rounded-3xl shadow-sm border-l-8 transition-all hover:shadow-xl ${e.status === 'active' ? 'border-brand-teal ring-4 ring-teal-50' : 'border-brand-purple'}`}>
                                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${e.status === 'active' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-600'}`}>
@@ -266,9 +301,13 @@ export const Timeline: React.FC = () => {
                                         <p className="text-gray-600">{e.desc}</p>
                                     </div>
                                 </div>
+
+                                {/* Center Node */}
                                 <div className="absolute left-8 md:left-1/2 w-12 h-12 bg-white border-4 border-brand-purple rounded-full transform -translate-x-1/2 flex items-center justify-center z-10 shadow-lg group-hover:scale-110 transition-transform">
                                     {e.status === 'done' ? <span className="text-brand-purple font-bold">✓</span> : <span className="text-gray-400 font-bold">{i+1}</span>}
                                 </div>
+
+                                {/* Empty Side (for layout balance) */}
                                 <div className="hidden md:block flex-1"></div>
                             </div>
                         ))}
@@ -279,7 +318,7 @@ export const Timeline: React.FC = () => {
     );
 };
 
-// --- PUBLIC DOCUMENTS ---
+// --- PUBLIC DOCUMENTS (Styled) ---
 export const PublicDocuments: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 py-20 px-4 animate-fade-in">
@@ -314,7 +353,7 @@ export const PublicDocuments: React.FC = () => {
     );
 };
 
-// --- POSTCODE CHECKER ---
+// --- POSTCODE CHECKER (Styled) ---
 export const PostcodeChecker: React.FC = () => {
     const [code, setCode] = useState('');
     const [result, setResult] = useState<{valid: boolean, area?: string} | null>(null);
