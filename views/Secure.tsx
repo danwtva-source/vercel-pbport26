@@ -336,45 +336,6 @@ export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange:
     );
 };
 
-// --- USER FORM MODAL ---
-const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
-    const [formData, setFormData] = useState<Partial<User>>({ email: '', username: '', displayName: '', role: 'applicant' });
-    const [password, setPassword] = useState('');
-    useEffect(() => { if (user) setFormData(user); else setFormData({ email: '', username: '', displayName: '', role: 'applicant' }); setPassword(''); }, [user, isOpen]);
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (user) await api.updateUser({ ...user, ...formData } as User);
-        else await api.adminCreateUser(formData as User, password);
-        onSave(); onClose();
-    };
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
-                <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
-                {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-bold mb-2">Role</label>
-                        <select className="w-full p-3 border rounded-xl" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as any})}>
-                            <option value="applicant">Applicant</option><option value="committee">Committee</option><option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    {formData.role === 'committee' && (
-                        <div>
-                            <label className="block text-sm font-bold mb-2">Area</label>
-                            <select className="w-full p-3 border rounded-xl" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value as any})}>
-                                <option>Select Area...</option>{AREAS.map(a => <option key={a} value={a}>{a}</option>)}
-                            </select>
-                        </div>
-                    )}
-                </div>
-                <Button type="submit" className="w-full mt-4">Save User</Button>
-            </form>
-        </Modal>
-    );
-};
-
 // --- SCORE MODAL (With PDF Viewer) ---
 const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; currentUser: User; existingScore?: Score; onSubmit: (s: Score) => void; threshold?: number }> = ({ isOpen, onClose, app, currentUser, existingScore, onSubmit, threshold = 50 }) => {
     const [scores, setScores] = useState<Record<string, number>>(existingScore?.scores || {});
@@ -444,6 +405,44 @@ const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applicat
             </Modal>
             {pdfUrl && <PDFViewer url={pdfUrl} onClose={() => setPdfUrl(null)} />}
         </>
+    );
+};
+
+// --- USER FORM MODAL ---
+const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
+    const [formData, setFormData] = useState<Partial<User>>({ email: '', username: '', displayName: '', role: 'applicant' });
+    const [password, setPassword] = useState('');
+    useEffect(() => { if (user) setFormData(user); else setFormData({ email: '', username: '', displayName: '', role: 'applicant' }); setPassword(''); }, [user, isOpen]);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (user) await api.updateUser({ ...user, ...formData } as User);
+        else await api.adminCreateUser(formData as User, password);
+        onSave(); onClose();
+    };
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
+                <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
+                {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-bold mb-2">Role</label>
+                        <select className="w-full p-3 border rounded-xl" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as any})}>
+                            <option value="applicant">Applicant</option><option value="committee">Committee</option><option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    {formData.role === 'committee' && (
+                        <div>
+                            <label className="block text-sm font-bold mb-2">Area</label>
+                            <select className="w-full p-3 border rounded-xl" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value as any})}>
+                                <option>Select Area...</option>{AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select>
+                        </div>
+                    )}
+                </div>
+                <Button type="submit" className="w-full mt-4">Save User</Button>
+            </form>
+        </Modal>
     );
 };
 
@@ -600,7 +599,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
             </div>
             {activeTab === 'overview' && <div className="grid gap-6"><div className="grid md:grid-cols-4 gap-4"><Card className="bg-purple-50 border-purple-100"><h3 className="text-purple-800 text-sm font-bold uppercase">Total Apps</h3><p className="text-3xl font-dynapuff">{apps.length}</p></Card><Card className="bg-blue-50 border-blue-100"><h3 className="text-blue-800 text-sm font-bold uppercase">Users</h3><p className="text-3xl font-dynapuff">{users.length}</p></Card></div><Card><h3 className="font-bold mb-4">Quick Actions</h3><Button className="w-full justify-start" onClick={() => exportToCSV(apps, 'apps')}>📥 Export CSV</Button><Button className="w-full justify-start bg-red-100 text-red-600 mt-2" onClick={() => seedDatabase().then(() => alert("Seeded!"))}>↻ Seed Database</Button></Card></div>}
             {activeTab === 'users' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">Users</h3><Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ User</Button></div><table className="w-full text-left"><thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u => <tr key={u.uid} className="border-b"><td className="p-3">{u.displayName}</td><td className="p-3"><Badge>{u.role}</Badge></td><td className="p-3"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 mr-2">Edit</button><button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); }}} className="text-red-600">Delete</button></td></tr>)}</tbody></table></Card>}
-            {activeTab === 'committees' && <Card><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-2xl font-dynapuff">Committee Members</h3></div><div className="grid md:grid-cols-2 gap-4">{users.filter(u => u.role === 'committee').map(u => <div key={u.uid} className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-md transition-shadow bg-white"><div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-xl">{u.displayName?.charAt(0)}</div><div><div className="font-bold">{u.displayName}</div><div className="text-xs text-gray-500">{u.area}</div></div><div className="ml-auto"><Badge variant="green">Active</Badge></div></div>)}</div></Card>}
+            {activeTab === 'committees' && <Card><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-2xl font-dynapuff">Committee Members</h3><Button size="sm" onClick={() => { setEditingUser({ role: 'committee' } as User); setIsUserModalOpen(true); }}>+ Add Member</Button></div><div className="grid md:grid-cols-2 gap-4">{users.filter(u => u.role === 'committee').map(u => <div key={u.uid} className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-md transition-shadow bg-white relative group"><div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-xl">{u.displayName?.charAt(0)}</div><div><div className="font-bold">{u.displayName}</div><div className="text-xs text-gray-500">{u.area}</div></div><div className="ml-auto flex gap-2"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-500 font-bold text-sm hover:underline">Edit</button></div></div>)}</div></Card>}
             {activeTab === 'documents' && <AdminDocCentre />}
             {activeTab === 'applications' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">All Applications</h3><Button size="sm" onClick={() => exportToCSV(apps, 'all_apps')}>Export CSV</Button></div><div className="space-y-2">{apps.map(a => <div key={a.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-gray-50"><div><div className="font-bold">{a.projectTitle}</div><div className="text-xs text-gray-500">{a.orgName} • {a.area}</div></div><Badge>{a.status}</Badge></div>)}</div></Card>}
             {activeTab === 'settings' && <div className="grid md:grid-cols-2 gap-6"><Card><h3 className="font-bold text-xl mb-4">Lifecycle</h3><div className="space-y-4"><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 1 Open</span><input type="checkbox" checked={settings.stage1Visible} onChange={() => toggleSetting('stage1Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 2 Open</span><input type="checkbox" checked={settings.stage2Visible} onChange={() => toggleSetting('stage2Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Voting Open</span><input type="checkbox" checked={settings.votingOpen} onChange={() => toggleSetting('votingOpen')} /></label></div></Card><Card><h3 className="font-bold text-xl mb-4">Previews</h3><div className="space-y-4"><Button className="w-full" onClick={() => setPreviewMode('stage1')}>Preview Stage 1</Button><Button className="w-full" onClick={() => setPreviewMode('stage2')}>Preview Stage 2</Button></div></Card></div>}
