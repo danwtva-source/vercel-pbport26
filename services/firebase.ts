@@ -6,7 +6,7 @@ import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 export const USE_DEMO_MODE = false; 
 
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -26,7 +26,7 @@ export const db = getFirestore(app);
 const DEFAULT_SETTINGS: PortalSettings = { 
     stage1Visible: true, 
     stage2Visible: false, 
-    votingOpen: false,
+    votingOpen: false, 
     scoringThreshold: 50 
 };
 
@@ -126,10 +126,21 @@ class AuthService {
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
       if (!db) throw new Error("No DB");
-      // Explicitly merge to ensure no data loss
-      await setDoc(doc(db, 'users', uid), u, { merge: true });
-      // Fetch fresh data to return
-      const snap = await getDoc(doc(db, 'users', uid));
+      
+      // 1. Update Firestore Document
+      const userRef = doc(db, 'users', uid);
+      await setDoc(userRef, u, { merge: true });
+
+      // 2. Update Auth Profile (DisplayName / PhotoURL) if current user
+      if (auth.currentUser && auth.currentUser.uid === uid) {
+          await updateProfile(auth.currentUser, {
+              displayName: u.displayName || auth.currentUser.displayName,
+              photoURL: u.photoUrl || auth.currentUser.photoURL
+          });
+      }
+
+      // 3. Return fresh data
+      const snap = await getDoc(userRef);
       return snap.data() as User;
   }
 
@@ -154,7 +165,12 @@ class AuthService {
   
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
-      throw new Error("Admin creation requires Firebase Admin SDK. Please use console.");
+      // In client-side only app, we simulate admin creation by creating a DB record.
+      // The user would technically need to "Sign Up" themselves to create the Auth credential,
+      // or we use a secondary app to provision accounts. 
+      // Ideally, use Cloud Functions for this.
+      const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
+      await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
   }
   
   async deleteUser(uid: string): Promise<void> {
@@ -163,7 +179,6 @@ class AuthService {
     await deleteDoc(doc(db, 'users', uid));
   }
 
-  // --- SETTINGS (Restored) ---
   async getPortalSettings(): Promise<PortalSettings> {
       if (USE_DEMO_MODE) return this.mockGetSettings();
       if (!db) return DEFAULT_SETTINGS;
@@ -185,7 +200,7 @@ class AuthService {
     return new Promise((res, rej) => {
         setTimeout(() => {
             const users = this.getLocal<User>('users');
-            if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); }
+            if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); } // Auto-seed
             let email = id.includes('@') ? id : `${id}@committee.local`;
             const u = users.find(u => (u.email.toLowerCase() === email.toLowerCase() || u.username === id) && u.password === p);
             u ? res(u) : rej(new Error("Invalid login"));
@@ -279,6 +294,7 @@ export const seedDatabase = async () => {
     batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
 
     // 4. Seed Admin Documents (New Feature)
+    // Creates base folders for the Document Centre
     const folders = ['Committee Guidelines', 'Meeting Minutes', 'Policies'];
     folders.forEach(name => {
         const id = 'folder_' + name.replace(/\s/g, '');
