@@ -131,7 +131,7 @@ class AuthService {
       const userRef = doc(db, 'users', uid);
       await setDoc(userRef, u, { merge: true });
 
-      // 2. Update Auth Profile (Display Name / PhotoURL) if current user
+      // 2. Update Auth Profile (DisplayName / PhotoURL) if current user
       if (auth.currentUser && auth.currentUser.uid === uid) {
           await updateProfile(auth.currentUser, {
               displayName: u.displayName || auth.currentUser.displayName,
