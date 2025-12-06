@@ -37,5 +37,61 @@
         </div>
     </div>
     <script type="module" src="/index.tsx"></script>
+    <button id="installBtn" style="display:none; position: fixed; bottom: 20px; right: 20px; z-index: 1000; padding: 10px 20px; background: #673ab7; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+  Install App
+</button>
+
+<div id="iosInstallPrompt" style="display:none; position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 20px; border-top: 1px solid #ccc; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; text-align: center;">
+  <p style="margin: 0 0 10px;">To install this app on your iPhone:</p>
+  <p style="margin: 0;">Tap <img src="https://img.icons8.com/ios-glyphs/30/000000/share-rounded.png" style="vertical-align: middle; width: 20px;" /> then select <strong>Add to Home Screen</strong>.</p>
+  <button onclick="document.getElementById('iosInstallPrompt').style.display='none'" style="margin-top: 10px; padding: 5px 10px;">Close</button>
+</div>
+
+<script>
+  // --- 1. Register Service Worker (Required for PWA) ---
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker Registered'))
+        .catch(err => console.log('Service Worker Error', err));
+    });
+  }
+
+  // --- 2. Handle Android/Desktop Install Button ---
+  let deferredPrompt;
+  const installBtn = document.getElementById('installBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent the mini-infobar from appearing automatically
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    // Show our custom install button
+    installBtn.style.display = 'block';
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      // Show the install prompt
+      deferredPrompt.prompt();
+      // Wait for the user to respond to the prompt
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response: ${outcome}`);
+      // We've used the prompt, and can't use it again, throw it away
+      deferredPrompt = null;
+      // Hide the button
+      installBtn.style.display = 'none';
+    }
+  });
+
+  // --- 3. Handle iOS Detection ---
+  const isIos = /iphone|ipad|ipod/.test( window.navigator.userAgent.toLowerCase() );
+  const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator.standalone);
+
+  // If on iOS and NOT already installed (standalone)
+  if (isIos && !isInStandaloneMode) {
+    document.getElementById('iosInstallPrompt').style.display = 'block';
+  }
+</script>
   </body>
 </html>
