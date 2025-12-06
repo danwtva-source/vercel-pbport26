@@ -1,6 +1,6 @@
 export type Role = 'guest' | 'applicant' | 'committee' | 'admin';
 export type Area = 'Blaenavon' | 'Thornhill & Upper Cwmbran' | 'Trevethin, Penygarn & St. Cadocs' | 'Cross-Area';
-export type AppStatus = 'Draft' | 'Submitted-Stage1' | 'Rejected-Stage1' | 'Invited-Stage2' | 'Submitted-Stage2' | 'Finalist' | 'Funded' | 'Rejected' | 'Withdrawn';
+export type AppStatus = 'Draft' | 'Submitted-Stage1' | 'Rejected-Stage1' | 'Invited-Stage2' | 'Submitted-Stage2' | 'Finalist' | 'Funded' | 'Rejected';
 
 export interface User {
   uid: string;
@@ -10,6 +10,7 @@ export interface User {
   area?: Area;
   displayName?: string;
   password?: string;
+  // Profile
   bio?: string;
   phone?: string;
   photoUrl?: string;
@@ -18,9 +19,9 @@ export interface User {
 }
 
 export interface PortalSettings {
-    part1Live: boolean;     // Is the EOI open for new applications?
-    part2Live: boolean;     // Is the Full App open for invited applicants?
-    scoringLive: boolean;   // Can committee members see and score apps?
+    stage1Visible: boolean;
+    stage2Visible: boolean;
+    votingOpen: boolean;
 }
 
 export interface BudgetLine {
@@ -29,10 +30,22 @@ export interface BudgetLine {
     cost: number;
 }
 
+// Admin Document System
+export interface AdminDocument {
+    id: string;
+    name: string;
+    type: 'folder' | 'file';
+    parentId: string | 'root'; // 'root' or folder ID
+    url?: string; // Only for files
+    category: 'general' | 'minutes' | 'policy' | 'committee-only'; // Permissions
+    uploadedBy: string;
+    createdAt: number;
+}
+
 export interface Application {
   id: string;
   userId: string;
-  applicantName: string;
+  applicantName: string; // Contact Name
   orgName: string;
   projectTitle: string;
   area: Area;
@@ -44,68 +57,86 @@ export interface Application {
   createdAt: number;
   ref: string;
   
-  // Method branching
   submissionMethod: 'digital' | 'upload';
-  
-  // File Upload Mode URLs
-  pdfUrl?: string;       // Stage 1 PDF
-  stage2PdfUrl?: string; // Stage 2 PDF
+  pdfUrl?: string;
+  stage2PdfUrl?: string;
 
-  // Digital Mode Data
   formData?: {
-    // Stage 1
+    // --- Stage 1 (EOI) Matches PB 1.1 ---
     applyMultiArea?: boolean;
+    
+    // Address
     addressStreet?: string;
     addressLocalArea?: string;
     addressTown?: string;
     addressCounty?: string;
     addressPostcode?: string;
+    
+    // Organisation Type
     orgType?: string;
     orgTypeOther?: string;
+    
     contactPosition?: string;
     contactEmail?: string;
     contactPhone?: string;
+
+    // Priorities & Timeline
     projectTheme?: string;
     startDate?: string;
     endDate?: string;
     duration?: string;
-    positiveOutcomes?: string[];
-    otherFundingSources?: string;
-    crossAreaBreakdown?: string;
+    
+    // Outcomes (1, 2, 3 from PDF)
+    outcome1?: string;
+    outcome2?: string;
+    outcome3?: string;
+    
+    // Funding
+    otherFundingSources?: string; // Section 6b
+    crossAreaBreakdown?: string; // Section 6c
+    
+    // Alignment
     marmotPrinciples?: string[];
     wfgGoals?: string[];
+    
+    // Declaration (Section 8)
+    gdprConsent?: boolean;
+    declarationTrue?: boolean;
     declarationName?: string;
     declarationDate?: string;
-    declarationSigned?: boolean;
+    declarationSignature?: string; // Text signature
 
-    // Stage 2
+    // --- Stage 2 (Full App) Matches PB 2.1 ---
+    
+    // Bank & Reg
     bankAccountName?: string;
     bankAccountNumber?: string;
     bankSortCode?: string;
     charityNumber?: string;
     companyNumber?: string;
-    projectOverview?: string;
-    activities?: string;
-    communityBenefit?: string;
-    collaborations?: string;
-    risks?: string;
+    
+    // Project Detail
+    projectOverview?: string; // Sec 2.2
+    activities?: string; // Sec 2.3
+    communityBenefit?: string; // Sec 2.4
+    collaborations?: string; // Sec 2.5
+    risks?: string; // Sec 2.6
+    
+    // Alignment Explanations
     marmotExplanations?: Record<string, string>;
     wfgExplanations?: Record<string, string>;
+    
+    // Budget
     budgetBreakdown?: BudgetLine[];
-    additionalBudgetInfo?: string;
-    checklist?: string[];
-    declarationStatements?: string[];
+    additionalBudgetInfo?: string; // 4.2
+    
+    // Checklists & Declarations (4.4 & 4.5)
+    checklist?: string[]; // Constitution, Equality Policy etc.
+    declarationStatements?: string[]; // Consent to withdraw, True/Accurate, GDPR etc.
     declarationName2?: string;
     declarationDate2?: string;
+    declarationSignature2?: string;
   }
-}
-
-export interface ScoreCriterion {
-  id: string;
-  name: string;
-  guidance: string;
-  weight: number;
-  details: string;
 }
 
 export interface Score {
@@ -118,9 +149,3 @@ export interface Score {
   total: number;
   timestamp: number;
 }
-
-export const AREAS: Area[] = [
-  'Blaenavon',
-  'Thornhill & Upper Cwmbran',
-  'Trevethin, Penygarn & St. Cadocs'
-];
