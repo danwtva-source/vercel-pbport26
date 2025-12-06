@@ -1,6 +1,8 @@
 import { User, Application, Score, PortalSettings, AdminDocument } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 
+// --- CONFIGURATION ---
+// Set to FALSE for production.
 export const USE_DEMO_MODE = false; 
 
 import { initializeApp } from "firebase/app";
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: PortalSettings = {
     scoringThreshold: 50 
 };
 
+// --- HELPER: CSV Export ---
 export const exportToCSV = (data: any[], filename: string) => {
     if (!data.length) return;
     const headers = Object.keys(data[0]);
@@ -47,6 +50,7 @@ export const exportToCSV = (data: any[], filename: string) => {
 };
 
 class AuthService {
+  // --- AUTH ---
   async login(id: string, pass: string): Promise<User> {
     if (USE_DEMO_MODE) return this.mockLogin(id, pass);
     if (!auth || !db) throw new Error("Firebase not init");
@@ -65,6 +69,7 @@ class AuthService {
     return u;
   }
 
+  // --- DATA ---
   async getApplications(area?: string): Promise<Application[]> {
       if (USE_DEMO_MODE) return this.mockGetApps(area);
       if (!db) return [];
@@ -122,11 +127,11 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
       if (!db) throw new Error("No DB");
       
-      // 1. Update Firestore
+      // 1. Update Firestore Document
       const userRef = doc(db, 'users', uid);
       await setDoc(userRef, u, { merge: true });
 
-      // 2. Update Auth (Display Name / Photo) if current user
+      // 2. Update Auth Profile (Display Name / PhotoURL) if current user
       if (auth.currentUser && auth.currentUser.uid === uid) {
           await updateProfile(auth.currentUser, {
               displayName: u.displayName || auth.currentUser.displayName,
@@ -134,6 +139,7 @@ class AuthService {
           });
       }
 
+      // 3. Return fresh data
       const snap = await getDoc(userRef);
       return snap.data() as User;
   }
@@ -159,7 +165,8 @@ class AuthService {
   
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
-      // Simulate Admin Creation - requires user to sign up to link Auth
+      // In a real app, this would call a Cloud Function.
+      // For this prototype, we simulate it by creating the DB record.
       const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
       await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
   }
