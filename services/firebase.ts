@@ -1,59 +1,46 @@
-
-import { User, Application, Score, PortalSettings } from '../types';
+import { User, Application, Score, PortalSettings, AdminDocument } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 
 // --- CONFIGURATION ---
-// Set to TRUE to use LocalStorage (Demo Mode) for app logic.
-// Set to FALSE to use Real Firebase for app logic.
-// NOTE: Even in Demo Mode, the "Seed Database" button in Admin will use the Real Firebase connection if configured.
-export const USE_DEMO_MODE = true; 
+// Set to FALSE for production.
+export const USE_DEMO_MODE = false; 
 
-// --- IMPORTS ---
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
+// Note: In a real app, you would import getStorage from "firebase/storage" here
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBH4fnIKGK4zyY754ahI5NBiayBCcAU7UU",
-  authDomain: "pb-portal-2026.firebaseapp.com",
-  projectId: "pb-portal-2026",
-  storageBucket: "pb-portal-2026.firebasestorage.app",
-  messagingSenderId: "810167292126",
-  appId: "1:810167292126:web:91128e5a8c67e4b6fb324f",
-  measurementId: "G-9L1GX3J9H7"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase App unconditionally so we can Seed even in Demo Mode
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-const DEFAULT_SETTINGS: PortalSettings = { stage1Visible: true, stage2Visible: false, votingOpen: false };
+// --- HELPER: CSV Export ---
+export const exportToCSV = (data: any[], filename: string) => {
+    if (!data.length) return;
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            const val = row[header] ? String(row[header]).replace(/,/g, ' ') : '';
+            return `"${val}"`;
+        }).join(','))
+    ].join('\n');
 
-export const seedDatabase = async () => {
-    if (!db) throw new Error("Firebase connection failed. Cannot seed.");
-    
-    console.log("Starting Seed Process...");
-    const batch = writeBatch(db);
-    
-    // Seed Users
-    DEMO_USERS.forEach(({password, ...u}) => {
-        const userRef = doc(db, "users", u.uid);
-        batch.set(userRef, u);
-    });
-    
-    // Seed Applications
-    DEMO_APPS.forEach(a => {
-        const appRef = doc(db, "applications", a.id);
-        batch.set(appRef, a);
-    });
-    
-    // Seed Settings & Config
-    batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
-    batch.set(doc(db, "config", "scoringCriteria"), { items: SCORING_CRITERIA });
-    
-    await batch.commit();
-    console.log("Seed Complete!");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
 };
 
 class AuthService {
@@ -88,7 +75,7 @@ class AuthService {
   async createApplication(app: Application): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateApp(app);
       if (!db) return;
-      const id = 'app_' + Date.now();
+      const id = app.id || 'app_' + Date.now();
       await setDoc(doc(db, 'applications', id), { ...app, id, createdAt: Date.now() });
   }
 
@@ -117,29 +104,6 @@ class AuthService {
       return snap.docs.map(d => d.data() as Score);
   }
   
-  async resetUserScores(uid: string): Promise<void> {
-      if(USE_DEMO_MODE) return this.mockResetUserScores(uid);
-      if(!db) return;
-      const q = query(collection(db, "scores"), where("scorerId", "==", uid));
-      const snap = await getDocs(q);
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-  }
-
-  async getPortalSettings(): Promise<PortalSettings> {
-      if (USE_DEMO_MODE) return this.mockGetSettings();
-      if (!db) return DEFAULT_SETTINGS;
-      const s = await getDoc(doc(db, 'portalSettings', 'global'));
-      return (s.data() as PortalSettings) || DEFAULT_SETTINGS;
-  }
-  
-  async updatePortalSettings(s: PortalSettings): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
-      if (!db) return;
-      await setDoc(doc(db, 'portalSettings', 'global'), s);
-  }
-
   async getUsers(): Promise<User[]> {
       if (USE_DEMO_MODE) return this.mockGetUsers();
       if (!db) return [];
@@ -152,7 +116,7 @@ class AuthService {
       if (!db) return;
       await setDoc(doc(db, 'users', u.uid), u, { merge: true });
   }
-  
+
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
       if (!db) throw new Error("No DB");
@@ -160,18 +124,40 @@ class AuthService {
       return (await getDoc(doc(db, 'users', uid))).data() as User;
   }
 
-  async deleteUser(uid: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
+  // --- DOCUMENTS (Admin Centre) ---
+  // In a real app, this would interact with Firebase Storage. 
+  // Here we store metadata in Firestore and assume URLs are handled elsewhere or mocked.
+  async getDocuments(): Promise<AdminDocument[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocs();
+      if (!db) return [];
+      const snap = await getDocs(collection(db, 'adminDocuments'));
+      return snap.docs.map(d => d.data() as AdminDocument);
+  }
+
+  async createDocument(docData: AdminDocument): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDoc(docData);
       if (!db) return;
-      await deleteDoc(doc(db, 'users', uid));
+      await setDoc(doc(db, 'adminDocuments', docData.id), docData);
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDoc(id);
+      if (!db) return;
+      await deleteDoc(doc(db, 'adminDocuments', id));
   }
   
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
       throw new Error("Admin creation requires Firebase Admin SDK. Please use console.");
   }
+  
+  async deleteUser(uid: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
+    if (!db) return;
+    await deleteDoc(doc(db, 'users', uid));
+  }
 
-  // --- MOCK ---
+  // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---
   private getLocal<T>(k: string): T[] { return JSON.parse(localStorage.getItem(k) || '[]'); }
   private setLocal<T>(k: string, v: T[]) { localStorage.setItem(k, JSON.stringify(v)); }
 
@@ -179,45 +165,39 @@ class AuthService {
     return new Promise((res, rej) => {
         setTimeout(() => {
             const users = this.getLocal<User>('users');
-            if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); } // Auto-seed
+            if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); }
             let email = id.includes('@') ? id : `${id}@committee.local`;
             const u = users.find(u => (u.email.toLowerCase() === email.toLowerCase() || u.username === id) && u.password === p);
             u ? res(u) : rej(new Error("Invalid login"));
         }, 500);
     });
   }
-  
   mockRegister(e: string, p: string, n: string): Promise<User> {
        const u = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' as any };
        this.setLocal('users', [...this.getLocal('users'), u]);
        return Promise.resolve(u);
   }
-  
   mockGetApps(area?: string): Promise<Application[]> {
       const apps = this.getLocal<Application>('apps');
       if (apps.length === 0 && !localStorage.getItem('apps_init')) { this.setLocal('apps', DEMO_APPS); localStorage.setItem('apps_init', '1'); return Promise.resolve(DEMO_APPS); }
       return Promise.resolve(area && area !== 'All' ? apps.filter(a => a.area === area || a.area === 'Cross-Area') : apps);
   }
-  
   mockCreateApp(a: any): Promise<void> {
       const code = a.area?.substring(0,3).toUpperCase() || 'GEN';
       const na = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' };
       this.setLocal('apps', [...this.getLocal('apps'), na]);
       return Promise.resolve();
   }
-  
   mockUpdateApp(id: string, up: any): Promise<void> {
       const apps = this.getLocal<Application>('apps');
       const i = apps.findIndex(a => a.id === id);
       if(i>=0) { apps[i] = { ...apps[i], ...up }; this.setLocal('apps', apps); }
       return Promise.resolve();
   }
-  
   mockDeleteApp(id: string): Promise<void> {
       this.setLocal('apps', this.getLocal<Application>('apps').filter(a => a.id !== id));
       return Promise.resolve();
   }
-  
   mockSaveScore(s: Score): Promise<void> {
       const scores = this.getLocal<Score>('scores');
       const i = scores.findIndex(x => x.appId === s.appId && x.scorerId === s.scorerId);
@@ -225,17 +205,7 @@ class AuthService {
       this.setLocal('scores', scores);
       return Promise.resolve();
   }
-  
   mockGetScores(): Promise<Score[]> { return Promise.resolve(this.getLocal('scores')); }
-  
-  mockResetUserScores(uid: string): Promise<void> {
-      this.setLocal('scores', this.getLocal<Score>('scores').filter(s => s.scorerId !== uid));
-      return Promise.resolve();
-  }
-
-  mockGetSettings(): Promise<PortalSettings> { return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS); }
-  mockUpdateSettings(s: PortalSettings): Promise<void> { this.setLocal('portalSettings', [s]); return Promise.resolve(); }
-  
   mockGetUsers(): Promise<User[]> { 
       const u = this.getLocal<User>('users');
       if(u.length === 0) { this.setLocal('users', DEMO_USERS); return Promise.resolve(DEMO_USERS); }
@@ -261,6 +231,22 @@ class AuthService {
       this.setLocal('users', [...this.getLocal('users'), { ...u, password: p, uid: 'u_'+Date.now() }]);
       return Promise.resolve();
   }
+  mockGetDocs(): Promise<AdminDocument[]> { return Promise.resolve(this.getLocal('adminDocs')); }
+  mockCreateDoc(d: AdminDocument): Promise<void> {
+      this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]);
+      return Promise.resolve();
+  }
+  mockDeleteDoc(id: string): Promise<void> {
+      this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+      return Promise.resolve();
+  }
 }
 
 export const api = new AuthService();
+export const seedDatabase = async () => {
+    if (!db) throw new Error("No DB");
+    const batch = writeBatch(db);
+    DEMO_USERS.forEach(({password, ...u}) => batch.set(doc(db, "users", u.uid), u));
+    DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a));
+    await batch.commit();
+};
