@@ -24,7 +24,17 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
         const file = e.target.files?.[0];
         if (file) { const reader = new FileReader(); reader.onloadend = () => setData(prev => ({ ...prev, photoUrl: reader.result as string })); reader.readAsDataURL(file); }
     };
-    const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); const updated = await api.updateUserProfile(user.uid, data); onSave(updated); onClose(); };
+    const handleSubmit = async (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        try {
+            const updated = await api.updateUserProfile(user.uid, data); 
+            onSave(updated); 
+            onClose(); 
+        } catch(e) {
+            alert("Error saving profile: " + e);
+        }
+    };
+    
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Edit Profile">
             <form onSubmit={handleSubmit} className="space-y-6">
