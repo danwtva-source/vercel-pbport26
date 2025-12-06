@@ -23,7 +23,12 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-const DEFAULT_SETTINGS: PortalSettings = { stage1Visible: true, stage2Visible: false, votingOpen: false };
+const DEFAULT_SETTINGS: PortalSettings = { 
+    stage1Visible: true, 
+    stage2Visible: false, 
+    votingOpen: false,
+    scoringThreshold: 50 
+};
 
 // --- HELPER: CSV Export ---
 export const exportToCSV = (data: any[], filename: string) => {
@@ -263,7 +268,32 @@ export const api = new AuthService();
 export const seedDatabase = async () => {
     if (!db) throw new Error("No DB");
     const batch = writeBatch(db);
+    
+    // 1. Seed Users
     DEMO_USERS.forEach(({password, ...u}) => batch.set(doc(db, "users", u.uid), u));
+    
+    // 2. Seed Applications
     DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a));
+    
+    // 3. Seed Settings
+    batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
+
+    // 4. Seed Admin Documents (New Feature)
+    const folders = ['Committee Guidelines', 'Meeting Minutes', 'Policies'];
+    folders.forEach(name => {
+        const id = 'folder_' + name.replace(/\s/g, '');
+        const folderDoc: AdminDocument = {
+            id,
+            name,
+            type: 'folder',
+            parentId: 'root',
+            category: 'general',
+            uploadedBy: 'System',
+            createdAt: Date.now()
+        };
+        batch.set(doc(db, "adminDocuments", id), folderDoc);
+    });
+
     await batch.commit();
+    console.log("Database seeded successfully with Users, Apps, Settings, and Folders.");
 };
