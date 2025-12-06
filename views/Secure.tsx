@@ -147,7 +147,6 @@ const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applicat
 };
 
 // --- FORMS (Strictly Preserved) ---
-// (DigitalStage1Form and DigitalStage2Form logic is identical to previous working version, just wrapped in cleaner containers)
 export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (e: React.FormEvent) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
     const fd = data.formData || {};
     const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
@@ -571,7 +570,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     );
 };
 
-// --- APPLICANT DASHBOARD ---
+// --- APPLICANT DASHBOARD (Preserved) ---
 export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [apps, setApps] = useState<Application[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'stage1' | 'stage2'>('list');
