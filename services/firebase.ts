@@ -165,10 +165,8 @@ class AuthService {
   
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
-      // In client-side only app, we simulate admin creation by creating a DB record.
-      // The user would technically need to "Sign Up" themselves to create the Auth credential,
-      // or we use a secondary app to provision accounts. 
-      // Ideally, use Cloud Functions for this.
+      // In a real app, this would call a Cloud Function.
+      // For this prototype, we simulate it by creating the DB record.
       const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
       await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
   }
@@ -294,7 +292,6 @@ export const seedDatabase = async () => {
     batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
 
     // 4. Seed Admin Documents (New Feature)
-    // Creates base folders for the Document Centre
     const folders = ['Committee Guidelines', 'Meeting Minutes', 'Policies'];
     folders.forEach(name => {
         const id = 'folder_' + name.replace(/\s/g, '');
