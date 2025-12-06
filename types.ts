@@ -22,12 +22,14 @@ export interface User {
   photoUrl?: string;
   address?: string;
   roleDescription?: string;
+  createdAt?: number;
 }
 
 export interface PortalSettings {
     stage1Visible: boolean;
     stage2Visible: boolean;
     votingOpen: boolean;
+    scoringThreshold: number;
 }
 
 export interface BudgetLine {
@@ -39,21 +41,21 @@ export interface BudgetLine {
 export interface ScoreCriterion {
   id: string;
   name: string;
-  guidance: string; // Tooltip summary
+  guidance: string;
   weight: number;
-  details: string; // Full HTML guidance
+  details: string;
 }
 
-// Admin Document System
-export interface AdminDocument {
-    id: string;
-    name: string;
-    type: 'folder' | 'file';
-    parentId: string | 'root'; // 'root' or folder ID
-    url?: string; // Only for files
-    category: 'general' | 'minutes' | 'policy' | 'committee-only'; // Permissions
-    uploadedBy: string;
-    createdAt: number;
+export interface Score {
+  appId: string;
+  scorerId: string;
+  scorerName: string;
+  scores: Record<string, number>; // criterionId -> score
+  notes: Record<string, string>; // criterionId -> comment
+  isFinal: boolean;
+  total: number;
+  weightedTotal: number;
+  timestamp: number;
 }
 
 export interface Application {
@@ -69,14 +71,15 @@ export interface Application {
   status: AppStatus;
   priority?: string;
   createdAt: number;
+  updatedAt: number;
   ref: string;
   
   submissionMethod: 'digital' | 'upload';
   pdfUrl?: string;
   stage2PdfUrl?: string;
 
-  formData?: {
-    // --- Stage 1 (EOI) Matches PB 1.1 ---
+  // --- Stage 1 (EOI) Data ---
+  formData: {
     applyMultiArea?: boolean;
     
     // Address
@@ -87,7 +90,7 @@ export interface Application {
     addressPostcode?: string;
     
     // Organisation Type
-    orgType?: string;
+    orgTypes?: string[]; // Multiple selection
     orgTypeOther?: string;
     
     contactPosition?: string;
@@ -100,27 +103,27 @@ export interface Application {
     endDate?: string;
     duration?: string;
     
-    // Outcomes (1, 2, 3 from PDF)
+    // Outcomes
     outcome1?: string;
     outcome2?: string;
     outcome3?: string;
     
     // Funding
-    otherFundingSources?: string; // Section 6b
-    crossAreaBreakdown?: string; // Section 6c
+    otherFundingSources?: string; 
+    crossAreaBreakdown?: string; 
     
-    // Alignment
+    // Alignment Selections (Part 1 Checkboxes)
     marmotPrinciples?: string[];
     wfgGoals?: string[];
     
-    // Declaration (Section 8)
+    // Declaration Part 1
     gdprConsent?: boolean;
     declarationTrue?: boolean;
     declarationName?: string;
     declarationDate?: string;
-    declarationSignature?: string; // Text signature
+    declarationSignature?: string;
 
-    // --- Stage 2 (Full App) Matches PB 2.1 ---
+    // --- Stage 2 (Full App) Data ---
     
     // Bank & Reg
     bankAccountName?: string;
@@ -129,37 +132,47 @@ export interface Application {
     charityNumber?: string;
     companyNumber?: string;
     
-    // Project Detail
-    projectOverview?: string; // Sec 2.2
-    activities?: string; // Sec 2.3
-    communityBenefit?: string; // Sec 2.4
-    collaborations?: string; // Sec 2.5
-    risks?: string; // Sec 2.6
+    // Detailed Project
+    smartObjectives?: string;
+    activities?: string;
+    communityBenefit?: string;
+    collaborations?: string;
+    riskManagement?: string;
     
-    // Alignment Explanations
-    marmotExplanations?: Record<string, string>;
-    wfgExplanations?: Record<string, string>;
+    // Justifications (Text for selected Marmot/WFG)
+    marmotJustifications?: Record<string, string>; // Principle -> Text
+    wfgJustifications?: Record<string, string>; // Goal -> Text
     
-    // Budget
+    // Detailed Budget
     budgetBreakdown?: BudgetLine[];
-    additionalBudgetInfo?: string; // 4.2
+    additionalBudgetInfo?: string;
     
-    // Checklists & Declarations (4.4 & 4.5)
-    checklist?: string[]; // Constitution, Equality Policy etc.
-    declarationStatements?: string[]; // Consent to withdraw, True/Accurate, GDPR etc.
+    // Checklist
+    attachments?: {
+        constitution?: boolean;
+        safeguarding?: boolean;
+        gdpr?: boolean;
+        bankStatement?: boolean;
+        insurance?: boolean;
+    };
+    
+    // Declaration Part 2
+    consentWithdraw?: boolean;
+    agreeGdprScrutiny?: boolean;
+    confirmOtherFunding?: boolean;
     declarationName2?: string;
     declarationDate2?: string;
     declarationSignature2?: string;
   }
 }
 
-export interface Score {
-  appId: string;
-  scorerId: string;
-  scorerName: string;
-  scores: Record<string, number>;
-  notes: Record<string, string>;
-  isFinal: boolean;
-  total: number;
-  timestamp: number;
+export interface AdminDocument {
+    id: string;
+    name: string;
+    type: 'folder' | 'file';
+    parentId: string | 'root';
+    url?: string;
+    category: 'general' | 'minutes' | 'policy' | 'committee-only';
+    uploadedBy: string;
+    createdAt: number;
 }
