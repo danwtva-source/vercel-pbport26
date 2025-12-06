@@ -8,7 +8,6 @@ export const USE_DEMO_MODE = false;
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
-// Note: In a real app, you would import getStorage from "firebase/storage" here
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,6 +22,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+const DEFAULT_SETTINGS: PortalSettings = { stage1Visible: true, stage2Visible: false, votingOpen: false };
 
 // --- HELPER: CSV Export ---
 export const exportToCSV = (data: any[], filename: string) => {
@@ -120,13 +121,13 @@ class AuthService {
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
       if (!db) throw new Error("No DB");
+      // Explicitly merge to ensure no data loss
       await setDoc(doc(db, 'users', uid), u, { merge: true });
-      return (await getDoc(doc(db, 'users', uid))).data() as User;
+      // Fetch fresh data to return
+      const snap = await getDoc(doc(db, 'users', uid));
+      return snap.data() as User;
   }
 
-  // --- DOCUMENTS (Admin Centre) ---
-  // In a real app, this would interact with Firebase Storage. 
-  // Here we store metadata in Firestore and assume URLs are handled elsewhere or mocked.
   async getDocuments(): Promise<AdminDocument[]> {
       if (USE_DEMO_MODE) return this.mockGetDocs();
       if (!db) return [];
@@ -155,6 +156,20 @@ class AuthService {
     if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
     if (!db) return;
     await deleteDoc(doc(db, 'users', uid));
+  }
+
+  // --- SETTINGS (Restored) ---
+  async getPortalSettings(): Promise<PortalSettings> {
+      if (USE_DEMO_MODE) return this.mockGetSettings();
+      if (!db) return DEFAULT_SETTINGS;
+      const s = await getDoc(doc(db, 'portalSettings', 'global'));
+      return (s.data() as PortalSettings) || DEFAULT_SETTINGS;
+  }
+  
+  async updatePortalSettings(s: PortalSettings): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
+      if (!db) return;
+      await setDoc(doc(db, 'portalSettings', 'global'), s);
   }
 
   // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---
@@ -240,6 +255,8 @@ class AuthService {
       this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
       return Promise.resolve();
   }
+  mockGetSettings(): Promise<PortalSettings> { return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS); }
+  mockUpdateSettings(s: PortalSettings): Promise<void> { this.setLocal('portalSettings', [s]); return Promise.resolve(); }
 }
 
 export const api = new AuthService();
