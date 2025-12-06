@@ -59,7 +59,7 @@ function App() {
             {/* Logo Section - Logic for Public vs Portal Logo */}
             <div className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentPage('home')}>
                 <img 
-                    src={currentUser ? "/images/Peoples’ Committee Portal logo 2.png" : "/images/PB English Transparent.png"} 
+                    src={currentUser ? "/public/images/Peoples’ Committee Portal logo 2.png" : "/public/images/PB English Transparent.png"} 
                     alt="Communities' Choice Logo" 
                     className="h-20 w-auto object-contain drop-shadow-sm" 
                     onError={(e) => e.currentTarget.style.display='none'} 
@@ -117,7 +117,7 @@ function App() {
         <div className="container mx-auto px-4">
             <div className="flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="text-center md:text-left">
-                    <img src="/images/PB English Transparent.png" alt="Logo" className="h-12 mb-4 mx-auto md:mx-0 opacity-80" />
+                    <img src="/public/images/PB English Transparent.png" alt="Logo" className="h-12 mb-4 mx-auto md:mx-0 opacity-80" />
                     <p className="text-gray-500 text-sm max-w-md leading-relaxed">
                         <strong>Communities' Choice</strong> is a participatory budgeting initiative empowering Torfaen residents to make decisions about public funding in their local areas.
                     </p>
@@ -138,7 +138,7 @@ function App() {
       <Modal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} title={authMode === 'login' ? 'Portal Access' : 'Join the Community'}>
         <div className="text-center mb-8">
             <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <img src="/images/Peoples’ Committee Portal logo 2.png" alt="Logo" className="h-12 w-auto" onError={e => e.currentTarget.style.display='none'} />
+                <img src="/public/images/Peoples’ Committee Portal logo 2.png" alt="Logo" className="h-12 w-auto" onError={e => e.currentTarget.style.display='none'} />
             </div>
             <h3 className="font-dynapuff text-xl text-brand-purple mb-1">Welcome Back</h3>
             <p className="text-gray-500 text-sm">Secure access for Applicants & Committee Members</p>
