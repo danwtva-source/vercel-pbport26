@@ -1,83 +1,82 @@
 import React, { useState } from 'react';
-import { Button, Card, Input } from '../components/UI';
+import { Button, Card, Input, FileCard } from '../components/UI';
 import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
 
-// --- STYLED CAROUSEL (Matches Original Aesthetic) ---
+// --- STYLED CAROUSEL (Original Aesthetic) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     
-    // Using the exact images and color themes from the original design
+    // Strict adherence to new Area Colours requested
     const slides = [
         { 
             name: 'Blaenavon', 
             img: '/images/Blaenavon%20map.png', 
             desc: 'A historic town with a strong community spirit. Vote for projects that preserve our heritage and build our future.',
-            theme: 'from-purple-900 to-purple-600',
-            accent: 'text-purple-300'
+            color: '#FFD447',
+            bg: 'bg-yellow-50',
+            text: 'text-yellow-800'
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
             img: '/images/Thornhill%20&%20Upper%20Cwmbran%20map.png', 
             desc: 'Supporting local initiatives to improve health, wellbeing, and community spaces.',
-            theme: 'from-teal-900 to-teal-600',
-            accent: 'text-teal-300'
+            color: '#2FBF71',
+            bg: 'bg-green-50',
+            text: 'text-green-800'
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
             img: '/images/Trevethin%20Penygarn%20&%20St%20Cadocs%20map.png', 
             desc: 'Empowering residents to tackle local issues and create safer, greener neighbourhoods.',
-            theme: 'from-pink-900 to-pink-600',
-            accent: 'text-pink-300'
+            color: '#3A86FF',
+            bg: 'bg-blue-50',
+            text: 'text-blue-800'
         }
     ];
 
     const next = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
     const prev = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
+    const current = slides[currentIndex];
 
     return (
         <div className="relative w-full max-w-6xl mx-auto mt-12 mb-20 px-4">
-            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20">
-                {slides.map((slide, index) => (
-                    <div 
-                        key={index}
-                        className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${index === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
-                    >
-                        {/* Background with Overlay */}
-                        <div className={`absolute inset-0 bg-gradient-to-br ${slide.theme} opacity-90`}></div>
-                        <img 
-                            src={slide.img} 
-                            alt={slide.name} 
-                            className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40 scale-105"
-                        />
-                        
-                        {/* Content */}
-                        <div className="relative z-20 h-full flex flex-col justify-center items-center text-center p-8 md:p-16 text-white">
-                            <span className={`inline-block px-4 py-2 rounded-full border border-white/30 bg-white/10 backdrop-blur-sm text-sm font-bold uppercase tracking-widest mb-6 ${slide.accent}`}>
-                                Area Spotlight
-                            </span>
-                            <h2 className="text-5xl md:text-7xl font-dynapuff font-bold mb-6 leading-tight drop-shadow-lg">
-                                {slide.name}
-                            </h2>
-                            <p className="text-xl md:text-2xl font-arial max-w-3xl mb-10 opacity-90 leading-relaxed">
-                                {slide.desc}
-                            </p>
-                            <Button 
-                                onClick={() => onNavigate('check-postcode')} 
-                                className="bg-white text-gray-900 hover:bg-gray-100 border-none px-10 py-5 text-xl rounded-2xl shadow-xl hover:scale-105 transition-transform font-dynapuff"
-                            >
-                                Enter Voting Area
-                            </Button>
-                        </div>
+            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20 bg-gray-900">
+                <div className="absolute inset-0">
+                    {/* Background Image with Overlay */}
+                    <div className="absolute inset-0 bg-black/60 z-10"></div>
+                    <img 
+                        src={current.img} 
+                        alt={current.name} 
+                        className="absolute inset-0 w-full h-full object-cover opacity-80"
+                    />
+                    
+                    {/* Content */}
+                    <div className="relative z-20 h-full flex flex-col justify-center items-center text-center p-8 md:p-16 text-white">
+                        <span 
+                            className="inline-block px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 shadow-lg"
+                            style={{ backgroundColor: current.color, color: '#000' }}
+                        >
+                            Area Spotlight
+                        </span>
+                        <h2 className="text-5xl md:text-7xl font-dynapuff font-bold mb-6 leading-tight drop-shadow-lg text-white">
+                            {current.name}
+                        </h2>
+                        <p className="text-xl md:text-2xl font-arial max-w-3xl mb-10 opacity-90 leading-relaxed drop-shadow-md">
+                            {current.desc}
+                        </p>
+                        <Button 
+                            onClick={() => onNavigate('check-postcode')} 
+                            className="text-gray-900 border-none px-10 py-5 text-xl rounded-2xl shadow-xl hover:scale-105 transition-transform font-dynapuff"
+                            style={{ backgroundColor: current.color }}
+                        >
+                            Enter Voting Area
+                        </Button>
                     </div>
-                ))}
+                </div>
 
                 {/* Controls */}
-                <button onClick={prev} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
-                <button onClick={next} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7"></path></svg>
-                </button>
+                <button onClick={prev} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❮</button>
+                <button onClick={next} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❯</button>
             </div>
         </div>
     );
@@ -90,17 +89,12 @@ export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNa
       {/* Hero Section */}
       <section className="relative pt-20 pb-32 overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-50 via-white to-white z-0"></div>
-        
-        {/* Animated Background Blobs (Pure CSS) */}
-        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-teal-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-        
         <div className="container mx-auto px-4 relative z-10 text-center">
-            <span className="inline-block py-1 px-3 rounded-full bg-purple-100 text-purple-700 text-sm font-bold mb-6 font-dynapuff">
-                Round 2 Applications Now Open (2026)
+            <span className="inline-block py-2 px-4 rounded-full bg-brand-purple/10 text-brand-purple text-sm font-bold mb-6 font-dynapuff uppercase tracking-widest border border-brand-purple/20">
+                Round 2 Applications Now Open
             </span>
-            <h1 className="text-6xl md:text-8xl font-bold font-dynapuff text-transparent bg-clip-text bg-gradient-to-r from-brand-purple to-brand-teal mb-8 tracking-tight">
-                Communities' <br/> Choice
+            <h1 className="text-6xl md:text-8xl font-bold font-dynapuff text-gray-900 mb-8 tracking-tight">
+                Communities' <br/> <span className="text-brand-purple">Choice</span>
             </h1>
             <p className="text-2xl text-gray-600 font-arial max-w-2xl mx-auto leading-relaxed mb-10">
                 You Decide. You Benefit. <br/>
@@ -108,7 +102,7 @@ export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNa
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <Button size="lg" onClick={() => onNavigate('register')} className="px-8 py-4 text-lg shadow-xl shadow-purple-200/50 hover:-translate-y-1">
+                <Button size="lg" onClick={() => onNavigate('register')} className="px-8 py-4 text-lg shadow-xl hover:-translate-y-1">
                     Apply for Funding
                 </Button>
                 <Button size="lg" variant="outline" onClick={() => onNavigate('priorities')} className="px-8 py-4 text-lg border-2">
@@ -147,19 +141,28 @@ export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNa
   );
 };
 
-// --- PRIORITIES (Restored "Old Dashboard" Look) ---
+// --- PRIORITIES (Using Specific Area Colours) ---
 export const Priorities: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');
     const data = PRIORITY_DATA[activeTab];
 
+    // Colors provided in prompt
+    const AREA_COLORS = {
+        'blaenavon': '#FFD447',
+        'thornhill': '#2FBF71',
+        'trevethin': '#3A86FF'
+    };
+    
+    const currentColor = AREA_COLORS[activeTab];
+
     // Helper for visual flair
-    const getTheme = (label: string) => {
-        if(label.includes('Youth')) return { icon: '🛹', bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-200' };
-        if(label.includes('Transport')) return { icon: '🚌', bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-200' };
-        if(label.includes('Environment') || label.includes('Sustainability')) return { icon: '🌳', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
-        if(label.includes('Health')) return { icon: '❤️', bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' };
-        if(label.includes('Safety') || label.includes('Crime')) return { icon: '👮', bg: 'bg-slate-100', text: 'text-slate-800', border: 'border-slate-200' };
-        return { icon: '🏘️', bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-200' };
+    const getIcon = (label: string) => {
+        if(label.includes('Youth')) return '🛹';
+        if(label.includes('Transport')) return '🚌';
+        if(label.includes('Environment') || label.includes('Sustainability')) return '🌳';
+        if(label.includes('Health')) return '❤️';
+        if(label.includes('Crime') || label.includes('Safety')) return '👮';
+        return '🏘️';
     };
 
     return (
@@ -176,18 +179,19 @@ export const Priorities: React.FC = () => {
                 {/* Tabs */}
                 <div className="flex justify-center gap-4 mb-12 flex-wrap">
                     {[
-                        { id: 'blaenavon', label: 'Blaenavon' },
-                        { id: 'thornhill', label: 'Thornhill & Upper Cwmbran' },
-                        { id: 'trevethin', label: 'Trevethin, Penygarn & St. Cadocs' }
+                        { id: 'blaenavon', label: 'Blaenavon', col: '#FFD447' },
+                        { id: 'thornhill', label: 'Thornhill & Upper Cwmbran', col: '#2FBF71' },
+                        { id: 'trevethin', label: 'Trevethin, Penygarn & St. Cadocs', col: '#3A86FF' }
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
-                            className={`px-8 py-4 rounded-2xl font-bold text-lg transition-all transform hover:-translate-y-1 ${
-                                activeTab === tab.id 
-                                ? 'bg-brand-purple text-white shadow-lg ring-4 ring-purple-100' 
-                                : 'bg-white text-gray-500 hover:bg-gray-100 shadow-sm'
-                            }`}
+                            className={`px-8 py-4 rounded-2xl font-bold text-lg transition-all transform hover:-translate-y-1 shadow-sm`}
+                            style={{ 
+                                backgroundColor: activeTab === tab.id ? tab.col : '#FFF',
+                                color: activeTab === tab.id ? '#000' : '#666',
+                                border: `2px solid ${activeTab === tab.id ? tab.col : 'transparent'}`
+                            }}
                         >
                             {tab.label}
                         </button>
@@ -198,52 +202,46 @@ export const Priorities: React.FC = () => {
                     {/* Main Chart Card */}
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
                         <h3 className="text-2xl font-bold font-dynapuff mb-8 flex items-center gap-3">
-                            <span className="w-3 h-8 bg-brand-teal rounded-full"></span>
+                            <span className="w-3 h-8 rounded-full" style={{ backgroundColor: currentColor }}></span>
                             Vote Distribution
                         </h3>
                         <div className="space-y-6">
-                            {data.data.map((item, i) => {
-                                const theme = getTheme(item.label);
-                                return (
-                                    <div key={i} className="group">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="font-bold text-gray-700 flex items-center gap-2">
-                                                <span className="text-2xl">{theme.icon}</span> {item.label}
-                                            </span>
-                                            <span className="font-bold text-brand-purple">{item.value} votes</span>
-                                        </div>
-                                        <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
-                                            <div 
-                                                className={`h-full bg-gradient-to-r from-brand-purple to-brand-teal transition-all duration-1000 ease-out`} 
-                                                style={{ width: `${(item.value / 150) * 100}%` }}
-                                            ></div>
-                                        </div>
+                            {data.data.map((item, i) => (
+                                <div key={i} className="group">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <span className="font-bold text-gray-700 flex items-center gap-2">
+                                            <span className="text-2xl">{getIcon(item.label)}</span> {item.label}
+                                        </span>
+                                        <span className="font-bold" style={{ color: currentColor }}>{item.value} votes</span>
                                     </div>
-                                );
-                            })}
+                                    <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full transition-all duration-1000 ease-out" 
+                                            style={{ width: `${(item.value / 150) * 100}%`, backgroundColor: currentColor }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
                     {/* Top Priorities Cards */}
                     <div className="grid gap-4 content-start">
-                        <div className="bg-brand-darkPurple text-white p-8 rounded-[2.5rem] shadow-lg mb-4">
+                        <div className="p-8 rounded-[2.5rem] shadow-lg mb-4 text-black" style={{ backgroundColor: currentColor }}>
                             <h3 className="text-2xl font-bold font-dynapuff mb-2">Key Focus Areas</h3>
-                            <p className="opacity-80">These are the top 3 priorities identified by your community.</p>
+                            <p className="opacity-80 font-bold">These are the top 3 priorities identified by your community.</p>
                         </div>
-                        {data.data.slice(0, 3).map((item, i) => {
-                            const theme = getTheme(item.label);
-                            return (
-                                <div key={i} className={`p-6 rounded-3xl border-2 flex items-center gap-6 transition-transform hover:scale-[1.02] bg-white ${theme.border}`}>
-                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ${theme.bg}`}>
-                                        {theme.icon}
-                                    </div>
-                                    <div>
-                                        <div className="text-xs font-bold uppercase opacity-50 tracking-wider mb-1">Priority #{i+1}</div>
-                                        <h4 className={`text-xl font-bold font-dynapuff ${theme.text}`}>{item.label}</h4>
-                                    </div>
+                        {data.data.slice(0, 3).map((item, i) => (
+                            <div key={i} className="p-6 rounded-3xl border-2 flex items-center gap-6 transition-transform hover:scale-[1.02] bg-white border-gray-100">
+                                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-gray-50">
+                                    {getIcon(item.label)}
                                 </div>
-                            );
-                        })}
+                                <div>
+                                    <div className="text-xs font-bold uppercase opacity-50 tracking-wider mb-1">Priority #{i+1}</div>
+                                    <h4 className="text-xl font-bold font-dynapuff text-gray-800">{item.label}</h4>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -270,13 +268,10 @@ export const Timeline: React.FC = () => {
                 </div>
                 
                 <div className="relative pl-8 md:pl-0">
-                    {/* Vertical Line */}
                     <div className="absolute left-8 md:left-1/2 top-0 bottom-0 w-1 bg-gray-200 transform md:-translate-x-1/2 rounded-full"></div>
-                    
                     <div className="space-y-16">
                         {events.map((e, i) => (
                             <div key={i} className={`flex flex-col md:flex-row items-center gap-8 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''} group`}>
-                                {/* Content Side */}
                                 <div className="flex-1 w-full md:w-1/2">
                                     <div className={`bg-white p-8 rounded-3xl shadow-sm border-l-8 transition-all hover:shadow-xl ${e.status === 'active' ? 'border-brand-teal ring-4 ring-teal-50' : 'border-brand-purple'}`}>
                                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${e.status === 'active' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-600'}`}>
@@ -286,13 +281,9 @@ export const Timeline: React.FC = () => {
                                         <p className="text-gray-600">{e.desc}</p>
                                     </div>
                                 </div>
-
-                                {/* Center Node */}
                                 <div className="absolute left-8 md:left-1/2 w-12 h-12 bg-white border-4 border-brand-purple rounded-full transform -translate-x-1/2 flex items-center justify-center z-10 shadow-lg group-hover:scale-110 transition-transform">
                                     {e.status === 'done' ? <span className="text-brand-purple font-bold">✓</span> : <span className="text-gray-400 font-bold">{i+1}</span>}
                                 </div>
-
-                                {/* Empty Side (for layout balance) */}
                                 <div className="hidden md:block flex-1"></div>
                             </div>
                         ))}
@@ -311,7 +302,7 @@ export const PublicDocuments: React.FC = () => {
                 <div className="text-center mb-16">
                     <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Resource Centre</h1>
                     <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                        Download all the necessary guidance notes, templates, and application forms to help you build a successful project.
+                        Download guidance notes, templates, and application forms.
                     </p>
                 </div>
 
