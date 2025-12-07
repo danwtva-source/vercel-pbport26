@@ -1,77 +1,96 @@
+import React, { useState } from 'react';
+import { Button, Card, Input, FileCard } from '../components/UI';
+import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Button, Card, Input } from '../components/UI';
-import { POSTCODES, PRIORITY_DATA } from '../constants';
-import { Area } from '../types';
-
-// Custom hook for Carousel Swipe logic
+// --- STYLED CAROUSEL (Original Aesthetic) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     
-const slides = [
+    // Updated to use the correct file names found in your public/images folder
+    // Note: In Vite, assets in 'public' are served from root.
+    const slides = [
         { 
             name: 'Blaenavon', 
-            img: 'images/bln.png',  // Removed "public/"
-            desc: 'See projects in Blaenavon and vote for your favourite three!',
-            color: 'text-[#FFD447]' // Your specific Yellow/Gold
+            img: '/images/bln.png', 
+            desc: 'A historic town with a strong community spirit. Vote for projects that preserve our heritage and build our future.',
+            color: '#FFD447',
+            bg: 'bg-yellow-50',
+            text: 'text-yellow-800'
         },
         { 
             name: 'Thornhill & Upper Cwmbran', 
-            img: 'images/tuc.png',  // Removed "public/"
-            desc: 'See projects in Thornhill & Upper Cwmbran and vote!',
-            color: 'text-[#2FBF71]' // Your specific Green
+            img: '/images/tuc.png', 
+            desc: 'Supporting local initiatives to improve health, wellbeing, and community spaces.',
+            color: '#2FBF71',
+            bg: 'bg-green-50',
+            text: 'text-green-800'
         },
         { 
             name: 'Trevethin, Penygarn & St. Cadocs', 
-            img: 'images/tps.png',  // Removed "public/"
-            desc: 'See projects in this area and vote for your favourite three!',
-            color: 'text-[#3A86FF]' // Your specific Blue
+            img: '/images/tps.png', 
+            desc: 'Empowering residents to tackle local issues and create safer, greener neighbourhoods.',
+            color: '#3A86FF',
+            bg: 'bg-blue-50',
+            text: 'text-blue-800'
         }
     ];
-    const nextSlide = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
-    const prevSlide = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
+
+    const next = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
+    const prev = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
+    const current = slides[currentIndex];
 
     return (
-        <div className="relative w-full max-w-3xl mx-auto">
-            <div className="overflow-hidden rounded-3xl shadow-2xl bg-white border border-gray-100 relative h-[520px]">
-                <div 
-                    className="flex transition-transform duration-500 ease-in-out h-full" 
-                    style={{ transform: `translateX(-${currentIndex * 100}%)` }}
-                >
-                    {slides.map((slide, index) => (
-                        <div key={index} className="min-w-full h-full flex flex-col items-center justify-center p-8 bg-gray-50">
-                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 w-full max-w-md flex items-center justify-center h-64">
-                                <img 
-                                    src={slide.img} 
-                                    alt={`${slide.name} Map`} 
-                                    className="max-h-full w-auto object-contain"
-                                    onError={(e) => e.currentTarget.src = `https://placehold.co/400x300/EEE/31343C?text=${slide.name}`}
-                                />
-                            </div>
-                            <h3 className={`text-3xl font-bold font-dynapuff mb-3 text-center ${slide.color}`}>{slide.name}</h3>
-                            <p className="text-gray-600 font-arial mb-6 text-center max-w-md">{slide.desc}</p>
-                            <Button onClick={() => onNavigate('check-postcode')} className="shadow-lg transform hover:scale-105 transition-transform">
-                                View & Vote
-                            </Button>
-                        </div>
-                    ))}
+        <div className="relative w-full max-w-6xl mx-auto mt-12 mb-20 px-4">
+            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20 bg-gray-900">
+                <div className="absolute inset-0">
+                    {/* Background Image with Overlay */}
+                    <div className="absolute inset-0 bg-black/60 z-10"></div>
+                    <img 
+                        src={current.img} 
+                        alt={current.name} 
+                        className="absolute inset-0 w-full h-full object-cover opacity-80"
+                        onError={(e) => {
+                            // Fallback if image fails
+                            e.currentTarget.style.display = 'none'; 
+                        }}
+                    />
+                    
+                    {/* Content */}
+                    <div className="relative z-20 h-full flex flex-col justify-center items-center text-center p-8 md:p-16 text-white">
+                        <span 
+                            className="inline-block px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 shadow-lg"
+                            style={{ backgroundColor: current.color, color: '#000' }}
+                        >
+                            Area Spotlight
+                        </span>
+                        <h2 className="text-5xl md:text-7xl font-dynapuff font-bold mb-6 leading-tight drop-shadow-lg text-white">
+                            {current.name}
+                        </h2>
+                        <p className="text-xl md:text-2xl font-arial max-w-3xl mb-10 opacity-90 leading-relaxed drop-shadow-md">
+                            {current.desc}
+                        </p>
+                        <Button 
+                            onClick={() => onNavigate('check-postcode')} 
+                            className="text-gray-900 border-none px-10 py-5 text-xl rounded-2xl shadow-xl hover:scale-105 transition-transform font-dynapuff"
+                            style={{ backgroundColor: current.color }}
+                        >
+                            Enter Voting Area
+                        </Button>
+                    </div>
                 </div>
-                
-                {/* Navigation Buttons */}
-                <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-brand-purple p-3 rounded-full shadow-lg backdrop-blur-sm transition-all z-10">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
-                <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-brand-purple p-3 rounded-full shadow-lg backdrop-blur-sm transition-all z-10">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                </button>
 
-                {/* Pagination Dots */}
-                <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2">
-                    {slides.map((_, i) => (
+                {/* Controls */}
+                <button onClick={prev} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❮</button>
+                <button onClick={next} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❯</button>
+                
+                {/* Indicators */}
+                <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center gap-3">
+                    {slides.map((_, idx) => (
                         <button 
-                            key={i}
-                            onClick={() => setCurrentIndex(i)}
-                            className={`w-3 h-3 rounded-full transition-all ${i === currentIndex ? 'bg-brand-purple w-8' : 'bg-gray-300 hover:bg-gray-400'}`}
+                            key={idx} 
+                            onClick={() => setCurrentIndex(idx)}
+                            className={`w-3 h-3 rounded-full transition-all ${idx === currentIndex ? 'scale-150' : 'opacity-50'}`}
+                            style={{ backgroundColor: current.color }}
                         />
                     ))}
                 </div>
@@ -80,116 +99,166 @@ const slides = [
     );
 };
 
+// --- LANDING (Restored "Hero" Aesthetic) ---
 export const Landing: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
   return (
-    <div className="animate-fade-in bg-gradient-to-br from-purple-100 via-purple-200 to-teal-100 min-h-[calc(100vh-80px)]">
-      {/* Hero Text */}
-      <section className="pt-12 pb-8 text-center px-4">
-        <h1 className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-purple to-brand-teal mb-4 font-dynapuff drop-shadow-sm">
-          You Decide. You Benefit.
-        </h1>
-        <p className="text-xl text-gray-700 max-w-2xl mx-auto font-arial leading-relaxed">
-          Welcome to the Round 2 Application Cycle (2026). <br/>
-          Apply for funding or join a committee to shape the future of Torfaen.
-        </p>
-        <div className="mt-8 flex justify-center gap-4">
-             <Button size="lg" onClick={() => onNavigate('register')} className="shadow-xl shadow-purple-200/50 transform hover:-translate-y-1">
-                Apply for Funding
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => onNavigate('timeline')} className="bg-white/80 backdrop-blur-sm">
-                View Timeline
-            </Button>
+    <div className="animate-fade-in bg-white">
+      {/* Hero Section */}
+      <section className="relative pt-20 pb-32 overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-50 via-white to-white z-0"></div>
+        <div className="container mx-auto px-4 relative z-10 text-center">
+            <span className="inline-block py-2 px-4 rounded-full bg-brand-purple/10 text-brand-purple text-sm font-bold mb-6 font-dynapuff uppercase tracking-widest border border-brand-purple/20">
+                Round 2 Applications Now Open
+            </span>
+            <h1 className="text-6xl md:text-8xl font-bold font-dynapuff text-gray-900 mb-8 tracking-tight">
+                Communities' <br/> <span className="text-brand-purple">Choice</span>
+            </h1>
+            <p className="text-2xl text-gray-600 font-arial max-w-2xl mx-auto leading-relaxed mb-10">
+                You Decide. You Benefit. <br/>
+                <span className="text-base text-gray-500 mt-2 block">Empowering Torfaen residents to allocate public funding to the projects that matter most.</span>
+            </p>
+            
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <Button size="lg" onClick={() => onNavigate('register')} className="px-8 py-4 text-lg shadow-xl hover:-translate-y-1">
+                    Apply for Funding
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => onNavigate('priorities')} className="px-8 py-4 text-lg border-2">
+                    View Priorities
+                </Button>
+            </div>
         </div>
       </section>
 
-      {/* Carousel Section */}
-      <section className="max-w-5xl mx-auto px-4 pb-20">
-        <AreaCarousel onNavigate={onNavigate} />
-      </section>
+      {/* Carousel */}
+      <AreaCarousel onNavigate={onNavigate} />
 
-      {/* Info Section */}
-      <section className="max-w-4xl mx-auto px-4 pb-20 text-center">
-          <h3 className="text-2xl font-bold font-dynapuff text-brand-purple mb-4">What is Participatory Budgeting?</h3>
-          <p className="text-gray-700 font-arial text-lg leading-relaxed">
-            Participatory Budgeting (PB) puts decision-making power in the hands of residents. 
-            You can help choose which local projects receive funding by voting for your favourites. 
-            Every vote counts!
-          </p>
+      {/* Info Grid */}
+      <section className="py-20 bg-gray-50">
+          <div className="container mx-auto px-4">
+              <div className="text-center mb-16">
+                  <h2 className="text-4xl font-bold font-dynapuff text-gray-800 mb-4">How It Works</h2>
+                  <p className="text-gray-600 max-w-2xl mx-auto">Participatory Budgeting gives you direct control over local spending.</p>
+              </div>
+              <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                  {[
+                      { title: '1. Ideas', icon: '💡', text: 'Community groups submit project proposals that address local priorities.' },
+                      { title: '2. Review', icon: '🔍', text: 'Local People\'s Committees review applications for feasibility and benefit.' },
+                      { title: '3. Vote', icon: '🗳️', text: 'Residents vote for their favourite projects at a public event. The most popular win!' }
+                  ].map((step, i) => (
+                      <div key={i} className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center hover:shadow-xl transition-shadow">
+                          <div className="text-6xl mb-6">{step.icon}</div>
+                          <h3 className="text-2xl font-bold font-dynapuff text-brand-purple mb-4">{step.title}</h3>
+                          <p className="text-gray-600 leading-relaxed">{step.text}</p>
+                      </div>
+                  ))}
+              </div>
+          </div>
       </section>
     </div>
   );
 };
 
+// --- PRIORITIES (Using Specific Area Colours) ---
 export const Priorities: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');
     const data = PRIORITY_DATA[activeTab];
 
+    // Colors provided in prompt
+    const AREA_COLORS = {
+        'blaenavon': '#FFD447',
+        'thornhill': '#2FBF71',
+        'trevethin': '#3A86FF'
+    };
+    
+    const currentColor = AREA_COLORS[activeTab];
+
+    // Helper for visual flair
+    const getIcon = (label: string) => {
+        if(label.includes('Youth')) return '🛹';
+        if(label.includes('Transport')) return '🚌';
+        if(label.includes('Environment') || label.includes('Sustainability')) return '🌳';
+        if(label.includes('Health')) return '❤️';
+        if(label.includes('Crime') || label.includes('Safety')) return '👮';
+        return '🏘️';
+    };
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-100 via-purple-200 to-teal-100 py-12 px-4 animate-fade-in">
-            <div className="max-w-5xl mx-auto">
-                <div className="text-center mb-10">
-                    <h1 className="text-4xl font-bold font-dynapuff text-brand-purple mb-4">Our Community Priorities</h1>
-                    <p className="text-gray-700 max-w-3xl mx-auto font-arial text-lg">
-                        The 'Have Your Say!' campaign ran from January to May 2025 to identify the top funding priorities for our communities. With <strong>1,062 responses</strong>, your voices have shaped the future of this initiative.
+        <div className="min-h-screen bg-slate-50 py-16 px-4 animate-fade-in">
+            <div className="max-w-6xl mx-auto">
+                <div className="text-center mb-12">
+                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Local Priorities</h1>
+                    <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+                        Based on <strong>1,062 responses</strong> from the 'Have Your Say!' survey. <br/>
+                        Applications addressing these themes will be prioritised.
                     </p>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex justify-center mb-8 border-b-2 border-gray-200/50">
+                <div className="flex justify-center gap-4 mb-12 flex-wrap">
                     {[
-                        { id: 'blaenavon', label: 'Blaenavon' },
-                        { id: 'thornhill', label: 'Thornhill & Upper Cwmbran' },
-                        { id: 'trevethin', label: 'Trevethin, Penygarn & St. Cadocs' }
+                        { id: 'blaenavon', label: 'Blaenavon', col: '#FFD447' },
+                        { id: 'thornhill', label: 'Thornhill & Upper Cwmbran', col: '#2FBF71' },
+                        { id: 'trevethin', label: 'Trevethin, Penygarn & St. Cadocs', col: '#3A86FF' }
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
-                            className={`px-4 md:px-8 py-4 font-bold font-dynapuff transition-all text-sm md:text-base ${
-                                activeTab === tab.id 
-                                ? 'bg-white/80 backdrop-blur text-brand-purple border-b-4 border-brand-purple rounded-t-xl shadow-sm' 
-                                : 'text-gray-600 hover:bg-white/40 rounded-t-xl'
-                            }`}
+                            className={`px-8 py-4 rounded-2xl font-bold text-lg transition-all transform hover:-translate-y-1 shadow-sm`}
+                            style={{ 
+                                backgroundColor: activeTab === tab.id ? tab.col : '#FFF',
+                                color: activeTab === tab.id ? '#000' : '#666',
+                                border: `2px solid ${activeTab === tab.id ? tab.col : 'transparent'}`
+                            }}
                         >
                             {tab.label}
                         </button>
                     ))}
                 </div>
 
-                <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl">
-                    <div className="grid md:grid-cols-12 gap-12">
-                        {/* Left: Stats */}
-                        <div className="md:col-span-5">
-                            <h3 className="text-2xl font-bold font-dynapuff text-brand-purple mb-4 capitalize">{activeTab.replace('_', ' ')}</h3>
-                            <p className="text-gray-700 font-arial mb-6">
-                                A total of <strong className="text-brand-darkTeal">{data.total} responses</strong> were gathered from this area, highlighting the key concerns and hopes of the community.
-                            </p>
-                            {/* Simple Chart Viz */}
-                            <div className="h-64 w-full bg-gray-50 rounded-xl border border-gray-100 flex items-end justify-around p-4">
-                                {data.data.map((item, i) => (
-                                    <div key={i} className="w-8 bg-brand-purple/80 rounded-t-md relative group hover:bg-brand-teal transition-colors" style={{ height: `${(item.value / 150) * 100}%` }}>
-                                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-xs font-bold bg-gray-800 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                                            {item.label}: {item.value}
-                                        </div>
+                <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Main Chart Card */}
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
+                        <h3 className="text-2xl font-bold font-dynapuff mb-8 flex items-center gap-3">
+                            <span className="w-3 h-8 rounded-full" style={{ backgroundColor: currentColor }}></span>
+                            Vote Distribution
+                        </h3>
+                        <div className="space-y-6">
+                            {data.data.map((item, i) => (
+                                <div key={i} className="group">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <span className="font-bold text-gray-700 flex items-center gap-2">
+                                            <span className="text-2xl">{getIcon(item.label)}</span> {item.label}
+                                        </span>
+                                        <span className="font-bold" style={{ color: currentColor }}>{item.value} votes</span>
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full transition-all duration-1000 ease-out" 
+                                            style={{ width: `${(item.value / 150) * 100}%`, backgroundColor: currentColor }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
+                    </div>
 
-                        {/* Right: Cards */}
-                        <div className="md:col-span-7">
-                            <div className="grid gap-4">
-                                {data.data.map((item, i) => (
-                                    <div key={i} className="bg-gradient-to-r from-white to-gray-50 border border-purple-100 p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-1 transition-all flex items-center">
-                                        <span className="text-2xl font-bold font-dynapuff text-brand-purple mr-4">#{i+1}</span>
-                                        <div>
-                                            <h4 className="font-bold text-gray-800 font-dynapuff">{item.label}</h4>
-                                            <p className="text-sm text-gray-500 font-arial">Identified by community consensus.</p>
-                                        </div>
-                                        <div className="ml-auto text-xl font-bold text-gray-300">{item.value}</div>
-                                    </div>
-                                ))}
-                            </div>
+                    {/* Top Priorities Cards */}
+                    <div className="grid gap-4 content-start">
+                        <div className="p-8 rounded-[2.5rem] shadow-lg mb-4 text-black" style={{ backgroundColor: currentColor }}>
+                            <h3 className="text-2xl font-bold font-dynapuff mb-2">Key Focus Areas</h3>
+                            <p className="opacity-80 font-bold">These are the top 3 priorities identified by your community.</p>
                         </div>
+                        {data.data.slice(0, 3).map((item, i) => (
+                            <div key={i} className="p-6 rounded-3xl border-2 flex items-center gap-6 transition-transform hover:scale-[1.02] bg-white border-gray-100">
+                                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-gray-50">
+                                    {getIcon(item.label)}
+                                </div>
+                                <div>
+                                    <div className="text-xs font-bold uppercase opacity-50 tracking-wider mb-1">Priority #{i+1}</div>
+                                    <h4 className="text-xl font-bold font-dynapuff text-gray-800">{item.label}</h4>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -197,6 +266,94 @@ export const Priorities: React.FC = () => {
     );
 };
 
+// --- TIMELINE (Styled) ---
+export const Timeline: React.FC = () => {
+    const events = [
+        { date: 'Jan - May 2025', title: 'Have Your Say!', desc: 'Community priorities identified via public survey.', status: 'done' },
+        { date: 'June 20 2025', title: 'Applications Open', desc: 'Round 2 EOI submissions begin.', status: 'active' },
+        { date: 'Aug 01 2025', title: 'EOI Deadline', desc: 'Midnight deadline for Part 1 forms.', status: 'future' },
+        { date: 'Sept 10 2025', title: 'Full Application', desc: 'Part 2 detailed submission deadline.', status: 'future' },
+        { date: 'Nov 2025', title: 'Public Vote', desc: 'Community voting events take place.', status: 'future' },
+    ];
+
+    return (
+        <div className="min-h-screen bg-slate-50 py-20 px-4 animate-fade-in">
+            <div className="max-w-4xl mx-auto">
+                <div className="text-center mb-16">
+                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-4">Programme Timeline</h1>
+                    <p className="text-xl text-gray-600">Key dates for the 2026 funding cycle.</p>
+                </div>
+                
+                <div className="relative pl-8 md:pl-0">
+                    {/* Vertical Line */}
+                    <div className="absolute left-8 md:left-1/2 top-0 bottom-0 w-1 bg-gray-200 transform md:-translate-x-1/2 rounded-full"></div>
+                    
+                    <div className="space-y-16">
+                        {events.map((e, i) => (
+                            <div key={i} className={`flex flex-col md:flex-row items-center gap-8 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''} group`}>
+                                {/* Content Side */}
+                                <div className="flex-1 w-full md:w-1/2">
+                                    <div className={`bg-white p-8 rounded-3xl shadow-sm border-l-8 transition-all hover:shadow-xl ${e.status === 'active' ? 'border-brand-teal ring-4 ring-teal-50' : 'border-brand-purple'}`}>
+                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${e.status === 'active' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-600'}`}>
+                                            {e.date}
+                                        </span>
+                                        <h3 className="text-2xl font-bold font-dynapuff text-gray-800 mb-2">{e.title}</h3>
+                                        <p className="text-gray-600">{e.desc}</p>
+                                    </div>
+                                </div>
+
+                                {/* Center Node */}
+                                <div className="absolute left-8 md:left-1/2 w-12 h-12 bg-white border-4 border-brand-purple rounded-full transform -translate-x-1/2 flex items-center justify-center z-10 shadow-lg group-hover:scale-110 transition-transform">
+                                    {e.status === 'done' ? <span className="text-brand-purple font-bold">✓</span> : <span className="text-gray-400 font-bold">{i+1}</span>}
+                                </div>
+
+                                {/* Empty Side (for layout balance) */}
+                                <div className="hidden md:block flex-1"></div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- PUBLIC DOCUMENTS (Styled) ---
+export const PublicDocuments: React.FC = () => {
+    return (
+        <div className="min-h-screen bg-slate-50 py-20 px-4 animate-fade-in">
+            <div className="max-w-5xl mx-auto">
+                <div className="text-center mb-16">
+                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Resource Centre</h1>
+                    <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                        Download guidance notes, templates, and application forms.
+                    </p>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                    {COMMITTEE_DOCS.map((doc, i) => (
+                        <div key={i} onClick={() => window.open(doc.url, '_blank')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border border-gray-100 cursor-pointer transition-all hover:-translate-y-1">
+                            <div className="flex items-start gap-6">
+                                <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-brand-purple group-hover:text-white transition-colors shadow-sm">
+                                    📄
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-xl font-bold font-dynapuff text-gray-800 mb-2 group-hover:text-brand-purple transition-colors">{doc.title}</h3>
+                                    <p className="text-gray-500 mb-4">{doc.desc}</p>
+                                    <span className="text-sm font-bold text-brand-teal uppercase tracking-wider flex items-center gap-1 group-hover:gap-2 transition-all">
+                                        Download PDF <span>→</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- POSTCODE CHECKER (Styled) ---
 export const PostcodeChecker: React.FC = () => {
     const [code, setCode] = useState('');
     const [result, setResult] = useState<{valid: boolean, area?: string} | null>(null);
@@ -216,89 +373,38 @@ export const PostcodeChecker: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-100 via-purple-200 to-teal-100 py-16 px-4 animate-fade-in flex items-center justify-center">
-            <Card className="max-w-lg w-full text-center border-t-8 border-t-brand-purple shadow-2xl p-8">
-                <h1 className="text-3xl font-bold font-dynapuff text-brand-purple mb-2">Communities' Choice</h1>
-                <h2 className="text-xl text-brand-darkPurple font-dynapuff mb-6">Torfaen Participatory Budgeting</h2>
+        <div className="min-h-screen bg-gradient-to-br from-purple-600 to-teal-700 py-20 px-4 flex items-center justify-center animate-fade-in">
+            <Card className="max-w-lg w-full text-center p-12 rounded-[2.5rem] shadow-2xl border-none">
+                <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center text-5xl mx-auto mb-8 shadow-inner">📍</div>
+                <h1 className="text-4xl font-bold font-dynapuff mb-4 text-gray-800">Check Eligibility</h1>
+                <p className="text-gray-500 mb-8 text-lg">Enter your full postcode to confirm you live within a participating area.</p>
                 
-                <p className="text-gray-600 font-arial mb-8">
-                    To vote, please enter your postcode to verify you are a resident.
-                </p>
-                
-                <div className="space-y-4 mb-6">
-                    <select className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-brand-purple outline-none bg-white font-arial">
-                        <option>-- Select your area --</option>
-                        <option>Blaenavon</option>
-                        <option>Thornhill & Upper Cwmbran</option>
-                        <option>Trevethin, Penygarn & St. Cadocs</option>
-                    </select>
-                    
-                    <div className="flex gap-2">
-                        <Input 
-                            placeholder="e.g. NP4 9AA" 
-                            value={code} 
-                            onChange={e => setCode(e.target.value)}
-                            className="mb-0 text-center uppercase tracking-widest font-bold"
-                        />
-                    </div>
-                    
-                    <Button onClick={check} size="lg" className="w-full shadow-lg">Check & Proceed</Button>
+                <div className="space-y-4">
+                    <Input 
+                        placeholder="e.g. NP4 9AA" 
+                        value={code} 
+                        onChange={e => setCode(e.target.value)}
+                        className="text-center uppercase font-bold text-2xl tracking-widest py-4 border-2 border-gray-200 focus:border-brand-purple rounded-xl"
+                    />
+                    <Button onClick={check} size="lg" className="w-full py-4 text-lg shadow-xl bg-brand-purple hover:bg-brand-darkPurple">
+                        Verify Location
+                    </Button>
                 </div>
 
                 {result && (
-                    <div className={`p-4 rounded-xl font-bold border animate-fade-in ${result.valid ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                        {result.valid 
-                            ? <div>✅ Verified! Redirecting to voting...</div>
-                            : '❌ Postcode not recognized for this round.'}
+                    <div className={`mt-8 p-6 rounded-2xl border-2 animate-slide-up ${result.valid ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                        {result.valid ? (
+                            <div>
+                                <div className="text-3xl mb-2">✅ Verified!</div>
+                                <div className="text-sm opacity-80 uppercase tracking-wide">You belong to:</div>
+                                <div className="font-bold text-xl mt-1">{result.area}</div>
+                            </div>
+                        ) : (
+                            <div className="font-bold text-lg">❌ Postcode not recognized for this funding round.</div>
+                        )}
                     </div>
                 )}
             </Card>
-        </div>
-    );
-};
-
-export const Timeline: React.FC = () => {
-    const events = [
-        { date: 'Jan - May', title: 'Have Your Say!', desc: 'Community priorities identified via survey.', status: 'done' },
-        { date: 'June 20', title: 'Applications Open', desc: 'Round 2 EOI submissions begin.', status: 'active' },
-        { date: 'Aug 01', title: 'EOI Deadline', desc: 'Midnight deadline for Part 1 forms.', status: 'future' },
-        { date: 'Sept 10', title: 'Full Application', desc: 'Part 2 detailed submission deadline.', status: 'future' },
-        { date: 'Nov', title: 'Public Vote', desc: 'Community voting events take place.', status: 'future' },
-    ];
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-100 via-purple-200 to-teal-100 py-16 px-4 animate-fade-in">
-            <div className="max-w-5xl mx-auto bg-white/90 backdrop-blur rounded-3xl shadow-2xl p-8 md:p-12">
-                <div className="text-center mb-12">
-                    <h1 className="text-4xl font-bold font-dynapuff text-brand-purple mb-2">PB Initiative Timeline</h1>
-                    <h2 className="text-xl text-brand-darkTeal font-dynapuff">Interactive Timeline of Main Events</h2>
-                </div>
-                
-                <div className="relative">
-                    <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-2 h-full bg-gradient-to-b from-brand-purple to-brand-teal rounded-full opacity-20"></div>
-                    <div className="space-y-12">
-                        {events.map((e, i) => (
-                            <div key={i} className={`flex flex-col md:flex-row items-center ${i % 2 === 0 ? 'md:flex-row-reverse' : ''} group`}>
-                                <div className="flex-1 md:w-1/2 p-4"></div>
-                                
-                                <div className={`z-10 flex items-center justify-center w-14 h-14 border-4 rounded-full shadow-xl shrink-0 transition-transform group-hover:scale-110 ${e.status === 'done' ? 'bg-brand-purple border-brand-purple text-white' : e.status === 'active' ? 'bg-white border-brand-teal text-brand-teal' : 'bg-white border-gray-300 text-gray-300'}`}>
-                                    {e.status === 'done' ? '✓' : i + 1}
-                                </div>
-                                
-                                <div className="flex-1 md:w-1/2 p-4 text-center md:text-left">
-                                    <div className={`bg-white p-6 rounded-2xl shadow-lg border-b-4 hover:shadow-xl transition-all ${i % 2 === 0 ? 'md:text-right border-brand-purple' : 'border-brand-teal'}`}>
-                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-2 uppercase tracking-wider ${e.status === 'active' ? 'bg-brand-teal text-white' : 'bg-gray-100 text-gray-500'}`}>
-                                            {e.date}
-                                        </span>
-                                        <h3 className="text-xl font-bold text-gray-800 font-dynapuff mb-1">{e.title}</h3>
-                                        <p className="text-gray-600 text-sm font-arial">{e.desc}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };

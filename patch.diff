@@ -1,0 +1,63 @@
+*** Begin Patch
+*** Update File: services/firebase.ts
+@@ class AuthService {
+-  async login(id: string, pass: string): Promise<User> {
+-    if (USE_DEMO_MODE) return this.mockLogin(id, pass);
+-    if (!auth || !db) throw new Error("Firebase not init");
+-    let email = id.includes('@') ? id : `${id}@committee.local`;
+-    const uc = await signInWithEmailAndPassword(auth, email, pass);
+-    const snap = await getDoc(doc(db, 'users', uc.user.uid));
+-    return (snap.data() as User) || { uid: uc.user.uid, email, role: 'applicant' };
++  async login(id: string, pass: string): Promise<User> {
++    if (USE_DEMO_MODE) return this.mockLogin(id, pass);
++    if (!auth || !db) throw new Error("Firebase not init");
++    // Determine whether the login identifier is an email or a username. If it looks like an email, use it
++    // directly for authentication; otherwise build a pseudo‑email. After authentication, we try to
++    // resolve the user document by UID and, failing that, by username.
++    const isEmail = id.includes('@');
++    const email = isEmail ? id : `${id}@committee.local`;
++    const uc = await signInWithEmailAndPassword(auth, email, pass);
++    // Attempt to fetch user profile by UID
++    const userRef = doc(db, 'users', uc.user.uid);
++    const snap = await getDoc(userRef);
++    let userData: User | null = (snap.data() as User) || null;
++    if (!userData && !isEmail) {
++      // If not found by UID and the identifier was a username, fallback to query by username
++      const q = query(collection(db, 'users'), where('username', '==', id));
++      const qSnap = await getDocs(q);
++      if (!qSnap.empty) {
++        userData = qSnap.docs[0].data() as User;
++      }
++    }
++    // Default to an applicant role if no user record is found
++    return userData || { uid: uc.user.uid, email: uc.user.email || email, role: 'applicant' };
+   }
+@@ class AuthService {
+-  async register(email: string, pass: string, name: string): Promise<User> {
+-    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
+-    if (!auth || !db) throw new Error("Firebase not init");
+-    const uc = await createUserWithEmailAndPassword(auth, email, pass);
+-    const u: User = { uid: uc.user.uid, email, displayName: name, role: 'applicant' };
+-    await setDoc(doc(db, 'users', u.uid), u);
+-    return u;
++  async register(email: string, pass: string, name: string): Promise<User> {
++    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
++    if (!auth || !db) throw new Error("Firebase not init");
++    const uc = await createUserWithEmailAndPassword(auth, email, pass);
++    // Derive a username from the email prefix to support username‑based logins in addition to email
++    const username = email.split('@')[0];
++    const u: User = { uid: uc.user.uid, email, username, displayName: name, role: 'applicant' };
++    await setDoc(doc(db, 'users', u.uid), u);
++    return u;
+   }
+*** End Patch
+*** Begin Patch
+*** Update File: views/Secure.tsx
+@@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
+-                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
+-                <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
++                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
++                {/* Username is required for username‑based logins. Allow editing only when creating a new user. */}
++                <Input label="Username" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!user} required />
++                <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
+*** End Patch
