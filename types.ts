@@ -1,6 +1,8 @@
+// types.ts
+
 export type Role = 'guest' | 'applicant' | 'committee' | 'admin';
 export type Area = 'Blaenavon' | 'Thornhill & Upper Cwmbran' | 'Trevethin, Penygarn & St. Cadocs' | 'Cross-Area';
-export type AppStatus = 'Draft' | 'Submitted-Stage1' | 'Rejected-Stage1' | 'Invited-Stage2' | 'Submitted-Stage2' | 'Finalist' | 'Funded' | 'Rejected';
+export type AppStatus = 'Draft' | 'Submitted-Stage1' | 'Rejected-Stage1' | 'Invited-Stage2' | 'Submitted-Stage2' | 'Finalist' | 'Funded' | 'Rejected' | 'Withdrawn';
 
 export const AREAS: Area[] = [
   'Blaenavon',
@@ -15,7 +17,7 @@ export interface User {
   role: Role;
   area?: Area;
   displayName?: string;
-  password?: string;
+  password?: string; // For demo seeding only
   // Profile
   bio?: string;
   phone?: string;
@@ -46,6 +48,16 @@ export interface ScoreCriterion {
   details: string;
 }
 
+// --- NEW: Voting Interface for Stage 1 ---
+export interface Vote {
+    appId: string;
+    voterId: string;
+    voterName: string;
+    decision: 'yes' | 'no';
+    reason?: string;
+    timestamp: number;
+}
+
 export interface Score {
   appId: string;
   scorerId: string;
@@ -73,10 +85,16 @@ export interface Application {
   createdAt: number;
   updatedAt: number;
   ref: string;
+  roundId?: string; // Link to specific funding round
   
   submissionMethod: 'digital' | 'upload';
   pdfUrl?: string;
   stage2PdfUrl?: string;
+
+  // Computed fields for Admin View
+  voteCountYes?: number;
+  voteCountNo?: number;
+  averageScore?: number;
 
   // --- Stage 1 (EOI) Data ---
   formData: {
@@ -177,69 +195,33 @@ export interface AdminDocument {
     createdAt: number;
 }
 
-/**
- * Represents a funding round in the participatory budgeting process. A round may apply to one
- * or more geographic areas and has its own open/close windows for each stage. Admins can
- * configure scoring criteria and thresholds per round.
- */
 export interface Round {
-  /** Unique identifier for the round (document ID) */
   id: string;
-  /** Human‑readable name, e.g. "Communities’ Choice 2026" */
   name: string;
-  /** ISO date string when this round starts accepting applications */
   startDate: string;
-  /** ISO date string when this round closes to new applications */
   endDate: string;
-  /** Areas this round applies to; if empty, applies to all areas */
   areas: Area[];
-  /** Whether Stage 1 (EOI) is open for this round */
   stage1Open: boolean;
-  /** Whether Stage 2 (Full Application) is open for this round */
   stage2Open: boolean;
-  /** Whether scoring is open for this round */
   scoringOpen: boolean;
-  /** Optional list of scoring criteria specific to this round */
   scoringCriteria?: ScoreCriterion[];
-  /** Optional scoring threshold (0–100) for this round */
   scoringThreshold?: number;
-  /** Timestamp when the round was created */
   createdAt: number;
 }
 
-/**
- * An assignment links an application to a committee member. Assignments drive the
- * Committee dashboard task list and allow per‑member progress tracking and due dates.
- */
 export interface Assignment {
-  /** Unique identifier for the assignment (document ID) */
   id: string;
-  /** ID of the application to be scored */
   applicationId: string;
-  /** ID of the committee member assigned to score the application */
   committeeId: string;
-  /** ISO date string when the assignment was made */
   assignedDate: string;
-  /** Optional ISO date string when the score is due */
   dueDate?: string;
-  /** Status of this assignment for the committee member */
   status: 'assigned' | 'draft' | 'submitted' | 'rescore';
 }
 
-/**
- * Captures an administrative action in the system, providing an audit trail. Important
- * actions such as toggling stage windows, adjusting scoring thresholds or deleting
- * applications should be logged here.
- */
 export interface AuditLog {
-  /** Unique identifier for the audit entry */
   id: string;
-  /** UID of the admin who performed the action */
   adminId: string;
-  /** Human readable description of the action */
   action: string;
-  /** Optional target ID (e.g. applicationId, userId, roundId) */
   targetId?: string;
-  /** Timestamp when the action occurred */
   timestamp: number;
 }
