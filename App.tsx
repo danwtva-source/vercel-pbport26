@@ -18,39 +18,41 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // --- Strict Routing Helper ---
+  const routeUser = (user: User) => {
+      if (user.role === 'admin') setCurrentPage('admin');
+      else if (user.role === 'committee') setCurrentPage('committee');
+      else setCurrentPage('applicant');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
         const u = authMode === 'login' ? await api.login(emailOrUser, password) : await api.register(emailOrUser, password, displayName);
-        setCurrentUser(u); setIsAuthOpen(false); setCurrentPage(u.role === 'admin' ? 'admin' : u.role === 'committee' ? 'committee' : 'applicant');
+        setCurrentUser(u); 
+        setIsAuthOpen(false); 
+        routeUser(u);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
-  // Persist login state across refreshes and ensure role-based routing
+  // Persist login state across refreshes
   useEffect(() => {
-    // Listen for Firebase auth changes. When a user is logged in, fetch
-    // their profile from Firestore and update currentUser and currentPage
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        // fetch Firestore user document by UID
         const profile = await api.getUserById(user.uid);
         if (profile) {
           setCurrentUser(profile);
-          // route based on role
-          if (profile.role === 'admin') {
-            setCurrentPage('admin');
-          } else if (profile.role === 'committee') {
-            setCurrentPage('committee');
-          } else {
-            setCurrentPage('applicant');
+          // Only re-route if we are on a generic page or mismatched dashboard
+          if (['home', 'timeline', 'priorities'].includes(currentPage)) {
+              routeUser(profile);
           }
         } else {
-          // fallback: treat as applicant if no profile
-          setCurrentUser({ uid: user.uid, email: user.email || '', role: 'applicant' });
+          // Fallback if no profile doc exists
+          const newProfile: User = { uid: user.uid, email: user.email || '', role: 'applicant' };
+          setCurrentUser(newProfile);
           setCurrentPage('applicant');
         }
       } else {
-        // logged out
         setCurrentUser(null);
         setCurrentPage('home');
       }
@@ -58,24 +60,18 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Whenever the logged-in user’s role changes, ensure the page matches
+  // Ensure role enforcement persists during session
   useEffect(() => {
-    if (!currentUser) return;
-    if (currentUser.role === 'admin' && currentPage !== 'admin') {
-      setCurrentPage('admin');
-    } else if (currentUser.role === 'committee' && currentPage !== 'committee') {
-      setCurrentPage('committee');
-    } else if (currentUser.role === 'applicant' && currentPage !== 'applicant') {
-      setCurrentPage('applicant');
-    }
-  }, [currentUser?.role]);
-
-  const handleProfileClick = () => {
-      if(!currentUser) return;
-      if(currentUser.role === 'admin') setCurrentPage('admin');
-      else if(currentUser.role === 'committee') setCurrentPage('committee');
-      else setCurrentPage('applicant');
-  };
+      if (!currentUser) return;
+      if (currentUser.role === 'admin' && currentPage !== 'admin' && !['committee', 'home'].includes(currentPage)) {
+          // Admins can visit committee view (for scoring) or home (public site), but shouldn't drift elsewhere
+          if(currentPage !== 'committee') setCurrentPage('admin');
+      } else if (currentUser.role === 'committee' && currentPage !== 'committee') {
+          setCurrentPage('committee');
+      } else if (currentUser.role === 'applicant' && currentPage !== 'applicant') {
+          setCurrentPage('applicant');
+      }
+  }, [currentUser, currentPage]);
 
   const renderView = () => {
     if (!currentUser) {
@@ -92,6 +88,8 @@ function App() {
         return <AdminDashboard onNavigatePublic={setCurrentPage} onNavigateScoring={() => setCurrentPage('committee')} />;
     }
     if (currentUser.role === 'committee') return <CommitteeDashboard user={currentUser} onUpdateUser={setCurrentUser} />;
+    
+    // Default fallback to Applicant
     return <ApplicantDashboard user={currentUser} />;
   };
 
@@ -100,7 +98,7 @@ function App() {
       {/* HEADER / NAVIGATION */}
       <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
         <div className="container mx-auto px-4 h-24 flex justify-between items-center">
-            {/* Logo Section - Logic for Public vs Portal Logo */}
+            {/* Logo Section */}
             <div className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentPage('home')}>
                 <img 
                     src={currentUser ? "/public/images/Peoples’ Committee Portal logo 2.png" : "/public/images/PB English Transparent.png"} 
@@ -131,18 +129,7 @@ function App() {
                             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{currentUser.role}</div>
                             <div className="text-sm font-bold text-gray-800">{currentUser.displayName || currentUser.email.split('@')[0]}</div>
                         </div>
-                        <div 
-                            onClick={handleProfileClick}
-                            className="relative cursor-pointer group"
-                        >
-                            <img 
-                                src={currentUser.photoUrl || `https://ui-avatars.com/api/?name=${currentUser.displayName}&background=9333ea&color=fff`} 
-                                alt="Profile" 
-                                className="w-12 h-12 rounded-full border-2 border-white shadow-md group-hover:scale-105 transition-transform object-cover" 
-                            />
-                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></div>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => { setCurrentUser(null); setCurrentPage('home'); }}>
+                        <Button variant="ghost" size="sm" onClick={() => { auth.signOut(); setCurrentUser(null); setCurrentPage('home'); }}>
                             <span className="text-red-500 hover:text-red-700">Log Out</span>
                         </Button>
                     </div>
