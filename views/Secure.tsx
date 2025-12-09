@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Application, User, Score, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round } from '../types';
+import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
 import { AdminRounds } from './AdminRounds';
-import { api, exportToCSV, seedDatabase } from '../services/firebase';
+import { api, exportToCSV, seedDatabase, auth } from '../services/firebase';
 import { Button, Card, Input, Modal, Badge, BarChart, FileCard } from '../components/UI';
 
-// --- SHARED COMPONENTS ---
+// --- SHARED COMPONENTS & HELPERS ---
 
 const PDFViewer: React.FC<{ url: string; onClose: () => void }> = ({ url, onClose }) => (
     <div className="fixed inset-0 bg-black/90 z-[200] flex flex-col animate-fade-in">
@@ -18,6 +18,25 @@ const PDFViewer: React.FC<{ url: string; onClose: () => void }> = ({ url, onClos
         </div>
     </div>
 );
+
+const printApplication = (app: Application) => {
+    const w = window.open('', '_blank');
+    if(!w) return;
+    w.document.write(`
+        <html><head><title>${app.projectTitle} - Print View</title>
+        <style>body{font-family:sans-serif;padding:40px;line-height:1.6} h1,h2,h3{color:#333} .section{margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:20px} .label{font-weight:bold;color:#666;font-size:0.9em} .val{margin-bottom:10px}</style>
+        </head><body>
+        <h1>${app.projectTitle} (${app.ref || 'Draft'})</h1>
+        <div class="section"><div class="label">Organisation</div><div class="val">${app.orgName}</div></div>
+        <div class="section"><div class="label">Applicant</div><div class="val">${app.applicantName}</div></div>
+        <div class="section"><div class="label">Summary</div><div class="val">${app.summary}</div></div>
+        <div class="section"><div class="label">Amount Requested</div><div class="val">£${app.amountRequested}</div></div>
+        <h2>Detailed Responses</h2>
+        ${Object.entries(app.formData).map(([k,v]) => `<div class="section"><div class="label">${k}</div><div class="val">${typeof v === 'object' ? JSON.stringify(v) : v}</div></div>`).join('')}
+        <script>window.print();</script></body></html>
+    `);
+    w.document.close();
+};
 
 const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User; onSave: (u: User) => void; }> = ({ isOpen, onClose, user, onSave }) => {
     const [data, setData] = useState({ displayName: user.displayName || '', bio: user.bio || '', phone: user.phone || '', address: user.address || '', roleDescription: user.roleDescription || '', photoUrl: user.photoUrl || '' });
@@ -63,6 +82,16 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
 };
 
 // --- STAGE 1 FORM (Matches PB 1.1 PDF) ---
+const FormHeader: React.FC<{ title: string; subtitle: string; readOnly?: boolean }> = ({ title, subtitle, readOnly }) => (
+    <div className="border-b pb-6 mb-6">
+        <div className="flex justify-between items-center">
+            <h2 className="text-4xl font-dynapuff text-brand-purple">{title}</h2>
+            {readOnly && <span className="bg-gray-100 text-gray-500 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Read Only</span>}
+        </div>
+        <p className="text-gray-500 mt-2">{subtitle}</p>
+    </div>
+);
+
 export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (e: React.FormEvent) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
     const fd = data.formData || {};
     const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
@@ -76,13 +105,7 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
 
     return (
         <form onSubmit={onSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-5xl mx-auto border border-gray-100">
-            <div className="border-b pb-6 mb-6">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-4xl font-dynapuff text-brand-purple">Expression of Interest (Part 1)</h2>
-                    {readOnly && <span className="bg-gray-100 text-gray-500 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Read Only</span>}
-                </div>
-                <p className="text-gray-500 mt-2">PB 1.1 - Please complete all sections to be considered for the next stage.</p>
-            </div>
+            <FormHeader title="Expression of Interest (Part 1)" subtitle="PB 1.1 - Please complete all sections to be considered for the next stage." readOnly={readOnly} />
             
             {/* 1. Area & Applicant */}
             <section className="space-y-6">
@@ -245,18 +268,7 @@ export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange:
 
     return (
         <form onSubmit={onSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-6xl mx-auto border border-gray-100">
-            <div className="border-b pb-6 mb-6 bg-brand-darkTeal -m-10 mb-8 p-10 rounded-t-[2rem] text-white shadow-lg">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h2 className="text-4xl font-dynapuff mb-2">Full Application (Part 2)</h2>
-                        <p className="opacity-80 text-lg">Detailed Delivery Plan & Justified Budget</p>
-                    </div>
-                    <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm">
-                        <div className="text-xs uppercase font-bold opacity-70">Project Ref</div>
-                        <div className="font-mono text-xl">{data.ref || 'NEW'}</div>
-                    </div>
-                </div>
-            </div>
+            <FormHeader title="Full Application (Part 2)" subtitle="Detailed Delivery Plan & Justified Budget" readOnly={readOnly} />
 
             <section className="space-y-6">
                 <h3 className="font-bold text-xl border-b pb-2 text-gray-800">1. Organisation & Bank Details</h3>
@@ -347,75 +359,57 @@ export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange:
     );
 };
 
-// --- SCORE MODAL (With PDF Viewer) ---
-const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; currentUser: User; existingScore?: Score; onSubmit: (s: Score) => void; threshold?: number }> = ({ isOpen, onClose, app, currentUser, existingScore, onSubmit, threshold = 50 }) => {
+// --- MODALS (Voting & Scoring) ---
+
+const VoteModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; currentUser: User; onSubmit: (decision: 'yes' | 'no', reason: string) => void }> = ({ isOpen, onClose, app, currentUser, onSubmit }) => {
+    const [reason, setReason] = useState('');
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={`Vote: ${app.projectTitle}`}>
+            <div className="space-y-6">
+                <div className="bg-gray-50 p-4 rounded-xl">
+                    <h4 className="font-bold">Summary</h4>
+                    <p className="text-sm text-gray-600">{app.summary}</p>
+                    <div className="mt-2 font-bold text-brand-purple">£{app.amountRequested}</div>
+                </div>
+                <div>
+                    <label className="block font-bold mb-2">Your Decision (Part 1 EOI)</label>
+                    <div className="flex gap-4">
+                        <button onClick={() => onSubmit('yes', reason)} className="flex-1 bg-green-100 text-green-700 hover:bg-green-200 py-4 rounded-xl font-bold border border-green-200">YES (Proceed)</button>
+                        <button onClick={() => onSubmit('no', reason)} className="flex-1 bg-red-100 text-red-700 hover:bg-red-200 py-4 rounded-xl font-bold border border-red-200">NO (Reject)</button>
+                    </div>
+                </div>
+                <textarea className="w-full p-3 border rounded-xl" placeholder="Optional reasoning..." value={reason} onChange={e => setReason(e.target.value)} />
+            </div>
+        </Modal>
+    );
+};
+
+const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; currentUser: User; existingScore?: Score; onSubmit: (s: Score) => void }> = ({ isOpen, onClose, app, currentUser, existingScore, onSubmit }) => {
     const [scores, setScores] = useState<Record<string, number>>(existingScore?.scores || {});
     const [notes, setNotes] = useState<Record<string, string>>(existingScore?.notes || {});
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-
-    const { rawTotal, weightedTotalPercent } = useMemo(() => {
-        let rTotal = 0;
-        let wTotal = 0;
-        SCORING_CRITERIA.forEach(c => {
-            const val = scores[c.id] || 0;
-            rTotal += val;
-            wTotal += (val / 3) * c.weight;
-        });
-        return { rawTotal: rTotal, weightedTotalPercent: Math.round(wTotal) };
-    }, [scores]);
-
-    const handleSubmit = () => { 
-        onSubmit({ 
-            appId: app.id, 
-            scorerId: currentUser.uid, 
-            scorerName: currentUser.displayName || 'Member', 
-            scores, 
-            notes, 
-            isFinal: true, 
-            total: rawTotal, 
-            weightedTotal: weightedTotalPercent, 
-            timestamp: Date.now() 
-        }); 
-        onClose(); 
-    };
     
+    const weightedTotal = useMemo(() => SCORING_CRITERIA.reduce((acc, c) => acc + ((scores[c.id]||0)/3 * c.weight), 0), [scores]);
+
+    const handleSubmit = () => {
+        onSubmit({ appId: app.id, scorerId: currentUser.uid, scorerName: currentUser.displayName || 'Anon', scores, notes, isFinal: true, total: 0, weightedTotal: Math.round(weightedTotal), timestamp: Date.now() });
+        onClose();
+    };
+
     return (
-        <>
-            <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="xl">
-                <div className="mb-6 flex gap-2 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div className="flex-1">
-                        <h4 className="font-bold text-gray-700">{app.orgName}</h4>
-                        <p className="text-sm text-gray-500">Ref: {app.ref || 'N/A'}</p>
+        <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="xl">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                {SCORING_CRITERIA.map(c => (
+                    <div key={c.id} className="bg-white border p-4 rounded-xl">
+                        <div className="flex justify-between font-bold mb-2"><span>{c.name} ({c.weight}%)</span></div>
+                        <div className="flex gap-2">{[0,1,2,3].map(v => <button key={v} onClick={() => setScores(p => ({...p, [c.id]: v}))} className={`w-10 h-10 rounded ${scores[c.id]===v ? 'bg-brand-purple text-white' : 'bg-gray-100'}`}>{v}</button>)}</div>
                     </div>
-                    {app.pdfUrl && <Button variant="outline" size="sm" onClick={() => setPdfUrl(app.pdfUrl!)}>📄 View Stage 1 PDF</Button>}
-                    {app.stage2PdfUrl && <Button variant="outline" size="sm" onClick={() => setPdfUrl(app.stage2PdfUrl!)}>📄 View Stage 2 PDF</Button>}
-                </div>
-                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
-                    {SCORING_CRITERIA.map(c => (
-                        <div key={c.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                            <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-bold text-gray-800">{c.name} <span className="text-gray-400 text-sm font-normal">({c.weight}%)</span></h4>
-                                <div className="flex gap-2">
-                                    {[0,1,2,3].map(v => <button key={v} onClick={() => setScores(p => ({...p, [c.id]: v}))} className={`w-10 h-10 rounded-lg font-bold transition-all ${scores[c.id]===v ? 'bg-brand-purple text-white shadow-lg scale-110' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{v}</button>)}
-                                </div>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-3 italic">{c.guidance}</p>
-                            <input className="w-full p-3 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors" placeholder="Justification notes..." value={notes[c.id]||''} onChange={e=>setNotes(p=>({...p, [c.id]:e.target.value}))} />
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-6 pt-6 border-t flex justify-between items-center">
-                    <div className="flex gap-4 items-center">
-                        <div className="font-bold text-xl text-gray-700">Raw: {rawTotal}/30</div>
-                        <div className={`px-4 py-2 rounded-lg font-bold text-white shadow-md ${weightedTotalPercent >= threshold ? 'bg-green-500' : 'bg-red-500'}`}>
-                            {weightedTotalPercent}% ({weightedTotalPercent >= threshold ? 'Pass' : 'Fail'})
-                        </div>
-                    </div>
-                    <Button onClick={handleSubmit} size="lg" className="shadow-xl">Submit Final Score</Button>
-                </div>
-            </Modal>
-            {pdfUrl && <PDFViewer url={pdfUrl} onClose={() => setPdfUrl(null)} />}
-        </>
+                ))}
+            </div>
+            <div className="pt-4 border-t flex justify-between items-center">
+                <div className="font-bold text-xl">Score: {Math.round(weightedTotal)}%</div>
+                <Button onClick={handleSubmit}>Submit Score</Button>
+            </div>
+        </Modal>
     );
 };
 
@@ -434,7 +428,6 @@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User
         <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
-                {/* Username is required for username‑based logins. Allow editing only when creating a new user. */}
                 <Input label="Username" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!user} required />
                 <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
                 {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
@@ -516,10 +509,30 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [activeApp, setActiveApp] = useState<Partial<Application>>({});
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [currUser, setCurrUser] = useState(user);
+    const [openRound, setOpenRound] = useState<Round | null>(null);
 
-    useEffect(() => { api.getApplications().then(all => setApps(all.filter(a => a.userId === user.uid))); }, [user.uid, viewMode]);
+    useEffect(() => {
+        const load = async () => {
+            const [myApps, rounds] = await Promise.all([
+                api.getApplications(), // Filters by user in previous code, ensure consistency
+                api.getRounds()
+            ]);
+            setApps(myApps.filter(a => a.userId === user.uid));
+            
+            // Find an active round for this user's area
+            const now = new Date().toISOString().split('T')[0];
+            const active = rounds.find(r => 
+                (r.areas.length === 0 || (user.area && r.areas.includes(user.area))) &&
+                r.stage1Open && 
+                r.startDate <= now && 
+                r.endDate >= now
+            );
+            setOpenRound(active || null);
+        };
+        load();
+    }, [user.uid, user.area]);
 
-    const handleSubmit = async (e: React.FormEvent, stage: string) => {
+    const handleSave = async (e: React.FormEvent, stage: string) => {
         e.preventDefault();
         const status = stage === '1' ? 'Submitted-Stage1' : 'Submitted-Stage2';
         const finalApp = { ...activeApp, status, userId: user.uid };
@@ -530,17 +543,39 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
 
     if (viewMode !== 'list') {
         return viewMode === 'stage1' 
-            ? <DigitalStage1Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSubmit(e,'1')} onCancel={() => setViewMode('list')} />
-            : <DigitalStage2Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSubmit(e,'2')} onCancel={() => setViewMode('list')} />;
+            ? <DigitalStage1Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSave(e,'1')} onCancel={() => setViewMode('list')} />
+            : <DigitalStage2Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSave(e,'2')} onCancel={() => setViewMode('list')} />;
     }
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <div className="flex justify-between items-center mb-8"><h1 className="text-3xl font-bold font-dynapuff">Welcome, {currUser.displayName}</h1><Button onClick={() => setIsProfileOpen(true)} variant="outline">My Profile</Button></div>
-            <Card>
-                <div className="flex justify-between mb-4"><h2 className="font-bold text-xl">My Applications</h2><Button onClick={() => { setActiveApp({ userId: user.uid, status: 'Draft' }); setViewMode('stage1'); }}>Start New EOI</Button></div>
-                {apps.length === 0 ? <p className="text-gray-500 py-8 text-center">No applications yet.</p> : apps.map(app => <div key={app.id} className="border p-4 rounded-xl mb-4 flex justify-between items-center"><div><div className="font-bold text-lg">{app.projectTitle}</div><Badge>{app.status}</Badge></div><div className="flex gap-2">{app.status === 'Draft' && <Button size="sm" onClick={() => { setActiveApp(app); setViewMode('stage1'); }}>Edit</Button>}{app.status === 'Invited-Stage2' && <Button size="sm" variant="secondary" onClick={() => { setActiveApp(app); setViewMode('stage2'); }}>Start Stage 2</Button>}</div></div>)}
-            </Card>
+            <div className="flex justify-between items-center mb-8"><h1 className="text-3xl font-bold font-dynapuff">Welcome, {currUser.displayName}</h1>
+                <div className="flex gap-2">
+                    <Button onClick={() => setIsProfileOpen(true)} variant="outline">Profile</Button>
+                    <Button 
+                        disabled={!openRound} 
+                        onClick={() => { setActiveApp({ userId: user.uid, status: 'Draft', area: user.area, roundId: openRound?.id }); setViewMode('stage1'); }}
+                        title={!openRound ? "No active funding rounds for your area" : "Start Application"}
+                    >
+                        {openRound ? '+ New EOI' : 'Rounds Closed'}
+                    </Button>
+                </div>
+            </div>
+            <div className="grid gap-4">
+                {apps.map(app => (
+                    <Card key={app.id}>
+                        <div className="flex justify-between items-center">
+                            <div><h3 className="font-bold text-xl">{app.projectTitle || 'Untitled'}</h3><Badge>{app.status}</Badge></div>
+                            <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => printApplication(app)}>Download PDF</Button>
+                                {app.status === 'Draft' && <Button size="sm" onClick={() => { setActiveApp(app); setViewMode('stage1'); }}>Edit</Button>}
+                                {app.status === 'Invited-Stage2' && <Button size="sm" variant="secondary" onClick={() => { setActiveApp(app); setViewMode('stage2'); }}>Start Stage 2</Button>}
+                            </div>
+                        </div>
+                    </Card>
+                ))}
+                {apps.length === 0 && <p className="text-center text-gray-500 py-10">You haven't started any applications yet.</p>}
+            </div>
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currUser} onSave={setCurrUser} />
         </div>
     );
@@ -549,115 +584,204 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
 export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>void, isAdmin?: boolean, onReturnToAdmin?: ()=>void }> = ({ user, onUpdateUser, isAdmin, onReturnToAdmin }) => {
     const [apps, setApps] = useState<Application[]>([]);
     const [assignments, setAssignments] = useState<Assignment[]>([]);
-    const [team, setTeam] = useState<User[]>([]);
-    const [activeTab, setActiveTab] = useState('tasks');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
+    const [voteModalOpen, setVoteModalOpen] = useState(false);
+    const [scoreModalOpen, setScoreModalOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [settings, setSettings] = useState<PortalSettings>({ stage1Visible: true, stage2Visible: false, votingOpen: false, scoringThreshold: 50 });
 
     useEffect(() => {
         const load = async () => {
-             // Load applications and assignments in parallel
-             const [allApps, asgs] = await Promise.all([
-                 api.getApplications(isAdmin ? 'All' : user.area),
-                 api.getAssignments(isAdmin ? undefined : user.uid)
-             ]);
-             // Filter applications to only relevant statuses
-             const relevantApps = allApps.filter(a => ['Submitted-Stage1', 'Invited-Stage2', 'Submitted-Stage2'].includes(a.status));
-             setApps(relevantApps);
-             setAssignments(asgs);
-             // Load team members for the same area (if not admin view)
-             if(user.area) {
-                 const allUsers = await api.getUsers();
-                 setTeam(allUsers.filter(u => u.role === 'committee' && u.area === user.area));
-             }
-             const s = await api.getPortalSettings();
-             setSettings(s);
+            const [allApps, asgs] = await Promise.all([api.getApplications(user.area), api.getAssignments(user.uid)]);
+            // Filter to only assigned apps unless admin
+            const assignedAppIds = asgs.map(a => a.applicationId);
+            const myApps = isAdmin ? allApps : allApps.filter(a => assignedAppIds.includes(a.id));
+            setApps(myApps);
+            setAssignments(asgs);
         };
         load();
     }, [user.area]);
 
+    const handleAction = (app: Application) => {
+        setSelectedApp(app);
+        if (app.status === 'Submitted-Stage1') setVoteModalOpen(true);
+        else if (['Invited-Stage2', 'Submitted-Stage2'].includes(app.status)) setScoreModalOpen(true);
+    };
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-8">
-                 <div><h1 className="text-3xl font-bold font-dynapuff">{user.area || 'All Areas'} Committee {isAdmin && '(Admin View)'}</h1></div>
-                 <div className="flex gap-2">{isAdmin && <Button onClick={onReturnToAdmin}>Back</Button>}<Button onClick={() => setIsProfileOpen(true)} variant="outline">Profile</Button></div>
+                <h1 className="text-3xl font-bold font-dynapuff">{user.area} Committee</h1>
+                <div className="flex gap-2">{isAdmin && <Button onClick={onReturnToAdmin}>Back to Admin</Button>}<Button onClick={() => setIsProfileOpen(true)} variant="outline">Profile</Button></div>
             </div>
-            <div className="flex gap-4 mb-6 border-b">{['tasks', 'team', 'documents'].map(t => <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold border-b-2 transition-colors capitalize ${activeTab === t ? 'border-brand-purple text-brand-purple' : 'border-transparent text-gray-400'}`}>{t}</button>)}</div>
-            {activeTab === 'tasks' && (
-                <div className="grid gap-4">
-                    {(isAdmin ? apps : apps.filter(a => assignments.some(asg => asg.applicationId === a.id))).map(app => (
-                        <Card key={app.id}>
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold text-lg">{app.projectTitle}</h3>
-                                    <Badge>{app.status}</Badge>
-                                </div>
-                                <Button size="sm" onClick={() => setSelectedApp(app)}>Evaluate</Button>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Card className="col-span-full bg-purple-50 border-purple-100">
+                    <h2 className="font-bold text-purple-900 text-lg mb-2">My Tasks</h2>
+                    <p className="text-sm text-purple-700">You have {apps.length} applications assigned for review.</p>
+                </Card>
+                {apps.map(app => (
+                    <Card key={app.id}>
+                        <Badge>{app.status}</Badge>
+                        <h3 className="font-bold text-lg mt-2 mb-1">{app.projectTitle}</h3>
+                        <p className="text-sm text-gray-500 mb-4">{app.orgName}</p>
+                        <div className="flex justify-between items-center border-t pt-4">
+                            <span className="text-xs font-bold text-gray-400">Ref: {app.ref}</span>
+                            <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View PDF</Button>
+                                {['Submitted-Stage1', 'Invited-Stage2', 'Submitted-Stage2'].includes(app.status) && (
+                                    <Button size="sm" onClick={() => handleAction(app)}>
+                                        {app.status === 'Submitted-Stage1' ? 'Vote (Yes/No)' : 'Score (0-100)'}
+                                    </Button>
+                                )}
                             </div>
-                        </Card>
-                    ))}
-                    {(!isAdmin && apps.filter(a => assignments.some(asg => asg.applicationId === a.id)).length === 0) && (
-                        <p className="text-gray-500">No assignments yet.</p>
-                    )}
-                </div>
-            )}
-            {activeTab === 'team' && <div className="grid md:grid-cols-2 gap-4">{team.map(m => <div key={m.uid} className="bg-white p-4 rounded-xl shadow flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-brand-purple text-white flex items-center justify-center font-bold">{m.displayName?.charAt(0)}</div><div><div className="font-bold">{m.displayName}</div><div className="text-xs text-gray-500">{m.email}</div></div></div>)}</div>}
-            {activeTab === 'documents' && <Card><h3 className="font-bold mb-4">Resources</h3><p className="text-gray-500">No documents yet.</p></Card>}
-            {selectedApp && <ScoreModal isOpen={!!selectedApp} onClose={() => setSelectedApp(null)} app={selectedApp} currentUser={user} onSubmit={async (s) => { await api.saveScore(s); setSelectedApp(null); }} threshold={settings.scoringThreshold} />}
+                        </div>
+                    </Card>
+                ))}
+            </div>
+
+            {selectedApp && voteModalOpen && <VoteModal isOpen={voteModalOpen} onClose={() => setVoteModalOpen(false)} app={selectedApp} currentUser={user} onSubmit={async (dec, note) => { await api.saveVote({ appId: selectedApp.id, voterId: user.uid, voterName: user.displayName||'Anon', decision: dec, reason: note, timestamp: Date.now() }); setVoteModalOpen(false); }} />}
+            {selectedApp && scoreModalOpen && <ScoreModal isOpen={scoreModalOpen} onClose={() => setScoreModalOpen(false)} app={selectedApp} currentUser={user} onSubmit={async (s) => { await api.saveScore(s); setScoreModalOpen(false); }} />}
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onSave={onUpdateUser} />
         </div>
     );
 };
 
 export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNavigateScoring: ()=>void }> = ({ onNavigatePublic, onNavigateScoring }) => {
-    const [activeTab, setActiveTab] = useState('overview');
-    const [users, setUsers] = useState<User[]>([]);
+    const [tab, setTab] = useState('master');
     const [apps, setApps] = useState<Application[]>([]);
-    const [settings, setSettings] = useState<PortalSettings>({ stage1Visible: true, stage2Visible: false, votingOpen: false, scoringThreshold: 50 });
+    const [users, setUsers] = useState<User[]>([]);
+    const [votes, setVotes] = useState<Vote[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [previewMode, setPreviewMode] = useState<'stage1' | 'stage2' | null>(null);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-    useEffect(() => {
-        api.getUsers().then(u => { setUsers(u); const me = u.find(x => x.role === 'admin'); if(me) setCurrentUser(me); });
-        api.getApplications('All').then(setApps);
-        api.getPortalSettings().then(setSettings);
-    }, []);
+    const refresh = async () => {
+        const [a, u, v, s] = await Promise.all([api.getApplications('All'), api.getUsers(), api.getVotes(), api.getScores()]);
+        
+        // Enrich apps with computed data for the Master Table
+        const enriched = a.map(app => {
+            const appVotes = v.filter(x => x.appId === app.id);
+            const appScores = s.filter(x => x.appId === app.id);
+            return {
+                ...app,
+                voteCountYes: appVotes.filter(x => x.decision === 'yes').length,
+                voteCountNo: appVotes.filter(x => x.decision === 'no').length,
+                averageScore: appScores.length ? Math.round(appScores.reduce((acc, curr) => acc + curr.weightedTotal, 0) / appScores.length) : 0
+            };
+        });
+        setApps(enriched);
+        setUsers(u);
+        setVotes(v);
+        setScores(s);
+    };
 
-    const toggleSetting = async (key: keyof PortalSettings) => { const newS = { ...settings, [key]: !settings[key] }; await api.updatePortalSettings(newS); setSettings(newS); };
-    const updateThreshold = async (val: number) => { const newS = { ...settings, scoringThreshold: val }; await api.updatePortalSettings(newS); setSettings(newS); };
-    const refresh = () => api.getUsers().then(setUsers);
+    useEffect(() => { refresh(); }, []);
+
+    const changeStatus = async (appId: string, status: string) => {
+        if(confirm(`Change status to ${status}?`)) { 
+            await api.updateApplication(appId, { status: status as any });
+            
+            // Log the action
+            if (auth.currentUser) {
+                await api.logAction(auth.currentUser.uid, `Changed status to ${status}`, appId);
+            }
+            refresh(); 
+        }
+    };
 
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold font-dynapuff text-brand-purple">Admin Console</h1>
-                <div className="flex gap-2"><Button variant="outline" onClick={() => onNavigatePublic('home')}>Public Site</Button><Button onClick={onNavigateScoring}>Score Mode</Button><Button onClick={() => setIsProfileOpen(true)}>My Profile</Button></div>
+                <h1 className="text-3xl font-bold font-dynapuff text-brand-purple">Admin Control Centre</h1>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => onNavigatePublic('home')}>View Public Site</Button>
+                    <Button onClick={onNavigateScoring}>Enter Score Mode</Button>
+                </div>
             </div>
-            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex overflow-x-auto max-w-full">
-                {['overview', 'rounds', 'applications', 'users', 'committees', 'documents', 'settings'].map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setActiveTab(t)}
-                        className={`px-6 py-2 rounded-lg font-bold transition-all capitalize ${activeTab === t ? 'bg-brand-purple text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        {t}
-                    </button>
-                ))}
+
+            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex">
+                {['master', 'rounds', 'users', 'documents'].map(t => <button key={t} onClick={() => setTab(t)} className={`px-6 py-2 rounded-lg font-bold capitalize ${tab === t ? 'bg-brand-purple text-white' : 'text-gray-500 hover:bg-gray-50'}`}>{t}</button>)}
             </div>
-            {activeTab === 'overview' && <div className="grid gap-6"><div className="grid md:grid-cols-4 gap-4"><Card className="bg-purple-50 border-purple-100"><h3 className="text-purple-800 text-sm font-bold uppercase">Total Apps</h3><p className="text-3xl font-dynapuff">{apps.length}</p></Card><Card className="bg-blue-50 border-blue-100"><h3 className="text-blue-800 text-sm font-bold uppercase">Users</h3><p className="text-3xl font-dynapuff">{users.length}</p></Card></div><Card><h3 className="font-bold mb-4">Quick Actions</h3><Button className="w-full justify-start" onClick={() => exportToCSV(apps, 'apps')}>📥 Export CSV</Button><Button className="w-full justify-start bg-red-100 text-red-600 mt-2" onClick={() => seedDatabase().then(() => alert("Seeded!"))}>↻ Seed Database</Button></Card></div>}
-            {activeTab === 'rounds' && <AdminRounds />}
-            {activeTab === 'users' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">Users</h3><Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ User</Button></div><table className="w-full text-left"><thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u => <tr key={u.uid} className="border-b"><td className="p-3">{u.displayName}</td><td className="p-3"><Badge>{u.role}</Badge></td><td className="p-3"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 mr-2">Edit</button><button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); }}} className="text-red-600">Delete</button></td></tr>)}</tbody></table></Card>}
-            {activeTab === 'committees' && <Card><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-2xl font-dynapuff">Committee Members</h3><Button size="sm" onClick={() => { setEditingUser({ role: 'committee' } as User); setIsUserModalOpen(true); }}>+ Add Member</Button></div><div className="grid md:grid-cols-2 gap-4">{users.filter(u => u.role === 'committee').map(u => <div key={u.uid} className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-md transition-shadow bg-white relative group"><div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-xl">{u.displayName?.charAt(0)}</div><div><div className="font-bold">{u.displayName}</div><div className="text-xs text-gray-500">{u.area}</div></div><div className="ml-auto flex gap-2"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-500 font-bold text-sm hover:underline">Edit</button></div></div>)}</div></Card>}
-            {activeTab === 'documents' && <AdminDocCentre />}
-            {activeTab === 'applications' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">All Applications</h3><Button size="sm" onClick={() => exportToCSV(apps, 'all_apps')}>Export CSV</Button></div><div className="space-y-2">{apps.map(a => <div key={a.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-gray-50"><div><div className="font-bold">{a.projectTitle}</div><div className="text-xs text-gray-500">{a.orgName} • {a.area}</div></div><Badge>{a.status}</Badge></div>)}</div></Card>}
-            {activeTab === 'settings' && <div className="grid md:grid-cols-2 gap-6"><Card><h3 className="font-bold text-xl mb-4">Lifecycle</h3><div className="space-y-4"><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 1 Open</span><input type="checkbox" checked={settings.stage1Visible} onChange={() => toggleSetting('stage1Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 2 Open</span><input type="checkbox" checked={settings.stage2Visible} onChange={() => toggleSetting('stage2Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Voting Open</span><input type="checkbox" checked={settings.votingOpen} onChange={() => toggleSetting('votingOpen')} /></label></div></Card><Card><h3 className="font-bold text-xl mb-4">Previews</h3><div className="space-y-4"><Button className="w-full" onClick={() => setPreviewMode('stage1')}>Preview Stage 1</Button><Button className="w-full" onClick={() => setPreviewMode('stage2')}>Preview Stage 2</Button></div></Card></div>}
-            {previewMode && <Modal isOpen={!!previewMode} onClose={() => setPreviewMode(null)} title="Preview"><div className="p-4 text-center bg-yellow-50 text-yellow-800 font-bold mb-4">Preview Mode</div>{previewMode === 'stage1' ? <DigitalStage1Form data={{}} onChange={()=>{}} onSubmit={e=>{e.preventDefault();}} onCancel={()=>setPreviewMode(null)} /> : <DigitalStage2Form data={{}} onChange={()=>{}} onSubmit={e=>{e.preventDefault();}} onCancel={()=>setPreviewMode(null)} />}</Modal>}
+
+            {tab === 'master' && (
+                <Card>
+                    <div className="flex justify-between mb-4">
+                        <h3 className="font-bold text-xl">Master Application List</h3>
+                        <Button size="sm" onClick={() => exportToCSV(apps, 'master_export')}>Export CSV</Button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-3">Ref</th>
+                                    <th className="p-3">Project Title</th>
+                                    <th className="p-3">Org</th>
+                                    <th className="p-3">Area</th>
+                                    <th className="p-3">Status</th>
+                                    <th className="p-3">Votes (Stg 1)</th>
+                                    <th className="p-3">Score (Stg 2)</th>
+                                    <th className="p-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {apps.map(app => (
+                                    <tr key={app.id} className="border-b hover:bg-gray-50">
+                                        <td className="p-3 font-mono text-xs">{app.ref}</td>
+                                        <td className="p-3 font-bold">{app.projectTitle}</td>
+                                        <td className="p-3">{app.orgName}</td>
+                                        <td className="p-3">{app.area}</td>
+                                        <td className="p-3"><Badge>{app.status}</Badge></td>
+                                        <td className="p-3 flex gap-2">
+                                            <span className="text-green-600 font-bold">Yes: {app.voteCountYes}</span>
+                                            <span className="text-red-600 font-bold">No: {app.voteCountNo}</span>
+                                        </td>
+                                        <td className="p-3 font-bold">{app.averageScore ? `${app.averageScore}%` : '-'}</td>
+                                        <td className="p-3">
+                                            <select className="border rounded p-1 text-xs" onChange={(e) => changeStatus(app.id, e.target.value)} value="">
+                                                <option value="">Actions...</option>
+                                                <option value="Invited-Stage2">Invite Stage 2</option>
+                                                <option value="Rejected-Stage1">Reject Stage 1</option>
+                                                <option value="Finalist">Mark Finalist</option>
+                                                <option value="Funded">Mark Funded</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
+
+            {tab === 'rounds' && <AdminRounds />}
+            
+            {tab === 'users' && (
+                <Card>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-xl">User Management</h3>
+                        <Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ New User</Button>
+                    </div>
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Area</th><th className="p-3">Action</th></tr></thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.uid} className="border-b">
+                                    <td className="p-3">{u.displayName}</td>
+                                    <td className="p-3"><Badge>{u.role}</Badge></td>
+                                    <td className="p-3">{u.area || '-'}</td>
+                                    <td className="p-3">
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 hover:underline mr-2">Edit</button>
+                                        <button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); } }} className="text-red-600 hover:underline">Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </Card>
+            )}
+
+            {tab === 'documents' && <AdminDocCentre />}
             {isUserModalOpen && <UserFormModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} user={editingUser} onSave={refresh} />}
-            {currentUser && <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currentUser} onSave={setCurrentUser} />}
         </div>
     );
 };
