@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Landing, PostcodeChecker, Timeline, Priorities, PublicDocuments } from './views/Public';
 import { ApplicantDashboard, CommitteeDashboard, AdminDashboard } from './views/Secure';
 import { Button, Input, Modal } from './components/UI';
-import { api } from './services/firebase';
+import { api, auth } from './services/firebase';
 import { User } from './types';
 
 function App() {
@@ -25,6 +25,50 @@ function App() {
         setCurrentUser(u); setIsAuthOpen(false); setCurrentPage(u.role === 'admin' ? 'admin' : u.role === 'committee' ? 'committee' : 'applicant');
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
+
+  // Persist login state across refreshes and ensure role-based routing
+  useEffect(() => {
+    // Listen for Firebase auth changes. When a user is logged in, fetch
+    // their profile from Firestore and update currentUser and currentPage
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // fetch Firestore user document by UID
+        const profile = await api.getUserById(user.uid);
+        if (profile) {
+          setCurrentUser(profile);
+          // route based on role
+          if (profile.role === 'admin') {
+            setCurrentPage('admin');
+          } else if (profile.role === 'committee') {
+            setCurrentPage('committee');
+          } else {
+            setCurrentPage('applicant');
+          }
+        } else {
+          // fallback: treat as applicant if no profile
+          setCurrentUser({ uid: user.uid, email: user.email || '', role: 'applicant' });
+          setCurrentPage('applicant');
+        }
+      } else {
+        // logged out
+        setCurrentUser(null);
+        setCurrentPage('home');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Whenever the logged-in user’s role changes, ensure the page matches
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'admin' && currentPage !== 'admin') {
+      setCurrentPage('admin');
+    } else if (currentUser.role === 'committee' && currentPage !== 'committee') {
+      setCurrentPage('committee');
+    } else if (currentUser.role === 'applicant' && currentPage !== 'applicant') {
+      setCurrentPage('applicant');
+    }
+  }, [currentUser?.role]);
 
   const handleProfileClick = () => {
       if(!currentUser) return;

@@ -1,4 +1,4 @@
-import { User, Application, Score, PortalSettings, AdminDocument } from '../types';
+import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 
 // --- CONFIGURATION ---
@@ -54,17 +54,35 @@ class AuthService {
   async login(id: string, pass: string): Promise<User> {
     if (USE_DEMO_MODE) return this.mockLogin(id, pass);
     if (!auth || !db) throw new Error("Firebase not init");
-    let email = id.includes('@') ? id : `${id}@committee.local`;
+    // Determine whether the login identifier is an email or a username. If it looks like an email, use it
+    // directly for authentication; otherwise build a pseudo‑email. After authentication, we try to
+    // resolve the user document by UID and, failing that, by username.
+    const isEmail = id.includes('@');
+    const email = isEmail ? id : `${id}@committee.local`;
     const uc = await signInWithEmailAndPassword(auth, email, pass);
-    const snap = await getDoc(doc(db, 'users', uc.user.uid));
-    return (snap.data() as User) || { uid: uc.user.uid, email, role: 'applicant' };
+    // Attempt to fetch user profile by UID
+    const userRef = doc(db, 'users', uc.user.uid);
+    const snap = await getDoc(userRef);
+    let userData: User | null = (snap.data() as User) || null;
+    if (!userData && !isEmail) {
+      // If not found by UID and the identifier was a username, fallback to query by username
+      const q = query(collection(db, 'users'), where('username', '==', id));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        userData = qSnap.docs[0].data() as User;
+      }
+    }
+    // Default to an applicant role if no user record is found
+    return userData || { uid: uc.user.uid, email: uc.user.email || email, role: 'applicant' };
   }
 
   async register(email: string, pass: string, name: string): Promise<User> {
     if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
     if (!auth || !db) throw new Error("Firebase not init");
     const uc = await createUserWithEmailAndPassword(auth, email, pass);
-    const u: User = { uid: uc.user.uid, email, displayName: name, role: 'applicant' };
+    // Derive a username from the email prefix to support username‑based logins in addition to email
+    const username = email.split('@')[0];
+    const u: User = { uid: uc.user.uid, email, username, displayName: name, role: 'applicant' };
     await setDoc(doc(db, 'users', u.uid), u);
     return u;
   }
@@ -144,6 +162,30 @@ class AuthService {
       return snap.data() as User;
   }
 
+  /**
+   * Fetch a single user document from Firestore by UID.
+   * Returns null if no user is found. This helper is used on app
+   * initialization to restore the authenticated user’s profile (and role)
+   * after a page refresh or when Firebase auth state changes. It does not
+   * attempt to infer the user’s role; it simply returns the stored user
+   * document if it exists.
+   */
+  async getUserById(uid: string): Promise<User | null> {
+      if (USE_DEMO_MODE) {
+          // In demo mode we have a predefined list of users; attempt to find by uid
+          const user = (DEMO_USERS as any[]).find((u: any) => u.uid === uid);
+          return user || null;
+      }
+      if (!db) return null;
+      try {
+          const snap = await getDoc(doc(db, 'users', uid));
+          return snap.exists() ? (snap.data() as User) : null;
+      } catch (e) {
+          console.error('Failed to fetch user by id', e);
+          return null;
+      }
+  }
+
   async getDocuments(): Promise<AdminDocument[]> {
       if (USE_DEMO_MODE) return this.mockGetDocs();
       if (!db) return [];
@@ -161,6 +203,88 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockDeleteDoc(id);
       if (!db) return;
       await deleteDoc(doc(db, 'adminDocuments', id));
+  }
+
+  // --- ROUNDS & ASSIGNMENTS ---
+
+  /**
+   * Fetch all funding rounds from Firestore. Each round document is typed as Round.
+   */
+  async getRounds(): Promise<Round[]> {
+      if (USE_DEMO_MODE) return [];
+      if (!db) return [];
+      const snap = await getDocs(collection(db, 'rounds'));
+      return snap.docs.map(d => d.data() as Round);
+  }
+
+  /**
+   * Create a new funding round. The round.id is used as the document key.
+   */
+  async createRound(round: Round): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await setDoc(doc(db, 'rounds', round.id), { ...round });
+  }
+
+  /**
+   * Update fields on an existing round by document id.
+   */
+  async updateRound(id: string, updates: Partial<Round>): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await setDoc(doc(db, 'rounds', id), updates, { merge: true });
+  }
+
+  /**
+   * Delete a round. Use cautiously; consider restricting via security rules.
+   */
+  async deleteRound(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await deleteDoc(doc(db, 'rounds', id));
+  }
+
+  /**
+   * Fetch assignments. If a committeeId is provided, returns only assignments for that committee member.
+   */
+  async getAssignments(committeeId?: string): Promise<Assignment[]> {
+      if (USE_DEMO_MODE) return [];
+      if (!db) return [];
+      let snap;
+      if (committeeId) {
+          const q = query(collection(db, 'assignments'), where('committeeId', '==', committeeId));
+          snap = await getDocs(q);
+      } else {
+          snap = await getDocs(collection(db, 'assignments'));
+      }
+      return snap.docs.map(d => d.data() as Assignment);
+  }
+
+  /**
+   * Create an assignment linking a committee member to an application.
+   */
+  async createAssignment(assignment: Assignment): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await setDoc(doc(db, 'assignments', assignment.id), { ...assignment });
+  }
+
+  /**
+   * Update assignment fields.
+   */
+  async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await setDoc(doc(db, 'assignments', id), updates, { merge: true });
+  }
+
+  /**
+   * Delete an assignment.
+   */
+  async deleteAssignment(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!db) return;
+      await deleteDoc(doc(db, 'assignments', id));
   }
   
   async adminCreateUser(u: User, p: string): Promise<void> {

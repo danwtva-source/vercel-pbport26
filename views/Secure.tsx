@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Application, User, Score, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion } from '../types';
+import { Application, User, Score, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
+import { AdminRounds } from './AdminRounds';
 import { api, exportToCSV, seedDatabase } from '../services/firebase';
 import { Button, Card, Input, Modal, Badge, BarChart, FileCard } from '../components/UI';
 
@@ -433,6 +434,8 @@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User
         <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
+                {/* Username is required for username‑based logins. Allow editing only when creating a new user. */}
+                <Input label="Username" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!user} required />
                 <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
                 {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
                 <div className="grid grid-cols-2 gap-4">
@@ -545,6 +548,7 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
 
 export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>void, isAdmin?: boolean, onReturnToAdmin?: ()=>void }> = ({ user, onUpdateUser, isAdmin, onReturnToAdmin }) => {
     const [apps, setApps] = useState<Application[]>([]);
+    const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [team, setTeam] = useState<User[]>([]);
     const [activeTab, setActiveTab] = useState('tasks');
     const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -553,10 +557,22 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
 
     useEffect(() => {
         const load = async () => {
-             const allApps = await api.getApplications(isAdmin ? 'All' : user.area);
-             setApps(allApps.filter(a => ['Submitted-Stage1', 'Invited-Stage2', 'Submitted-Stage2'].includes(a.status)));
-             if(user.area) { const allUsers = await api.getUsers(); setTeam(allUsers.filter(u => u.role === 'committee' && u.area === user.area)); }
-             const s = await api.getPortalSettings(); setSettings(s);
+             // Load applications and assignments in parallel
+             const [allApps, asgs] = await Promise.all([
+                 api.getApplications(isAdmin ? 'All' : user.area),
+                 api.getAssignments(isAdmin ? undefined : user.uid)
+             ]);
+             // Filter applications to only relevant statuses
+             const relevantApps = allApps.filter(a => ['Submitted-Stage1', 'Invited-Stage2', 'Submitted-Stage2'].includes(a.status));
+             setApps(relevantApps);
+             setAssignments(asgs);
+             // Load team members for the same area (if not admin view)
+             if(user.area) {
+                 const allUsers = await api.getUsers();
+                 setTeam(allUsers.filter(u => u.role === 'committee' && u.area === user.area));
+             }
+             const s = await api.getPortalSettings();
+             setSettings(s);
         };
         load();
     }, [user.area]);
@@ -568,7 +584,24 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                  <div className="flex gap-2">{isAdmin && <Button onClick={onReturnToAdmin}>Back</Button>}<Button onClick={() => setIsProfileOpen(true)} variant="outline">Profile</Button></div>
             </div>
             <div className="flex gap-4 mb-6 border-b">{['tasks', 'team', 'documents'].map(t => <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold border-b-2 transition-colors capitalize ${activeTab === t ? 'border-brand-purple text-brand-purple' : 'border-transparent text-gray-400'}`}>{t}</button>)}</div>
-            {activeTab === 'tasks' && <div className="grid gap-4">{apps.map(app => <Card key={app.id}><div className="flex justify-between items-center"><div><h3 className="font-bold text-lg">{app.projectTitle}</h3><Badge>{app.status}</Badge></div><Button size="sm" onClick={() => setSelectedApp(app)}>Evaluate</Button></div></Card>)}</div>}
+            {activeTab === 'tasks' && (
+                <div className="grid gap-4">
+                    {(isAdmin ? apps : apps.filter(a => assignments.some(asg => asg.applicationId === a.id))).map(app => (
+                        <Card key={app.id}>
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-lg">{app.projectTitle}</h3>
+                                    <Badge>{app.status}</Badge>
+                                </div>
+                                <Button size="sm" onClick={() => setSelectedApp(app)}>Evaluate</Button>
+                            </div>
+                        </Card>
+                    ))}
+                    {(!isAdmin && apps.filter(a => assignments.some(asg => asg.applicationId === a.id)).length === 0) && (
+                        <p className="text-gray-500">No assignments yet.</p>
+                    )}
+                </div>
+            )}
             {activeTab === 'team' && <div className="grid md:grid-cols-2 gap-4">{team.map(m => <div key={m.uid} className="bg-white p-4 rounded-xl shadow flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-brand-purple text-white flex items-center justify-center font-bold">{m.displayName?.charAt(0)}</div><div><div className="font-bold">{m.displayName}</div><div className="text-xs text-gray-500">{m.email}</div></div></div>)}</div>}
             {activeTab === 'documents' && <Card><h3 className="font-bold mb-4">Resources</h3><p className="text-gray-500">No documents yet.</p></Card>}
             {selectedApp && <ScoreModal isOpen={!!selectedApp} onClose={() => setSelectedApp(null)} app={selectedApp} currentUser={user} onSubmit={async (s) => { await api.saveScore(s); setSelectedApp(null); }} threshold={settings.scoringThreshold} />}
@@ -605,9 +638,18 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                 <div className="flex gap-2"><Button variant="outline" onClick={() => onNavigatePublic('home')}>Public Site</Button><Button onClick={onNavigateScoring}>Score Mode</Button><Button onClick={() => setIsProfileOpen(true)}>My Profile</Button></div>
             </div>
             <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex overflow-x-auto max-w-full">
-                {['overview', 'applications', 'users', 'committees', 'documents', 'settings'].map(t => <button key={t} onClick={() => setActiveTab(t)} className={`px-6 py-2 rounded-lg font-bold transition-all capitalize ${activeTab === t ? 'bg-brand-purple text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>{t}</button>)}
+                {['overview', 'rounds', 'applications', 'users', 'committees', 'documents', 'settings'].map(t => (
+                    <button
+                        key={t}
+                        onClick={() => setActiveTab(t)}
+                        className={`px-6 py-2 rounded-lg font-bold transition-all capitalize ${activeTab === t ? 'bg-brand-purple text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        {t}
+                    </button>
+                ))}
             </div>
             {activeTab === 'overview' && <div className="grid gap-6"><div className="grid md:grid-cols-4 gap-4"><Card className="bg-purple-50 border-purple-100"><h3 className="text-purple-800 text-sm font-bold uppercase">Total Apps</h3><p className="text-3xl font-dynapuff">{apps.length}</p></Card><Card className="bg-blue-50 border-blue-100"><h3 className="text-blue-800 text-sm font-bold uppercase">Users</h3><p className="text-3xl font-dynapuff">{users.length}</p></Card></div><Card><h3 className="font-bold mb-4">Quick Actions</h3><Button className="w-full justify-start" onClick={() => exportToCSV(apps, 'apps')}>📥 Export CSV</Button><Button className="w-full justify-start bg-red-100 text-red-600 mt-2" onClick={() => seedDatabase().then(() => alert("Seeded!"))}>↻ Seed Database</Button></Card></div>}
+            {activeTab === 'rounds' && <AdminRounds />}
             {activeTab === 'users' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">Users</h3><Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ User</Button></div><table className="w-full text-left"><thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u => <tr key={u.uid} className="border-b"><td className="p-3">{u.displayName}</td><td className="p-3"><Badge>{u.role}</Badge></td><td className="p-3"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 mr-2">Edit</button><button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); }}} className="text-red-600">Delete</button></td></tr>)}</tbody></table></Card>}
             {activeTab === 'committees' && <Card><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-2xl font-dynapuff">Committee Members</h3><Button size="sm" onClick={() => { setEditingUser({ role: 'committee' } as User); setIsUserModalOpen(true); }}>+ Add Member</Button></div><div className="grid md:grid-cols-2 gap-4">{users.filter(u => u.role === 'committee').map(u => <div key={u.uid} className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-md transition-shadow bg-white relative group"><div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-xl">{u.displayName?.charAt(0)}</div><div><div className="font-bold">{u.displayName}</div><div className="text-xs text-gray-500">{u.area}</div></div><div className="ml-auto flex gap-2"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-500 font-bold text-sm hover:underline">Edit</button></div></div>)}</div></Card>}
             {activeTab === 'documents' && <AdminDocCentre />}
