@@ -1,13 +1,13 @@
-import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment } from '../types';
+// services/firebase.ts
+import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
 
 // --- CONFIGURATION ---
 // Set to FALSE for production.
 export const USE_DEMO_MODE = false; 
-
-import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -37,7 +37,7 @@ export const exportToCSV = (data: any[], filename: string) => {
     const csvContent = [
         headers.join(','),
         ...data.map(row => headers.map(header => {
-            const val = row[header] ? String(row[header]).replace(/,/g, ' ') : '';
+            const val = row[header] ? String(row[header]).replace(/,/g, ' ').replace(/"/g, '""') : '';
             return `"${val}"`;
         }).join(','))
     ].join('\n');
@@ -54,9 +54,7 @@ class AuthService {
   async login(id: string, pass: string): Promise<User> {
     if (USE_DEMO_MODE) return this.mockLogin(id, pass);
     if (!auth || !db) throw new Error("Firebase not init");
-    // Determine whether the login identifier is an email or a username. If it looks like an email, use it
-    // directly for authentication; otherwise build a pseudo‑email. After authentication, we try to
-    // resolve the user document by UID and, failing that, by username.
+    // Determine whether the login identifier is an email or a username.
     const isEmail = id.includes('@');
     const email = isEmail ? id : `${id}@committee.local`;
     const uc = await signInWithEmailAndPassword(auth, email, pass);
@@ -80,7 +78,7 @@ class AuthService {
     if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
     if (!auth || !db) throw new Error("Firebase not init");
     const uc = await createUserWithEmailAndPassword(auth, email, pass);
-    // Derive a username from the email prefix to support username‑based logins in addition to email
+    // Derive a username from the email prefix
     const username = email.split('@')[0];
     const u: User = { uid: uc.user.uid, email, username, displayName: name, role: 'applicant' };
     await setDoc(doc(db, 'users', u.uid), u);
@@ -115,6 +113,20 @@ class AuthService {
       await deleteDoc(doc(db, 'applications', id));
   }
 
+  // --- VOTING & SCORING ---
+  async saveVote(vote: Vote): Promise<void> {
+      if (USE_DEMO_MODE) return; 
+      if (!db) return;
+      await setDoc(doc(db, 'votes', `${vote.appId}_${vote.voterId}`), vote);
+  }
+
+  async getVotes(): Promise<Vote[]> {
+      if (USE_DEMO_MODE) return [];
+      if (!db) return [];
+      const snap = await getDocs(collection(db, 'votes'));
+      return snap.docs.map(d => d.data() as Vote);
+  }
+
   async saveScore(score: Score): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveScore(score);
       if (!db) return;
@@ -128,6 +140,7 @@ class AuthService {
       return snap.docs.map(d => d.data() as Score);
   }
   
+  // --- USERS ---
   async getUsers(): Promise<User[]> {
       if (USE_DEMO_MODE) return this.mockGetUsers();
       if (!db) return [];
@@ -140,7 +153,7 @@ class AuthService {
       if (!db) return;
       await setDoc(doc(db, 'users', u.uid), u, { merge: true });
   }
-
+  
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
       if (!db) throw new Error("No DB");
@@ -164,15 +177,9 @@ class AuthService {
 
   /**
    * Fetch a single user document from Firestore by UID.
-   * Returns null if no user is found. This helper is used on app
-   * initialization to restore the authenticated user’s profile (and role)
-   * after a page refresh or when Firebase auth state changes. It does not
-   * attempt to infer the user’s role; it simply returns the stored user
-   * document if it exists.
    */
   async getUserById(uid: string): Promise<User | null> {
       if (USE_DEMO_MODE) {
-          // In demo mode we have a predefined list of users; attempt to find by uid
           const user = (DEMO_USERS as any[]).find((u: any) => u.uid === uid);
           return user || null;
       }
@@ -186,6 +193,21 @@ class AuthService {
       }
   }
 
+  async deleteUser(uid: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
+    if (!db) return;
+    await deleteDoc(doc(db, 'users', uid));
+  }
+  
+  async adminCreateUser(u: User, p: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
+      // In a real app, this would call a Cloud Function.
+      // For this prototype, we simulate it by creating the DB record.
+      const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
+      await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
+  }
+
+  // --- DOCUMENTS ---
   async getDocuments(): Promise<AdminDocument[]> {
       if (USE_DEMO_MODE) return this.mockGetDocs();
       if (!db) return [];
@@ -206,10 +228,6 @@ class AuthService {
   }
 
   // --- ROUNDS & ASSIGNMENTS ---
-
-  /**
-   * Fetch all funding rounds from Firestore. Each round document is typed as Round.
-   */
   async getRounds(): Promise<Round[]> {
       if (USE_DEMO_MODE) return [];
       if (!db) return [];
@@ -217,36 +235,24 @@ class AuthService {
       return snap.docs.map(d => d.data() as Round);
   }
 
-  /**
-   * Create a new funding round. The round.id is used as the document key.
-   */
   async createRound(round: Round): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await setDoc(doc(db, 'rounds', round.id), { ...round });
   }
 
-  /**
-   * Update fields on an existing round by document id.
-   */
   async updateRound(id: string, updates: Partial<Round>): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await setDoc(doc(db, 'rounds', id), updates, { merge: true });
   }
 
-  /**
-   * Delete a round. Use cautiously; consider restricting via security rules.
-   */
   async deleteRound(id: string): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await deleteDoc(doc(db, 'rounds', id));
   }
 
-  /**
-   * Fetch assignments. If a committeeId is provided, returns only assignments for that committee member.
-   */
   async getAssignments(committeeId?: string): Promise<Assignment[]> {
       if (USE_DEMO_MODE) return [];
       if (!db) return [];
@@ -260,45 +266,22 @@ class AuthService {
       return snap.docs.map(d => d.data() as Assignment);
   }
 
-  /**
-   * Create an assignment linking a committee member to an application.
-   */
   async createAssignment(assignment: Assignment): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await setDoc(doc(db, 'assignments', assignment.id), { ...assignment });
   }
 
-  /**
-   * Update assignment fields.
-   */
   async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await setDoc(doc(db, 'assignments', id), updates, { merge: true });
   }
 
-  /**
-   * Delete an assignment.
-   */
   async deleteAssignment(id: string): Promise<void> {
       if (USE_DEMO_MODE) return;
       if (!db) return;
       await deleteDoc(doc(db, 'assignments', id));
-  }
-  
-  async adminCreateUser(u: User, p: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
-      // In a real app, this would call a Cloud Function.
-      // For this prototype, we simulate it by creating the DB record.
-      const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
-  }
-  
-  async deleteUser(uid: string): Promise<void> {
-    if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
-    if (!db) return;
-    await deleteDoc(doc(db, 'users', uid));
   }
 
   async getPortalSettings(): Promise<PortalSettings> {
@@ -312,6 +295,23 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
       if (!db) return;
       await setDoc(doc(db, 'portalSettings', 'global'), s);
+  }
+
+  // --- AUDIT LOGGING ---
+  async logAction(adminId: string, action: string, targetId?: string): Promise<void> {
+      if (USE_DEMO_MODE) {
+          console.log(`[AUDIT] Admin ${adminId} performed ${action} on ${targetId}`);
+          return;
+      }
+      if (!db) return;
+      const id = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      await setDoc(doc(db, 'auditLogs', id), {
+          id,
+          adminId,
+          action,
+          targetId: targetId || null,
+          timestamp: Date.now()
+      });
   }
 
   // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---
@@ -415,7 +415,7 @@ export const seedDatabase = async () => {
     // 3. Seed Settings
     batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
 
-    // 4. Seed Admin Documents (New Feature)
+    // 4. Seed Admin Documents
     const folders = ['Committee Guidelines', 'Meeting Minutes', 'Policies'];
     folders.forEach(name => {
         const id = 'folder_' + name.replace(/\s/g, '');
