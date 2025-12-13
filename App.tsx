@@ -35,19 +35,21 @@ function App() {
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
-  // Persist login state across refreshes
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
+        // Log the UID to console to help debugging
+        console.log("Auth UID:", user.uid);
+        
         const profile = await api.getUserById(user.uid);
         if (profile) {
+          console.log("Firestore Profile Found:", profile);
           setCurrentUser(profile);
-          // Only re-route if we are on a generic page or mismatched dashboard
           if (['home', 'timeline', 'priorities'].includes(currentPage)) {
               routeUser(profile);
           }
         } else {
-          // Fallback if no profile doc exists
+          console.warn("No Firestore Profile found for UID. Falling back to Applicant.");
           const newProfile: User = { uid: user.uid, email: user.email || '', role: 'applicant' };
           setCurrentUser(newProfile);
           setCurrentPage('applicant');
@@ -64,7 +66,6 @@ function App() {
   useEffect(() => {
       if (!currentUser) return;
       if (currentUser.role === 'admin' && currentPage !== 'admin' && !['committee', 'home'].includes(currentPage)) {
-          // Admins can visit committee view (for scoring) or home (public site), but shouldn't drift elsewhere
           if(currentPage !== 'committee') setCurrentPage('admin');
       } else if (currentUser.role === 'committee' && currentPage !== 'committee') {
           setCurrentPage('committee');
@@ -95,10 +96,8 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white font-arial selection:bg-purple-200">
-      {/* HEADER / NAVIGATION */}
       <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all duration-300">
         <div className="container mx-auto px-4 h-24 flex justify-between items-center">
-            {/* Logo Section */}
             <div className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentPage('home')}>
                 <img 
                     src={currentUser ? "/public/images/Peoples’ Committee Portal logo 2.png" : "/public/images/PB English Transparent.png"} 
@@ -107,21 +106,11 @@ function App() {
                     onError={(e) => e.currentTarget.style.display='none'} 
                 />
             </div>
-
-            {/* Navigation Items */}
             <div className="flex gap-2 md:gap-6 items-center">
                 {!currentUser ? (
                     <>
                         <button onClick={() => setCurrentPage('priorities')} className="hidden md:block text-gray-600 hover:text-brand-purple font-bold transition-colors font-dynapuff text-lg">Priorities</button>
-                        <button onClick={() => setCurrentPage('timeline')} className="hidden md:block text-gray-600 hover:text-brand-purple font-bold transition-colors font-dynapuff text-lg">Timeline</button>
-                        <button onClick={() => setCurrentPage('documents')} className="hidden md:block text-gray-600 hover:text-brand-purple font-bold transition-colors font-dynapuff text-lg">Resources</button>
-                        <div className="h-8 w-px bg-gray-200 hidden md:block mx-2"></div>
-                        <Button 
-                            onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }} 
-                            className="bg-brand-purple hover:bg-brand-darkPurple shadow-lg px-6"
-                        >
-                            Portal Login
-                        </Button>
+                        <Button onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }} className="bg-brand-purple hover:bg-brand-darkPurple shadow-lg px-6">Portal Login</Button>
                     </>
                 ) : (
                     <div className="flex items-center gap-4 animate-fade-in">
@@ -138,10 +127,16 @@ function App() {
         </div>
       </nav>
 
-      {/* MAIN VIEWPORT */}
-      <main className="flex-grow relative overflow-x-hidden">
-        {renderView()}
-      </main>
+      <main className="flex-grow relative overflow-x-hidden">{renderView()}</main>
+
+      {/* --- DEBUG BAR (Helper for Developers) --- */}
+      {currentUser && (
+          <div className="fixed bottom-0 left-0 right-0 bg-black text-white text-xs p-1 flex justify-center gap-4 z-[100] opacity-75 hover:opacity-100 transition-opacity">
+              <span className="font-mono">UID: <span className="text-yellow-300 select-all">{currentUser.uid}</span></span>
+              <span className="font-mono">Role: <span className={`font-bold ${currentUser.role === 'committee' ? 'text-green-400' : 'text-red-400'}`}>{currentUser.role}</span></span>
+              <span className="font-mono">Area: {currentUser.area || 'None'}</span>
+          </div>
+      )}
 
       {/* FOOTER */}
       <footer className="bg-gray-50 border-t border-gray-200 py-16 mt-auto">
@@ -150,12 +145,11 @@ function App() {
                 <div className="text-center md:text-left">
                     <img src="/public/images/PB English Transparent.png" alt="Logo" className="h-12 mb-4 mx-auto md:mx-0 opacity-80" />
                     <p className="text-gray-500 text-sm max-w-md leading-relaxed">
-                        <strong>Communities' Choice</strong> is a participatory budgeting initiative empowering Torfaen residents to make decisions about public funding in their local areas.
+                        <strong>Communities' Choice</strong> is a participatory budgeting initiative empowering Torfaen residents.
                     </p>
                 </div>
                 <div className="flex gap-8 text-sm font-bold text-gray-600">
                     <a href="#" className="hover:text-brand-purple transition-colors">Privacy Policy</a>
-                    <a href="#" className="hover:text-brand-purple transition-colors">Accessibility</a>
                     <a href="#" className="hover:text-brand-purple transition-colors">Contact Us</a>
                 </div>
             </div>
@@ -165,25 +159,14 @@ function App() {
         </div>
       </footer>
 
-      {/* AUTH MODAL */}
       <Modal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} title={authMode === 'login' ? 'Portal Access' : 'Join the Community'}>
-        <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <img src="/public/images/Peoples’ Committee Portal logo 2.png" alt="Logo" className="h-12 w-auto" onError={e => e.currentTarget.style.display='none'} />
-            </div>
-            <h3 className="font-dynapuff text-xl text-brand-purple mb-1">Welcome Back</h3>
-            <p className="text-gray-500 text-sm">Secure access for Applicants & Committee Members</p>
-        </div>
         <form onSubmit={handleLogin} className="space-y-5 px-4 pb-4">
-            {authMode === 'register' && <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} required placeholder="Jane Doe" />}
-            <Input label="Email or Username" value={emailOrUser} onChange={e => setEmailOrUser(e.target.value)} required placeholder="user@example.com" />
-            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" />
+            {authMode === 'register' && <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} required />}
+            <Input label="Email or Username" value={emailOrUser} onChange={e => setEmailOrUser(e.target.value)} required />
+            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
             {error && <div className="text-red-600 bg-red-50 p-4 rounded-xl text-sm font-bold border border-red-100 flex items-center gap-2">⚠️ {error}</div>}
-            <Button type="submit" className="w-full shadow-lg py-4 text-lg" disabled={loading}>
-                {loading ? 'Processing...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
-            </Button>
+            <Button type="submit" className="w-full shadow-lg py-4 text-lg" disabled={loading}>{loading ? 'Processing...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}</Button>
             <div className="text-center text-sm text-gray-500 mt-6 pt-6 border-t border-gray-100">
-                {authMode === 'login' ? 'New to Communities\' Choice?' : 'Already have an account?'}
                 <button type="button" onClick={() => { setError(''); setAuthMode(authMode === 'login' ? 'register' : 'login'); }} className="text-brand-purple font-bold ml-2 hover:underline">
                     {authMode === 'login' ? 'Create an account' : 'Log in'}
                 </button>
