@@ -75,12 +75,12 @@ function App() {
 
         if (profile) {
           console.log("Firestore Profile Found:", profile);
+          console.log("User Role:", profile.role);
+          console.log("User Area:", profile.area);
           setCurrentUser(profile);
 
-          // Only auto-route if on a public page
-          if (['home', 'timeline', 'priorities', 'check-postcode', 'documents'].includes(currentPage)) {
-              routeUser(profile);
-          }
+          // ALWAYS route user to their role-specific dashboard after login
+          routeUser(profile);
         } else {
           console.warn("No Firestore Profile found for UID. Creating default applicant profile.");
 
@@ -110,18 +110,22 @@ function App() {
       if (!currentUser) return;
 
       const role: Role = currentUser.role;
+      console.log("Role enforcement check - Current role:", role, "Current page:", currentPage);
 
       // Admins can access both admin and committee views
       if (role === 'admin') {
         if (!['admin', 'committee'].includes(currentPage)) {
+          console.log("Redirecting admin to admin dashboard");
           setCurrentPage('admin');
         }
       } else if (role === 'committee') {
         if (currentPage !== 'committee') {
+          console.log("Redirecting committee member to committee dashboard");
           setCurrentPage('committee');
         }
       } else if (role === 'applicant') {
         if (currentPage !== 'applicant') {
+          console.log("Redirecting applicant to applicant dashboard");
           setCurrentPage('applicant');
         }
       }

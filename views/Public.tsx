@@ -9,25 +9,25 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
     // Updated to use the correct file names found in your public/images folder
     // Note: In Vite, assets in 'public' are served from root.
     const slides = [
-        { 
-            name: 'Blaenavon', 
-            img: '/images/bln.png', 
+        {
+            name: 'Blaenavon',
+            img: '/BLN.png',
             desc: 'A historic town with a strong community spirit. Vote for projects that preserve our heritage and build our future.',
             color: '#FFD447',
             bg: 'bg-yellow-50',
             text: 'text-yellow-800'
         },
-        { 
-            name: 'Thornhill & Upper Cwmbran', 
-            img: '/images/tuc.png', 
+        {
+            name: 'Thornhill & Upper Cwmbran',
+            img: '/TUC.png',
             desc: 'Supporting local initiatives to improve health, wellbeing, and community spaces.',
             color: '#2FBF71',
             bg: 'bg-green-50',
             text: 'text-green-800'
         },
-        { 
-            name: 'Trevethin, Penygarn & St. Cadocs', 
-            img: '/images/tps.png', 
+        {
+            name: 'Trevethin, Penygarn & St. Cadocs',
+            img: '/TPS.png',
             desc: 'Empowering residents to tackle local issues and create safer, greener neighbourhoods.',
             color: '#3A86FF',
             bg: 'bg-blue-50',
