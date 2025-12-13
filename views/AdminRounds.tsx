@@ -13,6 +13,8 @@ const RoundForm: React.FC<{ round?: Round; onSave: (r: Round) => void; onClose: 
   = ({ round, onSave, onClose }) => {
     const isEdit = !!round;
     const [name, setName] = useState(round?.name || '');
+    const [year, setYear] = useState(round?.year || new Date().getFullYear());
+    const [status, setStatus] = useState<'planning' | 'open' | 'scoring' | 'voting' | 'closed'>(round?.status || 'planning');
     const [startDate, setStartDate] = useState(round?.startDate || '');
     const [endDate, setEndDate] = useState(round?.endDate || '');
     const [areas, setAreas] = useState<Area[]>(round?.areas || []);
@@ -29,6 +31,8 @@ const RoundForm: React.FC<{ round?: Round; onSave: (r: Round) => void; onClose: 
         const r: Round = {
             id,
             name: name.trim() || 'Untitled Round',
+            year,
+            status,
             startDate,
             endDate,
             areas,
@@ -45,6 +49,19 @@ const RoundForm: React.FC<{ round?: Round; onSave: (r: Round) => void; onClose: 
         <Modal isOpen={true} onClose={onClose} title={isEdit ? 'Edit Round' : 'New Round'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="Round Name" value={name} onChange={e => setName(e.target.value)} required />
+                <div className="grid md:grid-cols-2 gap-4">
+                    <Input label="Year" type="number" value={year} onChange={e => setYear(Number(e.target.value))} required />
+                    <div>
+                        <label className="block font-bold mb-2 text-sm">Status</label>
+                        <select className="w-full p-3 border rounded-xl" value={status} onChange={e => setStatus(e.target.value as any)} required>
+                            <option value="planning">Planning</option>
+                            <option value="open">Open</option>
+                            <option value="scoring">Scoring</option>
+                            <option value="voting">Voting</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
+                </div>
                 <div className="grid md:grid-cols-2 gap-4">
                     <Input label="Start Date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
                     <Input label="End Date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
