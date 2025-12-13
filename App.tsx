@@ -220,6 +220,12 @@ function App() {
                 {!currentUser ? (
                     <>
                         <button
+                          onClick={() => setCurrentPage('timeline')}
+                          className="hidden md:block text-gray-600 hover:text-brand-purple font-bold transition-colors font-dynapuff text-lg"
+                        >
+                          Timeline
+                        </button>
+                        <button
                           onClick={() => setCurrentPage('priorities')}
                           className="hidden md:block text-gray-600 hover:text-brand-purple font-bold transition-colors font-dynapuff text-lg"
                         >

@@ -41,17 +41,18 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
 
     return (
         <div className="relative w-full max-w-6xl mx-auto mt-12 mb-20 px-4">
-            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20 bg-gray-900">
+            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20" style={{ backgroundColor: current.color }}>
                 <div className="absolute inset-0">
-                    {/* Background Image with Overlay */}
-                    <div className="absolute inset-0 bg-black/60 z-10"></div>
-                    <img 
-                        src={current.img} 
-                        alt={current.name} 
-                        className="absolute inset-0 w-full h-full object-cover opacity-80"
+                    {/* Gradient Overlay for better text readability */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-black/60 to-transparent z-10"></div>
+                    {/* Optional: Try to load map image, fallback to gradient if missing */}
+                    <img
+                        src={current.img}
+                        alt={current.name}
+                        className="absolute inset-0 w-full h-full object-cover opacity-30"
                         onError={(e) => {
-                            // Fallback if image fails
-                            e.currentTarget.style.display = 'none'; 
+                            // Hide image if it fails to load - colored background will show
+                            e.currentTarget.style.display = 'none';
                         }}
                     />
                     

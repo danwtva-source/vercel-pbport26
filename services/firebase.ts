@@ -270,6 +270,7 @@ class AuthService {
   /**
    * Fetch a single user document from Firestore by UID.
    * Returns null if not found, never throws.
+   * NOTE: Queries by uid field, not document ID, to handle legacy data structure.
    */
   async getUserById(uid: string): Promise<User | null> {
       if (USE_DEMO_MODE) {
@@ -279,8 +280,25 @@ class AuthService {
       if (!db) return null;
 
       try {
+          // First try to get by document ID (standard approach)
           const snap = await getDoc(doc(db, 'users', uid));
-          return snap.exists() ? (snap.data() as User) : null;
+          if (snap.exists()) {
+              console.log("User found by document ID");
+              return snap.data() as User;
+          }
+
+          // Fallback: Query by uid field (for legacy document structure)
+          console.log("User not found by document ID, querying by uid field...");
+          const q = query(collection(db, 'users'), where('uid', '==', uid));
+          const querySnap = await getDocs(q);
+
+          if (!querySnap.empty) {
+              console.log("User found by uid field query");
+              return querySnap.docs[0].data() as User;
+          }
+
+          console.warn(`No user found for UID: ${uid}`);
+          return null;
       } catch (error) {
           console.error('Failed to fetch user by id:', error);
           return null;
