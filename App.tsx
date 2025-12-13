@@ -5,9 +5,9 @@ import { Button, Input, Modal } from './components/UI';
 import { api, auth } from './services/firebase';
 import { User, Role } from './types';
 
-// Import logos
-import PublicLogo from './images/PB English Transparent.png';
-import PortalLogo from "./images/Peoples' Committee Portal logo 2.png";
+// Logo paths (served from public directory)
+const PublicLogo = '/PB English Transparent.png';
+const PortalLogo = "/Peoples' Committee Portal logo 2.png";
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
