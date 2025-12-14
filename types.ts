@@ -116,10 +116,14 @@ export interface Application {
   pdfUrl?: string;
   stage2PdfUrl?: string;
 
+  // Feedback from Admins/Committee to Applicant
+  feedback?: string;
+
   // Computed fields for Admin View
   voteCountYes?: number;
   voteCountNo?: number;
   averageScore?: number;
+  scoreCount?: number;
 
   // --- Stage 1 (EOI) Data ---
   formData: {
@@ -190,13 +194,17 @@ export interface Application {
     budgetBreakdown?: BudgetLine[];
     additionalBudgetInfo?: string;
 
-    // Checklist
+    // Checklist / Uploads
     attachments?: {
         constitution?: boolean;
         safeguarding?: boolean;
         gdpr?: boolean;
         bankStatement?: boolean;
         insurance?: boolean;
+        // URLs for uploaded files
+        constitutionUrl?: string;
+        bankStatementUrl?: string;
+        otherUrl?: string;
     };
 
     // Declaration Part 2
