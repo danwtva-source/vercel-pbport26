@@ -387,6 +387,23 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
             {/* 1. Basic Info */}
             <section className="space-y-6">
                 <h3 className="font-bold text-xl border-b pb-2">1. Area & Applicant</h3>
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={fd.applyMultiArea} 
+                            onChange={e => up('applyMultiArea', e.target.checked)} 
+                            disabled={readOnly} 
+                            className="w-5 h-5 accent-blue-600" 
+                        />
+                        <span className="font-bold text-blue-900">I am applying for a Cross-Area Project (covers multiple areas)</span>
+                    </label>
+                    {fd.applyMultiArea && (
+                        <p className="text-sm text-blue-700 mt-2 ml-8">
+                            Please select your <strong>primary</strong> area below, but note in your summary which other areas this benefits.
+                        </p>
+                    )}
+                </div>
                 <div className="grid md:grid-cols-3 gap-4">
                     {AREAS.map(a => (
                         <label key={a} className={`border-2 p-4 rounded-xl flex items-center gap-3 cursor-pointer ${data.area === a ? 'bg-purple-50 border-brand-purple' : ''}`}>
