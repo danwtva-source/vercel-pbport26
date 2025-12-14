@@ -652,6 +652,8 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [currUser, setCurrUser] = useState(user);
     const [openRound, setOpenRound] = useState<Round | null>(null);
     const [hasActiveApp, setHasActiveApp] = useState(false);
+    const [showAreaSelection, setShowAreaSelection] = useState(false);
+    const [allRounds, setAllRounds] = useState<Round[]>([]);
 
     useEffect(() => {
         const load = async () => {
@@ -662,17 +664,23 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
 
             const userApps = myApps.filter(a => a.userId === user.uid);
             setApps(userApps);
+            setAllRounds(rounds);
 
             // Check for an active round for this user's area
             const now = new Date().toISOString().split('T')[0];
             const active = rounds.find(r =>
                 r.status === 'open' &&
-                (r.areas.length === 0 || (user.area && r.areas.includes(user.area))) &&
+                (r.areas.length === 0 || (currUser.area && r.areas.includes(currUser.area))) &&
                 r.startDate <= now &&
                 r.endDate >= now
             );
 
             setOpenRound(active || null);
+
+            // If no area is set and there are open rounds, prompt for area selection
+            if (!currUser.area && rounds.some(r => r.status === 'open' && r.startDate <= now && r.endDate >= now)) {
+                setShowAreaSelection(true);
+            }
 
             // Check if user has an active (non-final) application in this round
             if (active) {
@@ -684,7 +692,29 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
             }
         };
         load();
-    }, [user.uid, user.area]);
+    }, [user.uid, currUser.area]);
+
+    const handleAreaSelection = async (selectedArea: Area) => {
+        try {
+            // Update user profile with selected area
+            const updatedUser = await api.updateUserProfile(user.uid, { area: selectedArea });
+            setCurrUser(updatedUser);
+            setShowAreaSelection(false);
+
+            // Re-check for active rounds with the new area
+            const now = new Date().toISOString().split('T')[0];
+            const active = allRounds.find(r =>
+                r.status === 'open' &&
+                (r.areas.length === 0 || r.areas.includes(selectedArea)) &&
+                r.startDate <= now &&
+                r.endDate >= now
+            );
+            setOpenRound(active || null);
+        } catch (error) {
+            console.error('Error updating user area:', error);
+            alert('Failed to update your area. Please try again.');
+        }
+    };
 
     const handleSave = async (e: React.FormEvent, stage: string) => {
         e.preventDefault();
@@ -702,6 +732,12 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
             await api.updateApplication(activeApp.id, finalApp);
           } else {
             await api.createApplication(finalApp as Application);
+          }
+
+          // If user doesn't have an area set but selected one in the application, update their profile
+          if (!currUser.area && activeApp.area) {
+            const updatedUser = await api.updateUserProfile(user.uid, { area: activeApp.area });
+            setCurrUser(updatedUser);
           }
 
           // Reload applications
@@ -783,6 +819,36 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
                 {apps.length === 0 && <p className="text-center text-gray-500 py-10">You haven't started any applications yet.</p>}
             </div>
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currUser} onSave={setCurrUser} />
+
+            {/* Area Selection Modal for New Applicants */}
+            {showAreaSelection && (
+                <Modal isOpen={true} onClose={() => setShowAreaSelection(false)} title="Select Your Area">
+                    <div className="space-y-6">
+                        <p className="text-gray-600">
+                            Welcome! To see funding rounds available in your area, please select which area you're from:
+                        </p>
+                        <div className="grid gap-4">
+                            {AREAS.map(area => (
+                                <button
+                                    key={area}
+                                    onClick={() => handleAreaSelection(area)}
+                                    className="p-6 border-2 border-gray-200 rounded-xl hover:border-brand-purple hover:bg-purple-50 transition-all text-left group"
+                                >
+                                    <h3 className="font-bold text-lg text-gray-800 group-hover:text-brand-purple mb-2">
+                                        {area}
+                                    </h3>
+                                    <p className="text-sm text-gray-500">
+                                        Click to select this area
+                                    </p>
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-sm text-gray-500 text-center">
+                            You can change this later in your profile settings.
+                        </p>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
