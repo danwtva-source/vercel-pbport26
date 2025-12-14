@@ -211,7 +211,10 @@ function App() {
                     className="h-20 w-auto object-contain drop-shadow-sm"
                     onError={(e) => {
                       console.error('Logo failed to load:', logoSrc);
-                      e.currentTarget.style.display='none';
+                      // Fallback to public logo if committee logo fails
+                      if (logoSrc !== PublicLogo) {
+                        e.currentTarget.src = PublicLogo;
+                      }
                     }}
                 />
             </div>
