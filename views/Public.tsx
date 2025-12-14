@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Card, Input, FileCard } from '../components/UI';
-import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
+import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS, PUBLIC_DOCS } from '../constants';
 
 // --- STYLED CAROUSEL (Original Aesthetic) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
@@ -321,33 +321,74 @@ export const Timeline: React.FC = () => {
 
 // --- PUBLIC DOCUMENTS (Styled) ---
 export const PublicDocuments: React.FC = () => {
+    const part1Docs = PUBLIC_DOCS.filter(doc => doc.category === 'Part 1');
+    const part2Docs = PUBLIC_DOCS.filter(doc => doc.category === 'Part 2');
+
+    const DocumentCard = ({ doc }: { doc: typeof PUBLIC_DOCS[0] }) => (
+        <a
+            href={doc.url}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group bg-white p-6 rounded-2xl shadow-sm hover:shadow-xl border border-gray-100 transition-all hover:-translate-y-1 block"
+        >
+            <div className="flex items-start gap-4">
+                <div className="w-14 h-14 bg-purple-50 rounded-xl flex items-center justify-center text-2xl group-hover:bg-brand-purple group-hover:text-white transition-colors shadow-sm flex-shrink-0">
+                    📄
+                </div>
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-bold font-dynapuff text-gray-800 mb-1 group-hover:text-brand-purple transition-colors">{doc.title}</h3>
+                    <p className="text-sm text-gray-500 mb-3">{doc.desc}</p>
+                    <span className="text-xs font-bold text-brand-teal uppercase tracking-wider flex items-center gap-1 group-hover:gap-2 transition-all">
+                        Download PDF <span>→</span>
+                    </span>
+                </div>
+            </div>
+        </a>
+    );
+
     return (
         <div className="min-h-screen bg-slate-50 py-20 px-4 animate-fade-in">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-6xl mx-auto">
                 <div className="text-center mb-16">
-                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Resource Centre</h1>
-                    <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                        Download guidance notes, templates, and application forms.
+                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Application Documents Hub</h1>
+                    <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+                        Download all necessary documents and forms for the Communities' Choice PB Initiative. Part 1 is for initial applications, Part 2 is for shortlisted projects.
                     </p>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
-                    {COMMITTEE_DOCS.map((doc, i) => (
-                        <div key={i} onClick={() => window.open(doc.url, '_blank')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border border-gray-100 cursor-pointer transition-all hover:-translate-y-1">
-                            <div className="flex items-start gap-6">
-                                <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-brand-purple group-hover:text-white transition-colors shadow-sm">
-                                    📄
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="text-xl font-bold font-dynapuff text-gray-800 mb-2 group-hover:text-brand-purple transition-colors">{doc.title}</h3>
-                                    <p className="text-gray-500 mb-4">{doc.desc}</p>
-                                    <span className="text-sm font-bold text-brand-teal uppercase tracking-wider flex items-center gap-1 group-hover:gap-2 transition-all">
-                                        Download PDF <span>→</span>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                {/* Part 1 Documents */}
+                <div className="mb-12">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
+                        <h2 className="text-3xl font-bold font-dynapuff text-brand-purple">Part 1 Documents</h2>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
+                    </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {part1Docs.map((doc, i) => (
+                            <DocumentCard key={i} doc={doc} />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Part 2 Documents */}
+                <div>
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
+                        <h2 className="text-3xl font-bold font-dynapuff text-brand-purple">Part 2 Documents</h2>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
+                    </div>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {part2Docs.map((doc, i) => (
+                            <DocumentCard key={i} doc={doc} />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="mt-12 text-center">
+                    <p className="text-gray-600 max-w-2xl mx-auto">
+                        For inquiries, please contact the team. <strong>Torfaen Voluntary Alliance (TVA)</strong> also offers support with required documents and policies.
+                    </p>
                 </div>
             </div>
         </div>

@@ -36,11 +36,64 @@ export const ORG_TYPES = [
     "Private Business / Limited Company"
 ];
 
+// Public Documents - Available to all applicants
+export const PUBLIC_DOCS = [
+    {
+        title: 'PB 1.1 - EOI Form (Part 1)',
+        desc: 'Expression of Interest application form',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.1%20-%20EOI%20Form%20(Part%201).pdf',
+        category: 'Part 1'
+    },
+    {
+        title: 'PB 1.2 - Our Priorities Report',
+        desc: 'Community priorities identified through consultation',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.2%20-%20Our%20Priorities%20Report.pdf',
+        category: 'Part 1'
+    },
+    {
+        title: 'PB 1.3 - Application Guidance',
+        desc: 'Guidance for completing Part 1 applications',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.3%20-%20Application%20Guidance.pdf',
+        category: 'Part 1'
+    },
+    {
+        title: 'PB 2.1 - Full Application Form (Part 2)',
+        desc: 'Detailed application for shortlisted projects',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%202.1%20-%20Full%20Application%20Form%20(Part%202)%20final.pdf',
+        category: 'Part 2'
+    },
+    {
+        title: 'PB 2.2 - Cross-Area Budget Template',
+        desc: 'Budget template for multi-area projects',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%202.2%20-%20Cross-Area%20Application%20Budget%20Template%20(draft%20v2).pdf',
+        category: 'Part 2'
+    },
+    {
+        title: "PB 2.3 - People's Committee Advisory Template",
+        desc: 'Template for committee feedback and advisory notes',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%202.3%20Peoples%20Committee%20Advisory%20Template.pdf',
+        category: 'Part 2'
+    },
+    {
+        title: 'PB 2.4 - Application Guidance (Part 2)',
+        desc: 'Guidance for completing Part 2 full applications',
+        url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%202.4%20Application%20Guidance%20(Part%202).pdf',
+        category: 'Part 2'
+    }
+];
+
+// Committee Documents - Internal resources for committee members
 export const COMMITTEE_DOCS = [
-    { title: 'PB 1.1 - EOI Form', desc: 'The main Expression of Interest application form (Part 1).', url: '#' },
-    { title: 'PB 1.2 - Priorities Report', desc: 'A report detailing the funding priorities identified by the community.', url: '#' },
-    { title: 'PB 1.3 - Application Guidance', desc: 'Guidance notes for completing the Part 1 EOI application.', url: '#' },
-    { title: 'PB 2.1 - Full Application', desc: 'The full, detailed application form for shortlisted projects (Part 2).', url: '#' }
+    {
+        title: 'Scoring Matrix Guide',
+        desc: 'Detailed guide for scoring Stage 2 applications',
+        url: '#'
+    },
+    {
+        title: 'Committee Meeting Minutes',
+        desc: 'Minutes from committee meetings and decisions',
+        url: '#'
+    }
 ];
 
 export const PRIORITY_DATA = {

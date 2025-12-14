@@ -821,6 +821,17 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     const myVotes = votes.filter(v => v.voterId === user.uid);
     const myScores = scores.filter(s => s.scorerId === user.uid);
 
+    // Combined task list for all applications
+    const allTasks = [...stage1Apps, ...stage2Apps];
+    const completedTasks = allTasks.filter(app => {
+        if (app.status === 'Submitted-Stage1') {
+            return myVotes.some(v => v.appId === app.id);
+        } else {
+            return myScores.some(s => s.appId === app.id);
+        }
+    });
+    const progressPercent = allTasks.length > 0 ? Math.round((completedTasks.length / allTasks.length) * 100) : 0;
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-8">
@@ -831,8 +842,11 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                 </div>
             </div>
 
-            {/* Stage 1: Voting */}
-            <Card className="mb-8 bg-green-50 border-green-200">
+            <div className="grid lg:grid-cols-[1fr,350px] gap-6">
+                {/* Main Content */}
+                <div>
+                    {/* Stage 1: Voting */}
+                    <Card className="mb-8 bg-green-50 border-green-200">
                 <h2 className="font-bold text-green-900 text-xl mb-4">📋 Stage 1: Vote on Expressions of Interest</h2>
                 <p className="text-sm text-green-700 mb-4">
                   Vote YES or NO on whether applications should proceed to Stage 2. You have voted on {myVotes.length} of {stage1Apps.length} applications.
@@ -888,6 +902,76 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                     {stage2Apps.length === 0 && <p className="text-purple-700 col-span-full">No Stage 2 applications pending.</p>}
                 </div>
             </Card>
+                </div>
+
+                {/* Task List Sidebar */}
+                <div className="lg:sticky lg:top-24 lg:self-start">
+                    <Card className="bg-white shadow-lg">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4 font-dynapuff">My Review Tasks</h3>
+
+                        {allTasks.length === 0 ? (
+                            <p className="text-gray-500 text-sm">No applications assigned to your area.</p>
+                        ) : (
+                            <>
+                                {/* Task List */}
+                                <div className="space-y-2 mb-4 max-h-[400px] overflow-y-auto">
+                                    {allTasks.map(app => {
+                                        const isStage1 = app.status === 'Submitted-Stage1';
+                                        const isCompleted = isStage1
+                                            ? myVotes.some(v => v.appId === app.id)
+                                            : myScores.some(s => s.appId === app.id);
+
+                                        let statusBadge;
+                                        if (isCompleted) {
+                                            statusBadge = <span className="text-xs font-bold text-teal-600 bg-teal-100 px-2 py-1 rounded-full">Completed</span>;
+                                        } else {
+                                            statusBadge = <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-full">Pending</span>;
+                                        }
+
+                                        return (
+                                            <button
+                                                key={app.id}
+                                                onClick={() => handleAction(app)}
+                                                className="w-full text-left p-3 rounded-md bg-gray-50 hover:bg-purple-50 hover:border-purple-200 border border-gray-200 transition-colors"
+                                            >
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-800 truncate">{app.projectTitle}</p>
+                                                        <p className="text-xs text-gray-500">{app.orgName}</p>
+                                                        <p className="text-xs text-purple-600 mt-1">{isStage1 ? 'Stage 1: Vote' : 'Stage 2: Score'}</p>
+                                                    </div>
+                                                    {statusBadge}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Progress Summary */}
+                                <div className="pt-4 border-t">
+                                    {progressPercent === 100 && allTasks.length > 0 ? (
+                                        <div className="text-center p-4 bg-teal-100 text-teal-800 rounded-lg font-bold text-sm">
+                                            🎉 All applications reviewed!
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-sm font-semibold text-gray-700 mb-2">
+                                                {completedTasks.length} of {allTasks.length} applications reviewed
+                                            </p>
+                                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                <div
+                                                    className="bg-teal-600 h-2.5 rounded-full transition-all duration-300"
+                                                    style={{ width: `${progressPercent}%` }}
+                                                ></div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </Card>
+                </div>
+            </div>
 
             {selectedApp && voteModalOpen && (
               <VoteModal
