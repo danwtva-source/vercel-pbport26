@@ -4,6 +4,7 @@ import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 // --- CONFIGURATION ---
 // Set to FALSE for production.
@@ -22,6 +23,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 const DEFAULT_SETTINGS: PortalSettings = {
     stage1Visible: true,
@@ -47,6 +49,66 @@ export const exportToCSV = (data: any[], filename: string) => {
     link.href = URL.createObjectURL(blob);
     link.download = `${filename}.csv`;
     link.click();
+};
+
+// --- HELPER: Upload Profile Image to Firebase Storage ---
+export const uploadProfileImage = async (userId: string, file: File): Promise<string> => {
+    if (USE_DEMO_MODE) {
+        // In demo mode, return a placeholder
+        return `https://ui-avatars.com/api/?name=${userId}&background=random`;
+    }
+
+    if (!storage) {
+        throw new Error("Firebase Storage not initialized");
+    }
+
+    try {
+        // Create a unique filename with timestamp to avoid collisions
+        const timestamp = Date.now();
+        const fileExtension = file.name.split('.').pop();
+        const filename = `profile_${userId}_${timestamp}.${fileExtension}`;
+
+        // Create a reference to the storage location
+        const storageRef = ref(storage, `profile-images/${filename}`);
+
+        // Upload the file
+        console.log("Uploading image to Firebase Storage...");
+        const snapshot = await uploadBytes(storageRef, file);
+        console.log("Upload successful, getting download URL...");
+
+        // Get the download URL
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        console.log("Download URL obtained:", downloadURL);
+
+        return downloadURL;
+    } catch (error) {
+        console.error("Error uploading image to Firebase Storage:", error);
+        throw new Error(`Failed to upload image: ${(error as Error).message}`);
+    }
+};
+
+// --- HELPER: Delete Old Profile Image from Storage ---
+export const deleteProfileImage = async (imageUrl: string): Promise<void> => {
+    if (USE_DEMO_MODE || !storage || !imageUrl) return;
+
+    try {
+        // Only delete if it's a Firebase Storage URL
+        if (imageUrl.includes('firebasestorage.googleapis.com')) {
+            // Extract the file path from the URL
+            const decodedUrl = decodeURIComponent(imageUrl);
+            const pathMatch = decodedUrl.match(/\/o\/(.+?)\?/);
+
+            if (pathMatch && pathMatch[1]) {
+                const filePath = pathMatch[1];
+                const storageRef = ref(storage, filePath);
+                await deleteObject(storageRef);
+                console.log("Old profile image deleted from storage");
+            }
+        }
+    } catch (error) {
+        // Don't throw error if deletion fails - it's not critical
+        console.warn("Could not delete old profile image:", error);
+    }
 };
 
 class AuthService {

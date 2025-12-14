@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
 import { AdminRounds } from './AdminRounds';
-import { api, exportToCSV, seedDatabase, auth } from '../services/firebase';
+import { api, exportToCSV, seedDatabase, auth, uploadProfileImage, deleteProfileImage } from '../services/firebase';
 import { Button, Card, Input, Modal, Badge, BarChart, FileCard } from '../components/UI';
 
 // --- SHARED COMPONENTS & HELPERS ---
@@ -40,36 +40,54 @@ const printApplication = (app: Application) => {
 
 const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User; onSave: (u: User) => void; }> = ({ isOpen, onClose, user, onSave }) => {
     const [data, setData] = useState({ displayName: user.displayName || '', bio: user.bio || '', phone: user.phone || '', address: user.address || '', roleDescription: user.roleDescription || '', photoUrl: user.photoUrl || '' });
+    const [uploadingImage, setUploadingImage] = useState(false);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-          // Check file size (limit to 700KB to stay under Firestore's 1MB limit after base64 encoding)
-          const maxSizeKB = 700;
-          const fileSizeKB = file.size / 1024;
+        if (!file) return;
 
-          if (fileSizeKB > maxSizeKB) {
-            alert(`Image is too large (${Math.round(fileSizeKB)}KB). Please use an image smaller than ${maxSizeKB}KB.\n\nTip: Use an image compression tool or resize the image before uploading.`);
-            e.target.value = ''; // Clear the file input
+        try {
+          setUploadingImage(true);
+
+          // Validate file type
+          if (!file.type.startsWith('image/')) {
+            alert('Please select an image file (JPG, PNG, etc.)');
+            e.target.value = '';
+            setUploadingImage(false);
             return;
           }
 
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64String = reader.result as string;
-            // Double-check the base64 size doesn't exceed Firestore's limit
-            const base64SizeBytes = base64String.length;
-            const firestoreLimit = 1048487; // Firestore's field size limit
+          // Validate file size (limit to 5MB for Firebase Storage)
+          const maxSizeMB = 5;
+          const fileSizeMB = file.size / (1024 * 1024);
 
-            if (base64SizeBytes > firestoreLimit) {
-              alert(`Image is too large after encoding (${Math.round(base64SizeBytes/1024)}KB). Please use a smaller image (under 600KB).`);
-              e.target.value = '';
-              return;
-            }
+          if (fileSizeMB > maxSizeMB) {
+            alert(`Image is too large (${fileSizeMB.toFixed(1)}MB). Please use an image smaller than ${maxSizeMB}MB.`);
+            e.target.value = '';
+            setUploadingImage(false);
+            return;
+          }
 
-            setData(prev => ({ ...prev, photoUrl: base64String }));
-          };
-          reader.readAsDataURL(file);
+          console.log("Uploading profile image to Firebase Storage...");
+
+          // Delete old image if it exists and is from Firebase Storage
+          if (data.photoUrl) {
+            await deleteProfileImage(data.photoUrl);
+          }
+
+          // Upload to Firebase Storage
+          const downloadURL = await uploadProfileImage(user.uid, file);
+
+          // Update the data state with the new URL
+          setData(prev => ({ ...prev, photoUrl: downloadURL }));
+
+          console.log("Profile image uploaded successfully!");
+        } catch (error) {
+          console.error("Error uploading image:", error);
+          alert(`Failed to upload image: ${(error as Error).message}`);
+          e.target.value = '';
+        } finally {
+          setUploadingImage(false);
         }
     };
 
@@ -91,11 +109,21 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-32 h-32 rounded-full bg-gray-100 overflow-hidden border-4 border-purple-100 relative group shadow-inner">
                         <img src={data.photoUrl || `https://ui-avatars.com/api/?name=${data.displayName}&background=random`} alt="Profile" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
-                          <span className="text-white text-xs font-bold uppercase tracking-widest">Change</span>
-                        </div>
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        {uploadingImage ? (
+                          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                              <span className="text-white text-xs font-bold">Uploading...</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                            <span className="text-white text-xs font-bold uppercase tracking-widest">Change</span>
+                          </div>
+                        )}
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploadingImage} />
                     </div>
+                    {uploadingImage && <p className="text-sm text-gray-500 animate-pulse">Uploading to Firebase Storage...</p>}
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                     <Input label="Display Name" value={data.displayName} onChange={e => setData({...data, displayName: e.target.value})} required />
