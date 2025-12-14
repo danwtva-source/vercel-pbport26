@@ -59,7 +59,6 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
     );
 };
 
-// --- USER MANAGEMENT MODAL ---
 const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
     const [formData, setFormData] = useState<Partial<User>>({ email: '', username: '', displayName: '', role: 'applicant' });
     const [password, setPassword] = useState('');
@@ -112,7 +111,83 @@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User
     );
 };
 
-// --- ADMIN DOCUMENT CENTRE ---
+const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; user: User; onSave: () => void; }> = ({ isOpen, onClose, app, user, onSave }) => {
+    const [breakdown, setBreakdown] = useState<Record<string, number>>({});
+    const [notes, setNotes] = useState<Record<string, string>>({});
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        let total = 0;
+        let maxTotal = 0;
+        
+        SCORING_CRITERIA.forEach(c => {
+            const score = breakdown[c.id] || 0;
+            total += score * c.weight;
+            maxTotal += 100 * c.weight;
+        });
+        
+        const weightedTotal = Math.round((total / maxTotal) * 100);
+
+        const newScore: Score = {
+            id: `${app.id}_${user.uid}`,
+            appId: app.id,
+            scorerId: user.uid,
+            scorerName: user.displayName,
+            weightedTotal,
+            breakdown,
+            notes,
+            isFinal: true,
+            createdAt: new Date().toISOString()
+        };
+
+        await api.saveScore(newScore);
+        onSave();
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="lg">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm">
+                    Please score each criterion from 0-100. The system will automatically calculate the weighted total based on committee priorities.
+                </div>
+                
+                {SCORING_CRITERIA.map(criterion => (
+                    <div key={criterion.id} className="border-b pb-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <div>
+                                <h4 className="font-bold text-gray-800">{criterion.name}</h4>
+                                <p className="text-xs text-gray-500">{criterion.details}</p>
+                            </div>
+                            <Badge>Weight: {criterion.weight}x</Badge>
+                        </div>
+                        <div className="flex gap-4 items-center">
+                            <input 
+                                type="range" min="0" max="100" step="5" 
+                                value={breakdown[criterion.id] || 0}
+                                onChange={e => setBreakdown({ ...breakdown, [criterion.id]: Number(e.target.value) })}
+                                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-purple"
+                            />
+                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}</div>
+                        </div>
+                        <textarea 
+                            placeholder="Optional comments..."
+                            className="w-full mt-2 p-2 text-sm border rounded-lg"
+                            value={notes[criterion.id] || ''}
+                            onChange={e => setNotes({ ...notes, [criterion.id]: e.target.value })}
+                        />
+                    </div>
+                ))}
+                
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="ghost" onClick={onClose} type="button">Cancel</Button>
+                    <Button type="submit">Submit Score</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
 const AdminDocCentre: React.FC = () => {
     const [docs, setDocs] = useState<AdminDocument[]>([]);
     const [uploading, setUploading] = useState(false);
@@ -129,7 +204,7 @@ const AdminDocCentre: React.FC = () => {
                 type: 'file',
                 parentId: 'root',
                 url,
-                category: 'committee-only', // Defaulting for now
+                category: 'committee-only', 
                 uploadedBy: auth.currentUser?.uid || 'admin',
                 createdAt: Date.now()
             };
@@ -166,7 +241,6 @@ const AdminDocCentre: React.FC = () => {
     );
 };
 
-// --- ADMIN SCORING MONITOR ---
 const ScoringMonitor: React.FC<{ onExit: () => void }> = ({ onExit }) => {
     const [apps, setApps] = useState<Application[]>([]);
     const [users, setUsers] = useState<User[]>([]);
@@ -529,33 +603,42 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [settings, setSettings] = useState<PortalSettings | null>(null);
+    const [scoringApp, setScoringApp] = useState<Application | null>(null);
 
-    useEffect(() => {
+    const refresh = () => {
         Promise.all([
-            api.getApplications(), // Get ALL, then filter
+            api.getApplications(), 
             api.getVotes(),
             api.getScores(),
             api.getAssignments(user.uid),
             api.getPortalSettings()
         ]).then(([allApps, allVotes, allScores, myAssigns, portalSettings]) => {
-            // LOGIC: Show apps if (In My Area OR Cross-Area) OR (Explicitly Assigned to Me)
             const assignIds = myAssigns.map(a => a.applicationId);
             const filtered = isAdmin ? allApps : allApps.filter(a => 
                 a.area === user.area || 
                 a.area === 'Cross-Area' || 
                 assignIds.includes(a.id)
             );
-            setApps(filtered);
+            // Sort: Action required first
+            const sorted = filtered.sort((a, b) => {
+                const aNeedsAction = (a.status === 'Submitted-Stage1' && !allVotes.some(v => v.appId === a.id && v.voterId === user.uid)) || (a.status === 'Submitted-Stage2' && !allScores.some(s => s.appId === a.id && s.scorerId === user.uid));
+                const bNeedsAction = (b.status === 'Submitted-Stage1' && !allVotes.some(v => v.appId === b.id && v.voterId === user.uid)) || (b.status === 'Submitted-Stage2' && !allScores.some(s => s.appId === b.id && s.scorerId === user.uid));
+                return aNeedsAction === bNeedsAction ? 0 : aNeedsAction ? -1 : 1;
+            });
+            
+            setApps(sorted);
             setVotes(allVotes);
             setScores(allScores);
             setAssignments(myAssigns);
             setSettings(portalSettings);
         });
-    }, [user.uid, user.area, isAdmin]);
+    };
+
+    useEffect(() => { refresh(); }, [user.uid, user.area, isAdmin]);
 
     const handleVote = async (appId: string, decision: 'yes'|'no') => {
         await api.saveVote({ id: `${appId}_${user.uid}`, appId, voterId: user.uid, decision, createdAt: new Date().toISOString() });
-        const v = await api.getVotes(); setVotes(v);
+        refresh();
     };
 
     return (
@@ -563,71 +646,78 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold font-dynapuff">{user.area || 'Committee'} Dashboard</h1>
-                    {isAdmin && <Badge variant="warning" className="ml-2">Admin View</Badge>}
+                    <p className="text-gray-500 text-sm">Your assigned tasks and applications.</p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setIsProfileOpen(true)}>Profile</Button>
-                    {isAdmin && <Button onClick={onReturnToAdmin}>Exit Scoring Mode</Button>}
+                    {isAdmin && <Button onClick={onReturnToAdmin}>Exit Admin View</Button>}
                 </div>
             </div>
             
-            <Card>
-                <div className="flex justify-between mb-6">
-                    <h3 className="font-bold text-xl">My Task List</h3>
-                    <div className="text-sm text-gray-500">Showing applications for: <span className="font-bold text-gray-800">{user.area}</span></div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 border-b">
-                            <tr>
-                                <th className="p-4">Ref</th>
-                                <th className="p-4">Project Title</th>
-                                <th className="p-4">Organisation</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4">My Action</th>
-                                <th className="p-4">Tools</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {apps.map(app => {
-                                const hasVoted = votes.some(v => v.appId === app.id && v.voterId === user.uid);
-                                const hasScored = scores.some(s => s.appId === app.id && s.scorerId === user.uid);
-                                const isAssigned = assignments.some(a => a.applicationId === app.id);
-                                
-                                let statusBadge = <Badge variant="default">Pending</Badge>;
-                                if (app.status === 'Submitted-Stage1') {
-                                    statusBadge = hasVoted ? <Badge variant="success">Voted</Badge> : <Badge variant="warning">Vote Needed</Badge>;
-                                } else if (app.status === 'Submitted-Stage2') {
-                                    statusBadge = hasScored ? <Badge variant="success">Scored</Badge> : <Badge variant="warning">Score Needed</Badge>;
-                                } else {
-                                    statusBadge = <Badge>Info Only</Badge>;
-                                }
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {apps.length === 0 && <p className="text-gray-500 col-span-3 text-center py-12">No tasks assigned yet.</p>}
+                
+                {apps.map(app => {
+                    const hasVoted = votes.some(v => v.appId === app.id && v.voterId === user.uid);
+                    const hasScored = scores.some(s => s.appId === app.id && s.scorerId === user.uid);
+                    
+                    let actionRequired = false;
+                    let statusBadge = <Badge variant="default">Pending</Badge>;
+                    let cardBorder = "border-l-gray-300";
 
-                                return (
-                                    <tr key={app.id} className="border-b hover:bg-gray-50 transition-colors">
-                                        <td className="p-4 font-mono text-gray-600">{app.ref}</td>
-                                        <td className="p-4 font-bold text-gray-800">{app.projectTitle}</td>
-                                        <td className="p-4 text-gray-600">{app.orgName}</td>
-                                        <td className="p-4"><Badge>{app.status}</Badge></td>
-                                        <td className="p-4">{statusBadge}</td>
-                                        <td className="p-4 flex gap-2">
-                                            <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View</Button>
-                                            
-                                            {!hasVoted && app.status === 'Submitted-Stage1' && (
-                                                <div className="flex gap-1">
-                                                    <button onClick={() => handleVote(app.id, 'yes')} className="bg-green-100 text-green-700 hover:bg-green-200 p-1.5 rounded-lg text-xs font-bold">Yes</button>
-                                                    <button onClick={() => handleVote(app.id, 'no')} className="bg-red-100 text-red-700 hover:bg-red-200 p-1.5 rounded-lg text-xs font-bold">No</button>
-                                                </div>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
+                    if (app.status === 'Submitted-Stage1') {
+                        if (hasVoted) {
+                             statusBadge = <Badge variant="success">Voted</Badge>;
+                             cardBorder = "border-l-green-500";
+                        } else {
+                             statusBadge = <Badge variant="warning">Vote Needed</Badge>;
+                             actionRequired = true;
+                             cardBorder = "border-l-orange-500";
+                        }
+                    } else if (app.status === 'Submitted-Stage2') {
+                        if (hasScored) {
+                             statusBadge = <Badge variant="success">Scored</Badge>;
+                             cardBorder = "border-l-green-500";
+                        } else {
+                             statusBadge = <Badge variant="warning">Score Needed</Badge>;
+                             actionRequired = true;
+                             cardBorder = "border-l-purple-500";
+                        }
+                    } else {
+                        statusBadge = <Badge>Info Only</Badge>;
+                    }
+
+                    return (
+                        <Card key={app.id} className={`flex flex-col h-full border-l-4 ${cardBorder} shadow-sm hover:shadow-md transition-shadow`}>
+                            <div className="flex justify-between items-start mb-4">
+                                <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">{app.ref}</span>
+                                {statusBadge}
+                            </div>
+                            
+                            <h3 className="font-bold text-lg mb-1 leading-tight line-clamp-2">{app.projectTitle}</h3>
+                            <p className="text-sm text-gray-500 mb-4">{app.orgName}</p>
+
+                            <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center gap-2">
+                                <Button size="sm" variant="outline" className="flex-1" onClick={() => printApplication(app)}>View PDF</Button>
+                                
+                                {actionRequired && app.status === 'Submitted-Stage1' && (
+                                    <>
+                                        <button onClick={() => handleVote(app.id, 'yes')} className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-2 rounded-lg text-sm font-bold transition-colors">Yes</button>
+                                        <button onClick={() => handleVote(app.id, 'no')} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-2 rounded-lg text-sm font-bold transition-colors">No</button>
+                                    </>
+                                )}
+                                
+                                {actionRequired && app.status === 'Submitted-Stage2' && (
+                                    <Button size="sm" className="bg-brand-purple text-white hover:bg-purple-800" onClick={() => setScoringApp(app)}>Score App</Button>
+                                )}
+                            </div>
+                        </Card>
+                    );
+                })}
+            </div>
+
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onSave={onUpdateUser} />
+            {scoringApp && <ScoringModal isOpen={!!scoringApp} onClose={() => setScoringApp(null)} app={scoringApp} user={user} onSave={refresh} />}
         </div>
     );
 };
@@ -638,6 +728,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [scores, setScores] = useState<Score[]>([]);
+    const [votes, setVotes] = useState<Vote[]>([]);
     const [settings, setSettings] = useState<PortalSettings | null>(null);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -645,25 +736,36 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     const [isScoringMode, setIsScoringMode] = useState(false);
 
     const refresh = async () => {
-        const [a, l, u, s, set] = await Promise.all([
+        const [a, l, u, s, v, set] = await Promise.all([
             api.getApplications(),
             api.getAuditLogs(),
             api.getUsers(),
             api.getScores(),
+            api.getVotes(),
             api.getPortalSettings()
         ]);
         
         // Enrich apps with computed scores for the dashboard
         const enriched = a.map(app => {
             const appScores = s.filter(x => x.appId === app.id);
+            const appVotes = v.filter(x => x.appId === app.id);
             const avg = appScores.length > 0 ? Math.round(appScores.reduce((sum, curr) => sum + curr.weightedTotal, 0) / appScores.length) : 0;
-            return { ...app, averageScore: avg, scoreCount: appScores.length };
+            const yes = appVotes.filter(x => x.decision === 'yes').length;
+            const no = appVotes.filter(x => x.decision === 'no').length;
+            return { 
+                ...app, 
+                averageScore: avg, 
+                scoreCount: appScores.length,
+                voteCountYes: yes,
+                voteCountNo: no
+            };
         });
 
         setApps(enriched);
         setLogs(l);
         setUsers(u);
         setScores(s);
+        setVotes(v);
         setSettings(set);
         if (set) setThresholdInput(set.scoringThreshold);
     };
@@ -796,7 +898,8 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                                     <th className="p-4">Ref</th>
                                     <th className="p-4">Project Title</th>
                                     <th className="p-4">Area</th>
-                                    <th className="p-4">Score</th>
+                                    <th className="p-4">Stage 1 (Votes)</th>
+                                    <th className="p-4">Stage 2 (Score)</th>
                                     <th className="p-4">Status</th>
                                     <th className="p-4">Actions</th>
                                 </tr>
@@ -807,6 +910,13 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                                         <td className="p-4 font-mono text-gray-600 font-bold">{app.ref}</td>
                                         <td className="p-4 font-bold text-gray-800">{app.projectTitle}</td>
                                         <td className="p-4">{app.area}</td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="text-green-600 font-bold">{app.voteCountYes || 0} Yes</span>
+                                                <span className="text-gray-300">|</span>
+                                                <span className="text-red-500 font-bold">{app.voteCountNo || 0} No</span>
+                                            </div>
+                                        </td>
                                         <td className="p-4">
                                             {app.averageScore ? (
                                                 <Badge className={app.averageScore >= (settings?.scoringThreshold || 50) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
