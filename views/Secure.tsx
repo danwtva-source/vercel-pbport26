@@ -58,6 +58,59 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
     );
 };
 
+// --- USER MANAGEMENT MODAL ---
+const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
+    const [formData, setFormData] = useState<Partial<User>>({ email: '', username: '', displayName: '', role: 'applicant' });
+    const [password, setPassword] = useState('');
+
+    useEffect(() => {
+      if (user) setFormData(user);
+      else setFormData({ email: '', username: '', displayName: '', role: 'applicant' });
+      setPassword('');
+    }, [user, isOpen]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+          if (user) await api.updateUser({ ...user, ...formData } as User);
+          else await api.adminCreateUser(formData as User, password);
+          onSave();
+          onClose();
+        } catch (error) { alert('Failed to save user.'); }
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
+                <Input label="Username" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!user} required />
+                <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
+                {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-bold mb-2">Role</label>
+                        <select className="w-full p-3 border rounded-xl" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}>
+                            <option value="applicant">Applicant</option>
+                            <option value="committee">Committee</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    {formData.role === 'committee' && (
+                        <div>
+                            <label className="block text-sm font-bold mb-2">Area</label>
+                            <select className="w-full p-3 border rounded-xl" value={formData.area || ''} onChange={e => setFormData({...formData, area: e.target.value as Area})}>
+                                <option value="">Select Area...</option>
+                                {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        </div>
+                    )}
+                </div>
+                <Button type="submit" className="w-full mt-4">Save User</Button>
+            </form>
+        </Modal>
+    );
+};
+
 // --- DIGITAL FORMS ---
 
 const FormHeader: React.FC<{ title: string; subtitle: string; readOnly?: boolean }> = ({ title, subtitle, readOnly }) => (
@@ -370,10 +423,14 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     const [tab, setTab] = useState('master');
     const [apps, setApps] = useState<Application[]>([]);
     const [logs, setLogs] = useState<AuditLog[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
 
     const refresh = () => {
         api.getApplications().then(setApps);
         api.getAuditLogs().then(setLogs);
+        api.getUsers().then(setUsers);
     };
     useEffect(() => { refresh(); }, []);
 
@@ -421,6 +478,31 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
 
             {tab === 'rounds' && <AdminRounds />}
             
+            {tab === 'users' && (
+                <Card>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-xl">User Management</h3>
+                        <Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ New User</Button>
+                    </div>
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Area</th><th className="p-3">Action</th></tr></thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.uid} className="border-b">
+                                    <td className="p-3">{u.displayName || u.email}</td>
+                                    <td className="p-3"><Badge>{u.role}</Badge></td>
+                                    <td className="p-3">{u.area || '-'}</td>
+                                    <td className="p-3">
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 hover:underline mr-2">Edit</button>
+                                        <button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); } }} className="text-red-600 hover:underline">Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </Card>
+            )}
+
             {tab === 'logs' && (
                 <Card>
                     <h3 className="font-bold mb-4">Audit Logs</h3>
@@ -435,6 +517,8 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     </div>
                 </Card>
             )}
+            
+            {isUserModalOpen && <UserFormModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} user={editingUser} onSave={refresh} />}
         </div>
     );
 };
