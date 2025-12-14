@@ -375,6 +375,11 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
         onSubmit('Submitted-Stage1');
     };
 
+    const toggleArray = (arr: string[] | undefined, val: string) => {
+        const safe = arr || [];
+        return safe.includes(val) ? safe.filter(x => x !== val) : [...safe, val];
+    };
+
     return (
         <form onSubmit={handleSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-5xl mx-auto border border-gray-100">
             <FormHeader title="Expression of Interest" subtitle="Part 1 - Initial Proposal" readOnly={readOnly} />
@@ -398,7 +403,7 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
                 </div>
             </section>
 
-            {/* 2. Project */}
+            {/* 2. Project Details */}
             <section className="space-y-6">
                 <h3 className="font-bold text-xl border-b pb-2">2. Project Details</h3>
                 <Input label="Project Title" value={data.projectTitle} onChange={e => onChange({...data, projectTitle: e.target.value})} disabled={readOnly} required />
@@ -411,6 +416,62 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
                     <div className="bg-teal-50 p-6 rounded-xl">
                         <Input label="Amount Requested (£)" type="number" value={data.amountRequested} onChange={e => onChange({...data, amountRequested: Number(e.target.value)})} disabled={readOnly} required />
                     </div>
+                </div>
+            </section>
+
+            {/* 3. Timeline & Specifics */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">3. Timeline & Theme</h3>
+                <Input label="Project Theme / Priority (optional)" value={fd.projectTheme} onChange={e => up('projectTheme', e.target.value)} disabled={readOnly} />
+                <div className="grid grid-cols-2 gap-6">
+                    <Input label="Start Date" type="date" value={fd.startDate} onChange={e => up('startDate', e.target.value)} disabled={readOnly} required />
+                    <Input label="End Date" type="date" value={fd.endDate} onChange={e => up('endDate', e.target.value)} disabled={readOnly} required />
+                </div>
+            </section>
+
+            {/* 4. Outcomes */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">4. Intended Outcomes</h3>
+                <p className="text-gray-500 text-sm">List up to 3 specific things your project will achieve.</p>
+                <Input label="Outcome 1" value={fd.outcome1} onChange={e => up('outcome1', e.target.value)} disabled={readOnly} required />
+                <Input label="Outcome 2" value={fd.outcome2} onChange={e => up('outcome2', e.target.value)} disabled={readOnly} />
+                <Input label="Outcome 3" value={fd.outcome3} onChange={e => up('outcome3', e.target.value)} disabled={readOnly} />
+            </section>
+
+            {/* 5. Strategic Alignment */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">5. Strategic Alignment</h3>
+                
+                <div className="bg-purple-50 p-6 rounded-xl">
+                    <h4 className="font-bold text-purple-900 mb-4">Marmot Principles (Select all that apply)</h4>
+                    <div className="space-y-2">
+                        {MARMOT_PRINCIPLES.map(p => (
+                            <label key={p} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.marmotPrinciples || []).includes(p)} onChange={() => up('marmotPrinciples', toggleArray(fd.marmotPrinciples, p))} disabled={readOnly} className="w-5 h-5 accent-brand-purple" />
+                                <span className="text-sm">{p}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-teal-50 p-6 rounded-xl">
+                    <h4 className="font-bold text-teal-900 mb-4">Well-being of Future Generations Goals</h4>
+                    <div className="space-y-2">
+                        {WFG_GOALS.map(g => (
+                            <label key={g} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.wfgGoals || []).includes(g)} onChange={() => up('wfgGoals', toggleArray(fd.wfgGoals, g))} disabled={readOnly} className="w-5 h-5 accent-brand-teal" />
+                                <span className="text-sm">{g}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* 6. Declaration */}
+            <section className="space-y-6 border-t pt-6">
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.gdprConsent} onChange={e => up('gdprConsent', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-purple" />
+                    <p className="text-sm text-gray-600">I confirm that the information provided is true and accurate. I understand that this Expression of Interest will be reviewed by the community committee.</p>
                 </div>
             </section>
 
@@ -466,25 +527,33 @@ export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange:
             {/* Detailed Project */}
             <section className="space-y-6">
                 <h3 className="font-bold text-xl border-b pb-2">2. Detailed Delivery</h3>
-                <RichTextArea label="SMART Objectives" value={fd.smartObjectives} onChange={e => up('smartObjectives', e.target.value)} disabled={readOnly} required />
+                <RichTextArea label="SMART Objectives (Specific, Measurable, Achievable, Relevant, Time-bound)" value={fd.smartObjectives} onChange={e => up('smartObjectives', e.target.value)} disabled={readOnly} required />
                 <RichTextArea label="Activities & Delivery Plan" value={fd.activities} onChange={e => up('activities', e.target.value)} disabled={readOnly} required />
                 <RichTextArea label="Risk Management" value={fd.riskManagement} onChange={e => up('riskManagement', e.target.value)} disabled={readOnly} required />
             </section>
 
+            {/* Impact */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">3. Impact & Collaboration</h3>
+                <RichTextArea label="Community Benefit (Who benefits and how?)" value={fd.communityBenefit} onChange={e => up('communityBenefit', e.target.value)} disabled={readOnly} required />
+                <RichTextArea label="Collaborations / Partners (if any)" value={fd.collaborations} onChange={e => up('collaborations', e.target.value)} disabled={readOnly} />
+            </section>
+
             {/* Justifications */}
             <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2">3. Alignment Justification</h3>
+                <h3 className="font-bold text-xl border-b pb-2">4. Alignment Justification</h3>
+                <p className="text-gray-500 mb-4">Based on your selections in Part 1, please explain how you meet these goals.</p>
                 {fd.marmotPrinciples?.map(p => (
-                    <div key={p} className="bg-purple-50 p-4 rounded-xl">
+                    <div key={p} className="bg-purple-50 p-4 rounded-xl mb-4">
                         <h4 className="font-bold text-purple-900 mb-2">{p}</h4>
-                        <RichTextArea value={fd.marmotJustifications?.[p] || ''} onChange={e => up('marmotJustifications', { ...fd.marmotJustifications, [p]: e.target.value })} disabled={readOnly} />
+                        <RichTextArea value={fd.marmotJustifications?.[p] || ''} onChange={e => up('marmotJustifications', { ...fd.marmotJustifications, [p]: e.target.value })} disabled={readOnly} placeholder="Explain how your project supports this principle..." />
                     </div>
                 ))}
             </section>
 
             {/* Budget */}
             <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2">4. Detailed Budget</h3>
+                <h3 className="font-bold text-xl border-b pb-2">5. Detailed Budget</h3>
                 <div className="bg-gray-50 p-6 rounded-xl space-y-3">
                     {budget.map((l, i) => (
                         <div key={i} className="grid grid-cols-12 gap-4 items-center">
@@ -501,11 +570,23 @@ export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange:
 
             {/* Documents */}
             <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2">5. Required Documents</h3>
+                <h3 className="font-bold text-xl border-b pb-2">6. Required Documents</h3>
                 <div className="grid md:grid-cols-2 gap-6">
                     <FileUpload label="Constitution / Governing Doc" currentUrl={fd.attachments?.constitutionUrl} onUpload={f => handleUpload('constitution', f)} disabled={readOnly} />
                     <FileUpload label="Recent Bank Statement" currentUrl={fd.attachments?.bankStatementUrl} onUpload={f => handleUpload('bankStatement', f)} disabled={readOnly} />
                     <FileUpload label="Safeguarding Policy (Optional)" currentUrl={fd.attachments?.otherUrl} onUpload={f => handleUpload('other', f)} disabled={readOnly} />
+                </div>
+            </section>
+
+            {/* Declaration */}
+            <section className="space-y-6 border-t pt-6">
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.confirmOtherFunding} onChange={e => up('confirmOtherFunding', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-teal" />
+                    <p className="text-sm text-gray-600">I confirm that all funding from other sources has been secured or applied for.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.agreeGdprScrutiny} onChange={e => up('agreeGdprScrutiny', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-teal" />
+                    <p className="text-sm text-gray-600">I agree to the data processing terms and understand this application will be subject to public scrutiny.</p>
                 </div>
             </section>
 
