@@ -112,6 +112,163 @@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User
     );
 };
 
+// --- ADMIN DOCUMENT CENTRE ---
+const AdminDocCentre: React.FC = () => {
+    const [docs, setDocs] = useState<AdminDocument[]>([]);
+    const [uploading, setUploading] = useState(false);
+
+    useEffect(() => { api.getDocuments().then(setDocs); }, []);
+
+    const handleUpload = async (file: File) => {
+        setUploading(true);
+        try {
+            const url = await uploadFile(`admin-docs/${Date.now()}_${file.name}`, file);
+            const newDoc: AdminDocument = {
+                id: 'doc_' + Date.now(),
+                name: file.name,
+                type: 'file',
+                parentId: 'root',
+                url,
+                category: 'committee-only', // Defaulting for now
+                uploadedBy: auth.currentUser?.uid || 'admin',
+                createdAt: Date.now()
+            };
+            await api.createDocument(newDoc);
+            setDocs([...docs, newDoc]);
+        } catch (e) { alert("Upload failed"); }
+        setUploading(false);
+    };
+
+    const handleDelete = async (id: string) => {
+        if(!confirm("Delete?")) return;
+        await api.deleteDocument(id);
+        setDocs(docs.filter(d => d.id !== id));
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                <div>
+                    <h3 className="font-bold text-xl text-blue-900">Document Centre</h3>
+                    <p className="text-sm text-blue-700">Manage guidance and policy documents for committee members.</p>
+                </div>
+                <div className="w-64">
+                    <FileUpload label="Upload Document" onUpload={handleUpload} disabled={uploading} />
+                </div>
+            </div>
+            <div className="grid md:grid-cols-4 gap-4">
+                {docs.length === 0 && <p className="col-span-4 text-center text-gray-400 italic py-8">No documents uploaded yet.</p>}
+                {docs.map(d => (
+                    <FileCard key={d.id} title={d.name} type={d.type} date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d.id)} onClick={() => window.open(d.url, '_blank')} />
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- ADMIN SCORING MONITOR ---
+const ScoringMonitor: React.FC<{ onExit: () => void }> = ({ onExit }) => {
+    const [apps, setApps] = useState<Application[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
+    const [filterArea, setFilterArea] = useState<string>('All');
+    const [expandedApp, setExpandedApp] = useState<string | null>(null);
+
+    useEffect(() => {
+        Promise.all([api.getApplications(), api.getUsers(), api.getScores()]).then(([a, u, s]) => {
+            setApps(a); setUsers(u); setScores(s);
+        });
+    }, []);
+
+    const filteredApps = filterArea === 'All' ? apps : apps.filter(a => a.area === filterArea || a.area === 'Cross-Area');
+    const committee = users.filter(u => u.role === 'committee');
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center bg-gray-900 p-6 rounded-2xl text-white shadow-xl">
+                <div>
+                     <h2 className="text-2xl font-dynapuff mb-1">Scoring Monitor</h2>
+                     <p className="text-gray-400 text-sm">Real-time tracking of committee scoring progress</p>
+                </div>
+                <div className="flex gap-4 items-center">
+                     <select className="p-2 border border-gray-700 bg-gray-800 rounded-lg text-white" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+                        <option value="All">All Areas</option>
+                        {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <Button onClick={onExit} className="bg-white text-black hover:bg-gray-200">Exit Scoring Mode</Button>
+                </div>
+            </div>
+            
+            <div className="grid gap-4">
+                {filteredApps.map(app => {
+                    const relevantCommittee = committee.filter(u => u.area === app.area || app.area === 'Cross-Area');
+                    const appScores = scores.filter(s => s.appId === app.id);
+                    const percentComplete = relevantCommittee.length > 0 ? Math.round((appScores.length / relevantCommittee.length) * 100) : 0;
+                    
+                    return (
+                        <Card key={app.id} className="transition-all hover:shadow-md border-l-4 border-l-brand-purple">
+                            <div className="flex justify-between items-center cursor-pointer p-2" onClick={() => setExpandedApp(expandedApp === app.id ? null : app.id)}>
+                                <div className="flex gap-6 items-center flex-1">
+                                    <Badge className="font-mono">{app.ref}</Badge>
+                                    <div>
+                                        <h3 className="font-bold text-lg">{app.projectTitle}</h3>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                                            <span>{app.orgName}</span>
+                                            <span>•</span>
+                                            <span className="font-bold text-gray-700">{app.area}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-12 items-center">
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-bold text-gray-400 tracking-wider">PROGRESS</div>
+                                        <div className="font-bold text-xl flex items-center justify-end gap-2">
+                                            {appScores.length} <span className="text-gray-400 text-sm">/ {relevantCommittee.length}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right w-24">
+                                        <div className="text-[10px] font-bold text-gray-400 tracking-wider">AVG SCORE</div>
+                                        <div className={`font-bold text-xl ${app.averageScore && app.averageScore >= 50 ? 'text-green-600' : 'text-red-500'}`}>
+                                            {app.averageScore || 0}%
+                                        </div>
+                                    </div>
+                                    <div className={`text-2xl text-gray-300 transition-transform duration-300 ${expandedApp === app.id ? 'rotate-180' : ''}`}>▼</div>
+                                </div>
+                            </div>
+                            
+                            {expandedApp === app.id && (
+                                <div className="mt-6 border-t pt-6 animate-fade-in">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="font-bold text-sm text-gray-500 uppercase tracking-wider">Committee Breakdown</h4>
+                                        <div className="h-2 w-48 bg-gray-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-brand-purple transition-all duration-500" style={{ width: `${percentComplete}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div className="grid md:grid-cols-4 gap-3">
+                                        {relevantCommittee.map(u => {
+                                            const score = appScores.find(s => s.scorerId === u.uid);
+                                            return (
+                                                <div key={u.uid} className={`p-3 rounded-lg border flex justify-between items-center ${score ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-2 h-2 rounded-full ${score ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                                        <span className="text-sm font-bold text-gray-700">{u.displayName}</span>
+                                                    </div>
+                                                    {score ? <span className="font-bold text-green-700">{score.weightedTotal}%</span> : <span className="text-xs text-gray-400 italic">Pending</span>}
+                                                </div>
+                                            );
+                                        })}
+                                        {relevantCommittee.length === 0 && <p className="text-sm text-gray-500 italic col-span-4 text-center py-2">No committee members assigned to this area.</p>}
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 // --- DIGITAL FORMS ---
 
 const FormHeader: React.FC<{ title: string; subtitle: string; readOnly?: boolean }> = ({ title, subtitle, readOnly }) => (
@@ -368,6 +525,7 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
 export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>void, isAdmin?: boolean, onReturnToAdmin?: ()=>void }> = ({ user, onUpdateUser, isAdmin, onReturnToAdmin }) => {
     const [apps, setApps] = useState<Application[]>([]);
     const [votes, setVotes] = useState<Vote[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
     const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [settings, setSettings] = useState<PortalSettings | null>(null);
@@ -376,9 +534,10 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
         Promise.all([
             api.getApplications(), // Get ALL, then filter
             api.getVotes(),
+            api.getScores(),
             api.getAssignments(user.uid),
             api.getPortalSettings()
-        ]).then(([allApps, allVotes, myAssigns, portalSettings]) => {
+        ]).then(([allApps, allVotes, allScores, myAssigns, portalSettings]) => {
             // LOGIC: Show apps if (In My Area OR Cross-Area) OR (Explicitly Assigned to Me)
             const assignIds = myAssigns.map(a => a.applicationId);
             const filtered = isAdmin ? allApps : allApps.filter(a => 
@@ -388,6 +547,7 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
             );
             setApps(filtered);
             setVotes(allVotes);
+            setScores(allScores);
             setAssignments(myAssigns);
             setSettings(portalSettings);
         });
@@ -411,37 +571,62 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                 </div>
             </div>
             
-            <h2 className="font-bold text-xl mb-4">Pending Reviews</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {apps.map(app => {
-                    const hasVoted = votes.some(v => v.appId === app.id && v.voterId === user.uid);
-                    const isAssigned = assignments.some(a => a.applicationId === app.id);
-                    return (
-                        <Card key={app.id} className={hasVoted ? 'opacity-70' : ''}>
-                            {isAssigned && <Badge variant="warning" className="mb-2">Assigned to You</Badge>}
-                            <div className="flex justify-between items-start">
-                                <h3 className="font-bold">{app.projectTitle}</h3>
-                                {settings && app.averageScore && (
-                                    <Badge className={app.averageScore >= settings.scoringThreshold ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                        {app.averageScore}%
-                                    </Badge>
-                                )}
-                            </div>
-                            <p className="text-sm text-gray-500">{app.orgName}</p>
-                            <div className="mt-4 flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View</Button>
-                                {!hasVoted && app.status === 'Submitted-Stage1' && (
-                                    <>
-                                        <Button size="sm" className="bg-green-600" onClick={() => handleVote(app.id, 'yes')}>Yes</Button>
-                                        <Button size="sm" className="bg-red-600" onClick={() => handleVote(app.id, 'no')}>No</Button>
-                                    </>
-                                )}
-                                {hasVoted && <Badge variant="success">Completed</Badge>}
-                            </div>
-                        </Card>
-                    );
-                })}
-            </div>
+            <Card>
+                <div className="flex justify-between mb-6">
+                    <h3 className="font-bold text-xl">My Task List</h3>
+                    <div className="text-sm text-gray-500">Showing applications for: <span className="font-bold text-gray-800">{user.area}</span></div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 border-b">
+                            <tr>
+                                <th className="p-4">Ref</th>
+                                <th className="p-4">Project Title</th>
+                                <th className="p-4">Organisation</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4">My Action</th>
+                                <th className="p-4">Tools</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {apps.map(app => {
+                                const hasVoted = votes.some(v => v.appId === app.id && v.voterId === user.uid);
+                                const hasScored = scores.some(s => s.appId === app.id && s.scorerId === user.uid);
+                                const isAssigned = assignments.some(a => a.applicationId === app.id);
+                                
+                                let statusBadge = <Badge variant="default">Pending</Badge>;
+                                if (app.status === 'Submitted-Stage1') {
+                                    statusBadge = hasVoted ? <Badge variant="success">Voted</Badge> : <Badge variant="warning">Vote Needed</Badge>;
+                                } else if (app.status === 'Submitted-Stage2') {
+                                    statusBadge = hasScored ? <Badge variant="success">Scored</Badge> : <Badge variant="warning">Score Needed</Badge>;
+                                } else {
+                                    statusBadge = <Badge>Info Only</Badge>;
+                                }
+
+                                return (
+                                    <tr key={app.id} className="border-b hover:bg-gray-50 transition-colors">
+                                        <td className="p-4 font-mono text-gray-600">{app.ref}</td>
+                                        <td className="p-4 font-bold text-gray-800">{app.projectTitle}</td>
+                                        <td className="p-4 text-gray-600">{app.orgName}</td>
+                                        <td className="p-4"><Badge>{app.status}</Badge></td>
+                                        <td className="p-4">{statusBadge}</td>
+                                        <td className="p-4 flex gap-2">
+                                            <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View</Button>
+                                            
+                                            {!hasVoted && app.status === 'Submitted-Stage1' && (
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => handleVote(app.id, 'yes')} className="bg-green-100 text-green-700 hover:bg-green-200 p-1.5 rounded-lg text-xs font-bold">Yes</button>
+                                                    <button onClick={() => handleVote(app.id, 'no')} className="bg-red-100 text-red-700 hover:bg-red-200 p-1.5 rounded-lg text-xs font-bold">No</button>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onSave={onUpdateUser} />
         </div>
     );
@@ -457,6 +642,7 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [thresholdInput, setThresholdInput] = useState(50);
+    const [isScoringMode, setIsScoringMode] = useState(false);
 
     const refresh = async () => {
         const [a, l, u, s, set] = await Promise.all([
@@ -500,6 +686,10 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
         refresh();
     };
 
+    if (isScoringMode) {
+        return <ScoringMonitor onExit={() => setIsScoringMode(false)} />;
+    }
+
     // Analytics Helpers
     const committeeUsers = users.filter(u => u.role === 'committee');
     const pendingReviews = apps.filter(a => a.status === 'Submitted-Stage1' || a.status === 'Submitted-Stage2').length;
@@ -511,12 +701,12 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                 <h1 className="text-3xl font-bold font-dynapuff text-brand-purple">Admin Control</h1>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => onNavigatePublic('home')}>Public View</Button>
-                    <Button onClick={onNavigateScoring}>Enter Scoring Mode</Button>
+                    <Button onClick={() => setIsScoringMode(true)}>Enter Scoring Mode</Button>
                 </div>
             </div>
 
             <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex overflow-x-auto">
-                {['overview', 'master', 'rounds', 'users', 'logs'].map(t => (
+                {['overview', 'master', 'rounds', 'users', 'docs', 'logs'].map(t => (
                   <button key={t} onClick={() => setTab(t)} className={`px-6 py-2 rounded-lg font-bold capitalize ${tab === t ? 'bg-brand-purple text-white' : 'text-gray-500 hover:bg-gray-50'}`}>{t}</button>
                 ))}
             </div>
@@ -601,22 +791,31 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b"><tr><th>Ref</th><th>Title</th><th>Area</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4">Ref</th>
+                                    <th className="p-4">Project Title</th>
+                                    <th className="p-4">Area</th>
+                                    <th className="p-4">Score</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4">Actions</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 {apps.map(app => (
-                                    <tr key={app.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-3 font-mono text-xs">{app.ref}</td>
-                                        <td className="p-3 font-bold">{app.projectTitle}</td>
-                                        <td className="p-3">{app.area}</td>
-                                        <td className="p-3">
+                                    <tr key={app.id} className="border-b hover:bg-gray-50 transition-colors">
+                                        <td className="p-4 font-mono text-gray-600 font-bold">{app.ref}</td>
+                                        <td className="p-4 font-bold text-gray-800">{app.projectTitle}</td>
+                                        <td className="p-4">{app.area}</td>
+                                        <td className="p-4">
                                             {app.averageScore ? (
                                                 <Badge className={app.averageScore >= (settings?.scoringThreshold || 50) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
                                                     {app.averageScore}% ({app.scoreCount})
                                                 </Badge>
                                             ) : '-'}
                                         </td>
-                                        <td className="p-3"><Badge>{app.status}</Badge></td>
-                                        <td className="p-3">
+                                        <td className="p-4"><Badge>{app.status}</Badge></td>
+                                        <td className="p-4">
                                             <select className="border rounded p-1 text-xs" onChange={e => { if(e.target.value) changeStatus(app, e.target.value as ApplicationStatus) }}>
                                                 <option value="">Change Status...</option>
                                                 <option value="Invited-Stage2">Invite Stage 2</option>
@@ -658,6 +857,8 @@ export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNa
                     </table>
                 </Card>
             )}
+
+            {tab === 'docs' && <AdminDocCentre />}
 
             {tab === 'logs' && (
                 <Card>
