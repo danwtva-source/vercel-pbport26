@@ -107,14 +107,22 @@ export const AdminRounds: React.FC = () => {
     useEffect(() => { load(); }, []);
 
     const handleSave = async (r: Round) => {
-        if (editingRound) {
-            await api.updateRound(r.id, r);
-        } else {
-            await api.createRound(r);
+        try {
+            console.log("Saving round:", r);
+            if (editingRound) {
+                await api.updateRound(r.id, r);
+                console.log("Round updated successfully");
+            } else {
+                await api.createRound(r);
+                console.log("Round created successfully");
+            }
+            setIsModalOpen(false);
+            setEditingRound(undefined);
+            load();
+        } catch (error) {
+            console.error("Error saving round:", error);
+            alert(`Failed to save round: ${(error as Error).message}`);
         }
-        setIsModalOpen(false);
-        setEditingRound(undefined);
-        load();
     };
     const handleDelete = async (r: Round) => {
         if (confirm('Delete this round?')) {

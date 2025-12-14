@@ -243,11 +243,32 @@ class AuthService {
       if (!db) throw new Error("Database not initialized");
 
       try {
-        // 1. Update Firestore Document
-        const userRef = doc(db, 'users', uid);
-        await setDoc(userRef, u, { merge: true });
+        // 1. Find the user document (might not match UID as document ID)
+        let userDocId = uid;
+        let userRef = doc(db, 'users', uid);
+        let snap = await getDoc(userRef);
 
-        // 2. Update Auth Profile (DisplayName / PhotoURL) if current user
+        // If not found by document ID, query by uid field
+        if (!snap.exists()) {
+          console.log("User doc not found by ID, querying by uid field...");
+          const q = query(collection(db, 'users'), where('uid', '==', uid));
+          const querySnap = await getDocs(q);
+
+          if (querySnap.empty) {
+            throw new Error(`No user document found for UID: ${uid}`);
+          }
+
+          // Use the actual document ID from the query result
+          userDocId = querySnap.docs[0].id;
+          userRef = doc(db, 'users', userDocId);
+          console.log(`Found user document with ID: ${userDocId}`);
+        }
+
+        // 2. Update Firestore Document at the correct path
+        await setDoc(userRef, u, { merge: true });
+        console.log("User profile updated successfully");
+
+        // 3. Update Auth Profile (DisplayName / PhotoURL) if current user
         if (auth.currentUser && auth.currentUser.uid === uid) {
             await updateProfile(auth.currentUser, {
                 displayName: u.displayName || auth.currentUser.displayName,
@@ -255,15 +276,15 @@ class AuthService {
             });
         }
 
-        // 3. Return fresh data
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
+        // 4. Return fresh data
+        const updatedSnap = await getDoc(userRef);
+        if (!updatedSnap.exists()) {
           throw new Error('User profile not found after update');
         }
-        return snap.data() as User;
+        return updatedSnap.data() as User;
       } catch (error) {
         console.error('Error updating user profile:', error);
-        throw new Error('Failed to update user profile');
+        throw new Error('Failed to update user profile: ' + (error as Error).message);
       }
   }
 
