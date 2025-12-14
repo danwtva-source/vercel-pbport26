@@ -44,8 +44,31 @@ const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User;
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+          // Check file size (limit to 700KB to stay under Firestore's 1MB limit after base64 encoding)
+          const maxSizeKB = 700;
+          const fileSizeKB = file.size / 1024;
+
+          if (fileSizeKB > maxSizeKB) {
+            alert(`Image is too large (${Math.round(fileSizeKB)}KB). Please use an image smaller than ${maxSizeKB}KB.\n\nTip: Use an image compression tool or resize the image before uploading.`);
+            e.target.value = ''; // Clear the file input
+            return;
+          }
+
           const reader = new FileReader();
-          reader.onloadend = () => setData(prev => ({ ...prev, photoUrl: reader.result as string }));
+          reader.onloadend = () => {
+            const base64String = reader.result as string;
+            // Double-check the base64 size doesn't exceed Firestore's limit
+            const base64SizeBytes = base64String.length;
+            const firestoreLimit = 1048487; // Firestore's field size limit
+
+            if (base64SizeBytes > firestoreLimit) {
+              alert(`Image is too large after encoding (${Math.round(base64SizeBytes/1024)}KB). Please use a smaller image (under 600KB).`);
+              e.target.value = '';
+              return;
+            }
+
+            setData(prev => ({ ...prev, photoUrl: base64String }));
+          };
           reader.readAsDataURL(file);
         }
     };

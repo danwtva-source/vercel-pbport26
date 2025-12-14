@@ -40,8 +40,9 @@ const RoundForm: React.FC<{ round?: Round; onSave: (r: Round) => void; onClose: 
             stage2Open,
             scoringOpen,
             createdAt: round?.createdAt || Date.now(),
-            scoringCriteria: round?.scoringCriteria,
-            scoringThreshold: round?.scoringThreshold,
+            // Only include optional fields if they exist (avoid undefined values in Firestore)
+            ...(round?.scoringCriteria && { scoringCriteria: round.scoringCriteria }),
+            ...(round?.scoringThreshold !== undefined && { scoringThreshold: round.scoringThreshold }),
         };
         onSave(r);
     };
