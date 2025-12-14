@@ -1,99 +1,190 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Card, Input, FileCard } from '../components/UI';
-import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS, PUBLIC_DOCS } from '../constants';
+import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
 
-// --- STYLED CAROUSEL (Original Aesthetic) ---
+// --- STYLED CAROUSEL (SwiperJS Implementation) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    
-    // Updated to use the correct file names found in your public/images folder
-    // Note: In Vite, assets in 'public' are served from root.
-    const slides = [
-        {
-            name: 'Blaenavon',
-            img: '/BLN.png',
-            desc: 'A historic town with a strong community spirit. Vote for projects that preserve our heritage and build our future.',
-            color: '#FFD447',
-            bg: 'bg-yellow-50',
-            text: 'text-yellow-800'
-        },
-        {
-            name: 'Thornhill & Upper Cwmbran',
-            img: '/TUC.png',
-            desc: 'Supporting local initiatives to improve health, wellbeing, and community spaces.',
-            color: '#2FBF71',
-            bg: 'bg-green-50',
-            text: 'text-green-800'
-        },
-        {
-            name: 'Trevethin, Penygarn & St. Cadocs',
-            img: '/TPS.png',
-            desc: 'Empowering residents to tackle local issues and create safer, greener neighbourhoods.',
-            color: '#3A86FF',
-            bg: 'bg-blue-50',
-            text: 'text-blue-800'
-        }
-    ];
+    const swiperRef = useRef<HTMLDivElement | null>(null);
+    const swiperInstanceRef = useRef<any>(null);
 
-    const next = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
-    const prev = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
-    const current = slides[currentIndex];
+    useEffect(() => {
+        // Inject Swiper CSS (if not already present)
+        const SWIPER_CSS = 'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css';
+        if (!document.querySelector(`link[href="${SWIPER_CSS}"]`)) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = SWIPER_CSS;
+            document.head.appendChild(link);
+        }
+
+        // helper to init swiper once script is available
+        const initSwiper = () => {
+            const SwiperCtor = (window as any).Swiper;
+            if (!SwiperCtor || !swiperRef.current) return;
+
+            // destroy existing instance if any
+            if (swiperInstanceRef.current && typeof swiperInstanceRef.current.destroy === 'function') {
+                swiperInstanceRef.current.destroy(true, true);
+                swiperInstanceRef.current = null;
+            }
+
+            swiperInstanceRef.current = new SwiperCtor(swiperRef.current, {
+                loop: true,
+                pagination: {
+                    el: '.swiper-pagination',
+                    clickable: true,
+                },
+                navigation: {
+                    nextEl: '.swiper-button-next',
+                    prevEl: '.swiper-button-prev',
+                },
+                slidesPerView: 1,
+                spaceBetween: 24,
+                centeredSlides: true,
+                // responsive breakpoints if desired
+                breakpoints: {
+                    768: {
+                        slidesPerView: 1,
+                    },
+                    1024: {
+                        slidesPerView: 1,
+                    },
+                },
+            });
+        };
+
+        // If Swiper already loaded on window, init immediately; otherwise inject script
+        if ((window as any).Swiper) {
+            initSwiper();
+        } else {
+            const SWIPER_JS = 'https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js';
+            // avoid adding duplicate script
+            if (!document.querySelector(`script[src="${SWIPER_JS}"]`)) {
+                const script = document.createElement('script');
+                script.src = SWIPER_JS;
+                script.async = true;
+                script.onload = () => {
+                    initSwiper();
+                };
+                document.body.appendChild(script);
+
+                return () => {
+                    // cleanup script if we added it (leave CSS)
+                    script.remove();
+                    if (swiperInstanceRef.current && typeof swiperInstanceRef.current.destroy === 'function') {
+                        swiperInstanceRef.current.destroy(true, true);
+                        swiperInstanceRef.current = null;
+                    }
+                };
+            } else {
+                // script tag already exists but window.Swiper may not be set yet; try init after a short delay
+                const t = setTimeout(initSwiper, 300);
+                return () => clearTimeout(t);
+            }
+        }
+
+        // cleanup on unmount
+        return () => {
+            if (swiperInstanceRef.current && typeof swiperInstanceRef.current.destroy === 'function') {
+                swiperInstanceRef.current.destroy(true, true);
+                swiperInstanceRef.current = null;
+            }
+        };
+    }, []);
+
+    const goToVotePage = (area: string) => {
+        // Provide an area-specific navigation token; consuming code can interpret it
+        onNavigate(`check-postcode:${area}`);
+    };
 
     return (
-        <div className="relative w-full max-w-6xl mx-auto mt-12 mb-20 px-4">
-            <div className="relative h-[600px] rounded-[3rem] overflow-hidden shadow-2xl border-8 border-white/20" style={{ backgroundColor: current.color }}>
-                <div className="absolute inset-0">
-                    {/* Gradient Overlay for better text readability */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-black/60 to-transparent z-10"></div>
-                    {/* Optional: Try to load map image, fallback to gradient if missing */}
-                    <img
-                        src={current.img}
-                        alt={current.name}
-                        className="absolute inset-0 w-full h-full object-cover opacity-30"
-                        onError={(e) => {
-                            // Hide image if it fails to load - colored background will show
-                            e.currentTarget.style.display = 'none';
-                        }}
-                    />
-                    
-                    {/* Content */}
-                    <div className="relative z-20 h-full flex flex-col justify-center items-center text-center p-8 md:p-16 text-white">
-                        <span 
-                            className="inline-block px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 shadow-lg"
-                            style={{ backgroundColor: current.color, color: '#000' }}
-                        >
-                            Area Spotlight
-                        </span>
-                        <h2 className="text-5xl md:text-7xl font-dynapuff font-bold mb-6 leading-tight drop-shadow-lg text-white">
-                            {current.name}
-                        </h2>
-                        <p className="text-xl md:text-2xl font-arial max-w-3xl mb-10 opacity-90 leading-relaxed drop-shadow-md">
-                            {current.desc}
-                        </p>
-                        <Button 
-                            onClick={() => onNavigate('check-postcode')} 
-                            className="text-gray-900 border-none px-10 py-5 text-xl rounded-2xl shadow-xl hover:scale-105 transition-transform font-dynapuff"
-                            style={{ backgroundColor: current.color }}
-                        >
-                            Enter Voting Area
-                        </Button>
-                    </div>
-                </div>
+        <div className="flex justify-center items-center pb-12">
+            {/* Inline styles copied/adapted from provided snippet */}
+            <style>{`
+                /* ---------------- */
+                /* Carousel Styles  */
+                /* ---------------- */
+                .swiper-custom {
+                    width: 100%;
+                    height: 500px;
+                }
+                .swiper-custom .swiper-slide {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
+                    background: #fafafa;
+                    border-radius: 1rem;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                    padding: 2rem;
+                    height: 460px;
+                    text-align: center;
+                }
+                .area-img {
+                    width: 100%;
+                    max-width: 420px;
+                    height: auto;
+                    border-radius: 0.75rem;
+                    box-shadow: 0 2px 10px rgba(80,0,100,0.08);
+                    margin-bottom: 1.5rem;
+                    background: #fff;
+                }
+                /* Custom Swiper navigation colors */
+                .swiper-button-next, .swiper-button-prev {
+                    color: #9333ea !important;
+                }
+                .swiper-pagination-bullet-active {
+                    background: #9333ea !important;
+                }
+            `}</style>
 
-                {/* Controls */}
-                <button onClick={prev} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❮</button>
-                <button onClick={next} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all hover:scale-110">❯</button>
-                
-                {/* Indicators */}
-                <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center gap-3">
-                    {slides.map((_, idx) => (
-                        <button 
-                            key={idx} 
-                            onClick={() => setCurrentIndex(idx)}
-                            className={`w-3 h-3 rounded-full transition-all ${idx === currentIndex ? 'scale-150' : 'opacity-50'}`}
-                            style={{ backgroundColor: current.color }}
-                        />
-                    ))}
+            <div className="w-full max-w-2xl px-4">
+                <div className="swiper swiper-custom" ref={swiperRef}>
+                    <div className="swiper-wrapper">
+                        {/* Blaenavon Slide */}
+                        <div className="swiper-slide">
+                            <img src="/images/bln.png" alt="Blaenavon Area Map" className="area-img" />
+                            <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Blaenavon</h3>
+                            <p className="text-gray-700 mb-4 arial-nova">See projects in Blaenavon and vote for your favourite three!</p>
+                            <button
+                                onClick={() => goToVotePage('blaenavon')}
+                                className="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition transform hover:scale-105 dynapuff"
+                            >
+                                View & Vote
+                            </button>
+                        </div>
+
+                        {/* Thornhill & Upper Cwmbran Slide */}
+                        <div className="swiper-slide">
+                            <img src="/images/tuc.png" alt="Thornhill & Upper Cwmbran Area Map" className="area-img" />
+                            <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Thornhill & Upper Cwmbran</h3>
+                            <p className="text-gray-700 mb-4 arial-nova">See projects in Thornhill & Upper Cwmbran and vote!</p>
+                            <button
+                                onClick={() => goToVotePage('thornhill')}
+                                className="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition transform hover:scale-105 dynapuff"
+                            >
+                                View & Vote
+                            </button>
+                        </div>
+
+                        {/* Trevethin, Penygarn & St. Cadocs Slide */}
+                        <div className="swiper-slide">
+                            <img src="/images/tps.png" alt="Trevethin, Penygarn & St Cadocs Area Map" className="area-img" />
+                            <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Trevethin, Penygarn & St. Cadocs</h3>
+                            <p className="text-gray-700 mb-4 arial-nova">See projects in this area and vote for your favourite three!</p>
+                            <button
+                                onClick={() => goToVotePage('trevethin')}
+                                className="bg-purple-600 hover:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition transform hover:scale-105 dynapuff"
+                            >
+                                View & Vote
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Carousel Navigation */}
+                    <div className="swiper-pagination"></div>
+                    <div className="swiper-button-prev"></div>
+                    <div className="swiper-button-next"></div>
                 </div>
             </div>
         </div>
@@ -294,7 +385,7 @@ export const Timeline: React.FC = () => {
                             <div key={i} className={`flex flex-col md:flex-row items-center gap-8 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''} group`}>
                                 {/* Content Side */}
                                 <div className="flex-1 w-full md:w-1/2">
-                                    <div className={`bg-white p-8 rounded-3xl shadow-sm border-l-8 transition-all hover:shadow-xl ${e.status === 'active' ? 'border-brand-teal ring-4 ring-teal-50' : 'border-brand-purple'}`}>
+                                    <div className={`bg-white p-8 rounded-3xl shadow-sm border-l-8 transition-all hover:shadow-xl ${e.status === 'active' ? 'border-brand-teal ring-4 ring-teal-50' : 'border-gray-100'}`}>
                                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase mb-3 ${e.status === 'active' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-600'}`}>
                                             {e.date}
                                         </span>
@@ -304,7 +395,7 @@ export const Timeline: React.FC = () => {
                                 </div>
 
                                 {/* Center Node */}
-                                <div className="absolute left-8 md:left-1/2 w-12 h-12 bg-white border-4 border-brand-purple rounded-full transform -translate-x-1/2 flex items-center justify-center z-10 shadow-lg group-hover:scale-110 transition-transform">
+                                <div className="absolute left-8 md:left-1/2 w-12 h-12 bg-white border-4 border-brand-purple rounded-full transform -translate-x-1/2 flex items-center justify-center z-10">
                                     {e.status === 'done' ? <span className="text-brand-purple font-bold">✓</span> : <span className="text-gray-400 font-bold">{i+1}</span>}
                                 </div>
 
@@ -321,74 +412,33 @@ export const Timeline: React.FC = () => {
 
 // --- PUBLIC DOCUMENTS (Styled) ---
 export const PublicDocuments: React.FC = () => {
-    const part1Docs = PUBLIC_DOCS.filter(doc => doc.category === 'Part 1');
-    const part2Docs = PUBLIC_DOCS.filter(doc => doc.category === 'Part 2');
-
-    const DocumentCard = ({ doc }: { doc: typeof PUBLIC_DOCS[0] }) => (
-        <a
-            href={doc.url}
-            download
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group bg-white p-6 rounded-2xl shadow-sm hover:shadow-xl border border-gray-100 transition-all hover:-translate-y-1 block"
-        >
-            <div className="flex items-start gap-4">
-                <div className="w-14 h-14 bg-purple-50 rounded-xl flex items-center justify-center text-2xl group-hover:bg-brand-purple group-hover:text-white transition-colors shadow-sm flex-shrink-0">
-                    📄
-                </div>
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-bold font-dynapuff text-gray-800 mb-1 group-hover:text-brand-purple transition-colors">{doc.title}</h3>
-                    <p className="text-sm text-gray-500 mb-3">{doc.desc}</p>
-                    <span className="text-xs font-bold text-brand-teal uppercase tracking-wider flex items-center gap-1 group-hover:gap-2 transition-all">
-                        Download PDF <span>→</span>
-                    </span>
-                </div>
-            </div>
-        </a>
-    );
-
     return (
         <div className="min-h-screen bg-slate-50 py-20 px-4 animate-fade-in">
-            <div className="max-w-6xl mx-auto">
+            <div className="max-w-5xl mx-auto">
                 <div className="text-center mb-16">
-                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Application Documents Hub</h1>
-                    <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-                        Download all necessary documents and forms for the Communities' Choice PB Initiative. Part 1 is for initial applications, Part 2 is for shortlisted projects.
+                    <h1 className="text-5xl font-bold font-dynapuff text-brand-purple mb-6">Resource Centre</h1>
+                    <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                        Download guidance notes, templates, and application forms.
                     </p>
                 </div>
 
-                {/* Part 1 Documents */}
-                <div className="mb-12">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
-                        <h2 className="text-3xl font-bold font-dynapuff text-brand-purple">Part 1 Documents</h2>
-                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
-                    </div>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {part1Docs.map((doc, i) => (
-                            <DocumentCard key={i} doc={doc} />
-                        ))}
-                    </div>
-                </div>
-
-                {/* Part 2 Documents */}
-                <div>
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
-                        <h2 className="text-3xl font-bold font-dynapuff text-brand-purple">Part 2 Documents</h2>
-                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-200 to-transparent"></div>
-                    </div>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {part2Docs.map((doc, i) => (
-                            <DocumentCard key={i} doc={doc} />
-                        ))}
-                    </div>
-                </div>
-
-                <div className="mt-12 text-center">
-                    <p className="text-gray-600 max-w-2xl mx-auto">
-                        For inquiries, please contact the team. <strong>Torfaen Voluntary Alliance (TVA)</strong> also offers support with required documents and policies.
-                    </p>
+                <div className="grid md:grid-cols-2 gap-6">
+                    {COMMITTEE_DOCS.map((doc, i) => (
+                        <div key={i} onClick={() => window.open(doc.url, '_blank')} className="group bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border border-gray-100 cursor-pointer transition-transform">
+                            <div className="flex items-start gap-6">
+                                <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center text-3xl group-hover:bg-brand-purple group-hover:text-white transition-colors shadow-sm">
+                                    📄
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-xl font-bold font-dynapuff text-gray-800 mb-2 group-hover:text-brand-purple transition-colors">{doc.title}</h3>
+                                    <p className="text-gray-500 mb-4">{doc.desc}</p>
+                                    <span className="text-sm font-bold text-brand-teal uppercase tracking-wider flex items-center gap-1 group-hover:gap-2 transition-all">
+                                        Download PDF <span>→</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
