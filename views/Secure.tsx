@@ -744,6 +744,7 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     const [voteModalOpen, setVoteModalOpen] = useState(false);
     const [scoreModalOpen, setScoreModalOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -861,7 +862,19 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                             <p className="text-sm text-gray-500 mb-2">{app.orgName}</p>
                             <p className="text-xs text-gray-400 mb-4">£{app.amountRequested}</p>
                             <div className="flex gap-2 border-t pt-4">
-                                <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View</Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        if (app.pdfUrl) {
+                                            setPdfUrl(app.pdfUrl);
+                                        } else {
+                                            printApplication(app);
+                                        }
+                                    }}
+                                >
+                                    View
+                                </Button>
                                 <Button size="sm" onClick={() => handleAction(app)} disabled={hasVoted}>
                                   {hasVoted ? 'Already Voted' : 'Vote'}
                                 </Button>
@@ -891,7 +904,21 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
                             <p className="text-sm text-gray-500 mb-2">{app.orgName}</p>
                             <p className="text-xs text-gray-400 mb-4">£{app.amountRequested}</p>
                             <div className="flex gap-2 border-t pt-4">
-                                <Button size="sm" variant="outline" onClick={() => printApplication(app)}>View</Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        // Use stage2PdfUrl for Stage 2 applications, fall back to pdfUrl or printApplication
+                                        const pdfToShow = app.stage2PdfUrl || app.pdfUrl;
+                                        if (pdfToShow) {
+                                            setPdfUrl(pdfToShow);
+                                        } else {
+                                            printApplication(app);
+                                        }
+                                    }}
+                                >
+                                    View
+                                </Button>
                                 <Button size="sm" onClick={() => handleAction(app)}>
                                   {hasScored ? 'Edit Score' : 'Score'}
                                 </Button>
@@ -995,6 +1022,8 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
             )}
 
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onSave={onUpdateUser} />
+
+            {pdfUrl && <PDFViewer url={pdfUrl} onClose={() => setPdfUrl(null)} />}
         </div>
     );
 };
