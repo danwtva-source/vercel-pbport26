@@ -143,7 +143,7 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
                     <div className="swiper-wrapper">
                         {/* Blaenavon Slide */}
                         <div className="swiper-slide">
-                            <img src="images/bln.png" alt="Blaenavon Area Map" className="area-img" />
+                            <img src="/images/bln.png" alt="Blaenavon Area Map" className="area-img" />
                             <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Blaenavon</h3>
                             <p className="text-gray-700 mb-4 arial-nova">See projects in Blaenavon and vote for your favourite three!</p>
                             <button
@@ -156,7 +156,7 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
 
                         {/* Thornhill & Upper Cwmbran Slide */}
                         <div className="swiper-slide">
-                            <img src="images/tuc.png" alt="Thornhill & Upper Cwmbran Area Map" className="area-img" />
+                            <img src="/images/tuc.png" alt="Thornhill & Upper Cwmbran Area Map" className="area-img" />
                             <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Thornhill & Upper Cwmbran</h3>
                             <p className="text-gray-700 mb-4 arial-nova">See projects in Thornhill & Upper Cwmbran and vote!</p>
                             <button
@@ -169,7 +169,7 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
 
                         {/* Trevethin, Penygarn & St. Cadocs Slide */}
                         <div className="swiper-slide">
-                            <img src="images/tps.png" alt="Trevethin, Penygarn & St Cadocs Area Map" className="area-img" />
+                            <img src="/images/tps.png" alt="Trevethin, Penygarn & St Cadocs Area Map" className="area-img" />
                             <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Trevethin, Penygarn & St. Cadocs</h3>
                             <p className="text-gray-700 mb-4 arial-nova">See projects in this area and vote for your favourite three!</p>
                             <button
