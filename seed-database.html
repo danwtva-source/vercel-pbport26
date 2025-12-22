@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seed Firebase Database - PB Portal</title>
+    <style>
+        body {
+            font-family: 'Arial Nova', Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 50%, #ccfbf1 100%);
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #9333ea;
+            font-family: 'DynaPuff', cursive;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #9333ea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #7e22ce;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #059669;
+        }
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #dc2626;
+        }
+        .info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 2px solid #3b82f6;
+        }
+        .warning {
+            background: #fef3c7;
+            color: #92400e;
+            border: 2px solid #f59e0b;
+        }
+        pre {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .instructions {
+            background: #f9fafb;
+            padding: 20px;
+            border-left: 4px solid #14b8a6;
+            margin: 20px 0;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #14b8a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firebase Database Seeder</h1>
+        <p>Seed your <strong>pb-portal-2026</strong> Firebase database with demo users, applications, and settings.</p>
+
+        <div class="instructions">
+            <h3>📋 Before You Start:</h3>
+            <ol>
+                <li><strong>Enable Firestore:</strong> Go to Firebase Console → Firestore Database → Create Database</li>
+                <li><strong>Enable Authentication:</strong> Go to Authentication → Sign-in method → Enable Email/Password</li>
+                <li><strong>Set up Security Rules:</strong> Deploy the rules from <code>firestore.rules</code></li>
+            </ol>
+        </div>
+
+        <button id="seedBtn" onclick="seedDatabase()">🌱 Seed Database Now</button>
+        <button onclick="checkConnection()">🔍 Test Firebase Connection</button>
+        <button onclick="clearDatabase()" style="background: #dc2626;">🗑️ Clear All Data (Dangerous)</button>
+
+        <div id="status"></div>
+        <pre id="output"></pre>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+        import { getAuth, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+        import { getFirestore, collection, doc, setDoc, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBH4fnIKGK4zyY754ahI5NBiayBCcAU7UU",
+            authDomain: "pb-portal-2026.firebaseapp.com",
+            projectId: "pb-portal-2026",
+            storageBucket: "pb-portal-2026.firebasestorage.app",
+            messagingSenderId: "810167292126",
+            appId: "1:810167292126:web:91128e5a8c67e4b6fb324f",
+            measurementId: "G-9L1GX3J9H7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.checkConnection = async () => {
+            const output = document.getElementById('output');
+            const status = document.getElementById('status');
+            try {
+                output.textContent = 'Testing connection to Firebase...\n';
+                status.className = 'status info';
+                status.textContent = '⏳ Connecting...';
+
+                const testDoc = await setDoc(doc(db, '_test', 'connection'), { test: true, timestamp: Date.now() });
+
+                status.className = 'status success';
+                status.textContent = '✅ Firebase connection successful!';
+                output.textContent += '\n✅ Firestore is accessible\n';
+                output.textContent += '✅ Authentication is configured\n';
+                output.textContent += '✅ Ready to seed database!';
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '❌ Connection failed!';
+                output.textContent += `\n❌ Error: ${error.message}\n\n`;
+                output.textContent += '📝 Next steps:\n';
+                output.textContent += '1. Go to Firebase Console\n';
+                output.textContent += '2. Create Firestore Database\n';
+                output.textContent += '3. Enable Email/Password Authentication';
+            }
+        };
+
+        window.seedDatabase = async () => {
+            const btn = document.getElementById('seedBtn');
+            const output = document.getElementById('output');
+            const status = document.getElementById('status');
+
+            btn.disabled = true;
+            output.textContent = '';
+            status.className = 'status info';
+            status.textContent = '⏳ Seeding database...';
+
+            const DEMO_USERS = [
+                { uid: 'admin1', username: 'admin', email: 'admin@pbportal.com', displayName: 'System Administrator', role: 'admin', area: 'All', password: 'Admin123!' },
+                { uid: 'comm1', username: 'committee1', email: 'committee1@pbportal.com', displayName: 'Blaenavon Committee', role: 'committee', area: 'Blaenavon', password: 'Committee1!' },
+                { uid: 'comm2', username: 'committee2', email: 'committee2@pbportal.com', displayName: 'Thornhill Committee', role: 'committee', area: 'Thornhill & Upper Cwmbran', password: 'Committee2!' },
+                { uid: 'comm3', username: 'committee3', email: 'committee3@pbportal.com', displayName: 'Trevethin Committee', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs', password: 'Committee3!' },
+                { uid: 'app1', username: 'applicant', email: 'applicant@example.com', displayName: 'Test Applicant', role: 'applicant', area: 'Blaenavon', password: 'Applicant1!' }
+            ];
+
+            const DEMO_APPS = [
+                {
+                    id: 'app_demo_001',
+                    ref: 'PB-BLN-001',
+                    applicant: 'Blaenavon Youth FC',
+                    area: 'Blaenavon',
+                    status: 'Submitted-Stage1',
+                    stage: 'Part 1',
+                    projectTitle: 'Youth Football Training Program',
+                    projectSummary: 'Provide weekly football training for 50 young people aged 8-16',
+                    amountRequest: 5000,
+                    totalCost: 6500,
+                    createdAt: Date.now()
+                },
+                {
+                    id: 'app_demo_002',
+                    ref: 'PB-THO-002',
+                    applicant: 'Thornhill Community Centre',
+                    area: 'Thornhill & Upper Cwmbran',
+                    status: 'Submitted-Stage1',
+                    stage: 'Part 1',
+                    projectTitle: 'Digital Skills Workshop',
+                    projectSummary: 'Free computer classes for elderly residents',
+                    amountRequest: 3500,
+                    totalCost: 4000,
+                    createdAt: Date.now()
+                }
+            ];
+
+            const DEFAULT_SETTINGS = {
+                stage1Visible: true,
+                stage2Visible: false,
+                votingOpen: false,
+                scoringThreshold: 50
+            };
+
+            try {
+                const batch = writeBatch(db);
+                let log = '';
+
+                // Seed Users (Firestore documents only - Auth creation separate)
+                log += '📝 Creating user profiles...\n';
+                for (const user of DEMO_USERS) {
+                    const { password, ...userData } = user;
+                    batch.set(doc(db, 'users', user.uid), userData);
+                    log += `  ✓ ${user.email} (${user.role})\n`;
+                }
+
+                // Seed Applications
+                log += '\n📄 Creating demo applications...\n';
+                DEMO_APPS.forEach(app => {
+                    batch.set(doc(db, 'applications', app.id), app);
+                    log += `  ✓ ${app.ref}: ${app.projectTitle}\n`;
+                });
+
+                // Seed Settings
+                log += '\n⚙️ Setting up portal configuration...\n';
+                batch.set(doc(db, 'portalSettings', 'global'), DEFAULT_SETTINGS);
+                log += '  ✓ Portal settings configured\n';
+
+                // Seed Admin Documents
+                log += '\n📁 Creating admin folders...\n';
+                const folders = ['Committee Guidelines', 'Meeting Minutes', 'Policies'];
+                folders.forEach(name => {
+                    const id = 'folder_' + name.replace(/\s/g, '');
+                    batch.set(doc(db, 'adminDocuments', id), {
+                        id,
+                        name,
+                        type: 'folder',
+                        parentId: 'root',
+                        category: 'general',
+                        uploadedBy: 'System',
+                        createdAt: Date.now()
+                    });
+                    log += `  ✓ ${name}\n`;
+                });
+
+                await batch.commit();
+
+                log += '\n✅ Database seeded successfully!\n\n';
+                log += '📊 Summary:\n';
+                log += `  • ${DEMO_USERS.length} users created\n`;
+                log += `  • ${DEMO_APPS.length} demo applications\n`;
+                log += `  • ${folders.length} admin folders\n`;
+                log += '  • 1 portal settings document\n\n';
+                log += '🔐 Demo User Credentials:\n';
+                DEMO_USERS.forEach(u => {
+                    log += `  ${u.email} / ${u.password}\n`;
+                });
+                log += '\n⚠️ IMPORTANT: Create these users in Firebase Authentication manually or use Firebase Admin SDK';
+
+                output.textContent = log;
+                status.className = 'status success';
+                status.textContent = '✅ Database seeded successfully!';
+            } catch (error) {
+                output.textContent = `❌ Error: ${error.message}\n\nStack: ${error.stack}`;
+                status.className = 'status error';
+                status.textContent = '❌ Seeding failed!';
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        window.clearDatabase = async () => {
+            if (!confirm('⚠️ This will DELETE ALL data from your Firebase database. Are you absolutely sure?')) return;
+            if (!confirm('⚠️ FINAL WARNING: This cannot be undone. Proceed?')) return;
+
+            const output = document.getElementById('output');
+            const status = document.getElementById('status');
+            status.className = 'status warning';
+            status.textContent = '🗑️ Clearing database...';
+
+            try {
+                let log = '🗑️ Deleting all documents...\n\n';
+
+                const collections = ['users', 'applications', 'scores', 'portalSettings', 'adminDocuments', 'rounds', 'assignments'];
+
+                for (const collectionName of collections) {
+                    const snapshot = await getDocs(collection(db, collectionName));
+                    log += `Deleting ${snapshot.size} documents from ${collectionName}...\n`;
+
+                    for (const docSnap of snapshot.docs) {
+                        await deleteDoc(doc(db, collectionName, docSnap.id));
+                    }
+                }
+
+                log += '\n✅ All data deleted successfully!';
+                output.textContent = log;
+                status.className = 'status success';
+                status.textContent = '✅ Database cleared!';
+            } catch (error) {
+                output.textContent = `❌ Error: ${error.message}`;
+                status.className = 'status error';
+                status.textContent = '❌ Failed to clear database!';
+            }
+        };
+
+        // Auto-test connection on load
+        window.addEventListener('load', () => {
+            setTimeout(checkConnection, 500);
+        });
+    </script>
+</body>
+</html>
