@@ -2,8 +2,8 @@ import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignm
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 
 // --- CONFIGURATION ---
-// Set to FALSE for production.
-export const USE_DEMO_MODE = true;  // ✅ DEMO MODE ENABLED - No Firebase needed! 
+// Set to TRUE for demo mode with localStorage.
+export const USE_DEMO_MODE = false;  // ✅ LIVE FIREBASE MODE - Connected to pb-portal-2026 
 
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
