@@ -1,9 +1,5 @@
 {
-  "name": "Copy of Copy of Communities' Choice Portal Best Version (current Working-on version after restore point 03.12.25)",
-  "description": "A full-stack participatory budgeting platform for Torfaen, featuring applicant submission, committee scoring, admin management, and public voting modules.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone",
-    "geolocation"
-  ]
+  "name": "Communities' Choice Portal",
+  "description": "Participatory Budgeting portal for Torfaen, supporting Expression of Interest, Full Application, Scoring, and Public Voting phases.",
+  "requestFramePermissions": []
 }

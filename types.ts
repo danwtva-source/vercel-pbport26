@@ -1,267 +1,139 @@
-// types.ts
 
-// --- STRICT ROLE-BASED ACCESS CONTROL ---
-export type Role = 'applicant' | 'committee' | 'admin';
+export enum UserRole {
+  PUBLIC = 'PUBLIC',
+  APPLICANT = 'APPLICANT',
+  COMMITTEE = 'COMMITTEE',
+  ADMIN = 'ADMIN'
+}
 
-// --- GEOGRAPHIC AREAS ---
-export type Area = 'Blaenavon' | 'Thornhill & Upper Cwmbran' | 'Trevethin, Penygarn & St. Cadocs' | 'Cross-Area';
-
-export const AREAS: Area[] = [
-  'Blaenavon',
-  'Thornhill & Upper Cwmbran',
-  'Trevethin, Penygarn & St. Cadocs'
-];
-
-// --- APPLICATION STATUS (Two-Stage Lifecycle) ---
-export type ApplicationStatus =
-  | 'Draft'
-  | 'Submitted-Stage1'
-  | 'Rejected-Stage1'
-  | 'Invited-Stage2'
-  | 'Submitted-Stage2'
-  | 'Funded'
-  | 'Not-Funded';
-
-// --- USER INTERFACE ---
 export interface User {
   uid: string;
+  name: string;
   email: string;
-  username?: string;
-  role: Role;
-  area?: Area | null;  // Area assignment (required for committee members)
-  displayName?: string;
-  password?: string; // For demo seeding only, never store in production
-
-  // Profile fields
+  role: UserRole;
+  area: string; 
+  createdAt?: any;
+  photoUrl?: string; 
   bio?: string;
   phone?: string;
-  photoUrl?: string;
-  address?: string;
-  roleDescription?: string;
-  createdAt?: number;
-  isActive?: boolean;
 }
 
-// --- PORTAL SETTINGS ---
-export interface PortalSettings {
-    stage1Visible: boolean;
-    stage2Visible: boolean;
-    votingOpen: boolean;
-    scoringThreshold: number;
-}
-
-// --- BUDGET LINE ---
 export interface BudgetLine {
-    item: string;
-    note: string;
-    cost: number;
+  item: string;
+  amount: number;
 }
 
-// --- SCORING CRITERION ---
-export interface ScoreCriterion {
+export interface Application {
+  ref: string;
+  applicant: string; 
+  contactName: string;
+  email: string;
+  phone: string;
+  address: string;
+  area: string;
+  
+  // Status Tracking
+  status: 'Draft' | 'Submitted' | 'Under Review' | 'Scored' | 'Approved' | 'Rejected' | 'Finalised';
+  stage: 'EOI' | 'Part 2';
+  
+  // Part 1: EOI Fields
+  projectTitle: string;
+  projectSummary: string; 
+  amountRequest: number;
+  totalCost: number;
+  beneficiaries: string; 
+  timescale: string;
+  
+  // Logic Connections
+  selectedWfgGoals: string[]; 
+  selectedMarmotPrinciples: string[]; 
+  
+  // Part 2: Full Application Fields
+  wfgJustifications?: Record<string, string>; // For justifying selections from Part 1
+  marmotJustifications?: Record<string, string>; // For justifying selections from Part 1
+  projectPlan: string; 
+  communityInvolvement: string; 
+  collaboration: string; 
+  sustainability: string; 
+  inclusionStrategy: string; 
+  monitoringEvaluation: string;
+  risksChallenges: string;
+  budgetBreakdown: BudgetLine[];
+  
+  // Meta
+  applicantUid?: string;
+  createdAt?: string;
+  submittedAt?: string;
+  adminNotes?: string;
+}
+
+export interface Criterion {
   id: string;
   name: string;
   guidance: string;
   weight: number;
   details: string;
+  score?: number;
+  notes?: string;
 }
 
-// --- VOTING (Stage 1) ---
-export interface Vote {
-    id: string;
-    appId: string;
-    voterId: string;
-    voterName?: string;
-    decision: 'yes' | 'no';
-    reason?: string;
-    createdAt: string;
-}
-
-// --- SCORING (Stage 2) ---
-export interface ScoreBreakdown {
-  [criterionKey: string]: number; // 0–100
-}
-
-export interface Score {
-  id: string;
-  appId: string;
-  scorerId: string;
-  scorerName?: string;
-  weightedTotal: number; // 0–100
-  breakdown: ScoreBreakdown;
-  notes?: Record<string, string>; // criterionId -> comment
-  isFinal?: boolean;
-  createdAt: string;
-}
-
-// --- APPLICATION ---
-export interface Application {
-  id: string;
-  userId: string;
-  applicantName: string; // Contact Name
-  orgName: string;
-  projectTitle: string;
-  area: Area;
-  summary: string;
-  amountRequested: number;
-  totalCost: number;
-  status: ApplicationStatus;
-  priority?: string;
-  createdAt: number;
-  updatedAt: number;
+export interface ScoringState {
   ref: string;
-  roundId?: string; // Link to specific funding round
-
-  submissionMethod: 'digital' | 'upload';
-  pdfUrl?: string;
-  stage2PdfUrl?: string;
-
-  // Feedback from Admins/Committee to Applicant
-  feedback?: string;
-
-  // Computed fields for Admin View
-  voteCountYes?: number;
-  voteCountNo?: number;
-  averageScore?: number;
-  scoreCount?: number;
-
-  // --- Stage 1 (EOI) Data ---
-  formData: {
-    applyMultiArea?: boolean;
-
-    // Address
-    addressStreet?: string;
-    addressLocalArea?: string;
-    addressTown?: string;
-    addressCounty?: string;
-    addressPostcode?: string;
-
-    // Organisation Type
-    orgTypes?: string[]; // Multiple selection
-    orgTypeOther?: string;
-
-    contactPosition?: string;
-    contactEmail?: string;
-    contactPhone?: string;
-
-    // Priorities & Timeline
-    projectTheme?: string;
-    startDate?: string;
-    endDate?: string;
-    duration?: string;
-
-    // Outcomes
-    outcome1?: string;
-    outcome2?: string;
-    outcome3?: string;
-
-    // Funding
-    otherFundingSources?: string;
-    crossAreaBreakdown?: string;
-
-    // Alignment Selections (Part 1 Checkboxes)
-    marmotPrinciples?: string[];
-    wfgGoals?: string[];
-
-    // Declaration Part 1
-    gdprConsent?: boolean;
-    declarationTrue?: boolean;
-    declarationName?: string;
-    declarationDate?: string;
-    declarationSignature?: string;
-
-    // --- Stage 2 (Full App) Data ---
-
-    // Bank & Reg
-    bankAccountName?: string;
-    bankAccountNumber?: string;
-    bankSortCode?: string;
-    charityNumber?: string;
-    companyNumber?: string;
-
-    // Detailed Project
-    smartObjectives?: string;
-    activities?: string;
-    communityBenefit?: string;
-    collaborations?: string;
-    riskManagement?: string;
-
-    // Justifications (Text for selected Marmot/WFG)
-    marmotJustifications?: Record<string, string>; // Principle -> Text
-    wfgJustifications?: Record<string, string>; // Goal -> Text
-
-    // Detailed Budget
-    budgetBreakdown?: BudgetLine[];
-    additionalBudgetInfo?: string;
-
-    // Checklist / Uploads
-    attachments?: {
-        constitution?: boolean;
-        safeguarding?: boolean;
-        gdpr?: boolean;
-        bankStatement?: boolean;
-        insurance?: boolean;
-        // URLs for uploaded files
-        constitutionUrl?: string;
-        bankStatementUrl?: string;
-        otherUrl?: string;
-    };
-
-    // Declaration Part 2
-    consentWithdraw?: boolean;
-    agreeGdprScrutiny?: boolean;
-    confirmOtherFunding?: boolean;
-    declarationName2?: string;
-    declarationDate2?: string;
-    declarationSignature2?: string;
-  }
+  criteria: Criterion[];
+  isFinal: boolean;
+  scorer: string;
+  scorerUid?: string;
+  updatedAt: string;
 }
 
-// --- ADMIN DOCUMENTS ---
-export interface AdminDocument {
-    id: string;
-    name: string;
-    type: 'folder' | 'file';
-    parentId: string | 'root';
-    url?: string;
-    category: 'general' | 'minutes' | 'policy' | 'committee-only';
-    uploadedBy: string;
-    createdAt: number;
+export interface AreaData {
+  name: string;
+  formUrl: string;
+  postcodes: string[];
 }
 
-// --- FUNDING ROUNDS ---
+export interface PriorityEntry {
+  name: string;
+  score: number;
+  description: string;
+}
+
+export interface PriorityData {
+  totalResponses: number;
+  priorities: PriorityEntry[];
+}
+
+export interface SystemSettings {
+  scoringThreshold: number; 
+  activeRoundId: string;
+  isEOIOpen: boolean;
+  isPart2Open: boolean;
+  isVotingOpen: boolean;
+}
+
 export interface Round {
   id: string;
   name: string;
-  year: number;
   status: 'planning' | 'open' | 'scoring' | 'voting' | 'closed';
   startDate: string;
   endDate: string;
-  areas: Area[]; // Areas covered by this round
-  stage1Open?: boolean;
-  stage2Open?: boolean;
-  scoringOpen?: boolean;
-  scoringCriteria?: ScoreCriterion[];
-  scoringThreshold?: number;
-  createdAt?: number;
 }
 
-// --- ASSIGNMENTS ---
-export interface Assignment {
+export interface DocumentResource {
   id: string;
-  applicationId: string;
-  committeeId: string;
-  assignedDate: string;
-  dueDate?: string;
-  status: 'assigned' | 'draft' | 'submitted' | 'rescore';
+  title: string;
+  category: 'Guidance' | 'Policy' | 'Template';
+  url: string;
+  size: string;
+  uploadedAt: string;
 }
 
-// --- AUDIT LOGGING ---
-export interface AuditLog {
+export interface MasterTask {
   id: string;
-  adminId: string;
-  action: string;    // e.g. 'APP_STATUS_CHANGE', 'ROUND_UPDATE'
-  targetId: string;  // e.g. application or round id
-  timestamp: number;
-  details?: Record<string, unknown>;
+  type: 'review_eoi' | 'score_app' | 'approve_final' | 'system_check';
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+  description: string;
+  area?: string;
+  targetRef?: string;
 }
