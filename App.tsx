@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Landing, PostcodeChecker, Timeline, Priorities, PublicDocuments } from './views/Public';
 import { ApplicantDashboard, CommitteeDashboard, AdminDashboard } from './views/Secure';
 import { Button, Input, Modal } from './components/UI';
-import { api } from './services/firebase';
-import { User } from './types';
+import { api, auth } from './services/firebase';
+import { Role, User } from './types';
+import { getDashboardPageForRole } from './utils/routing';
+
+// Logo paths (served from public directory)
+const PublicLogo = '/images/PB English Transparent.png';
+const PortalLogo = "/images/Peoples’ Committee Portal logo 2.png";
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  
+
   // Auth State
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -18,38 +23,162 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setLoading(true);
-    try {
-        const u = authMode === 'login' ? await api.login(emailOrUser, password) : await api.register(emailOrUser, password, displayName);
-        setCurrentUser(u); setIsAuthOpen(false); setCurrentPage(u.role === 'admin' ? 'admin' : u.role === 'committee' ? 'committee' : 'applicant');
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+  // --- Strict Role-Based Routing ---
+  const routeUser = (user: User) => {
+      const role: Role = user.role;
+      setCurrentPage(getDashboardPageForRole(role));
   };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+        const u = authMode === 'login'
+          ? await api.login(emailOrUser, password)
+          : await api.register(emailOrUser, password, displayName);
+
+        setCurrentUser(u);
+        setIsAuthOpen(false);
+        routeUser(u);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message || 'An error occurred');
+      } else {
+        setError('An error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Monitor Auth State
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // Log the UID to console for debugging
+        console.log("Auth UID:", user.uid);
+
+        const profile = await api.getUserById(user.uid);
+
+        if (profile) {
+          console.log("Firestore Profile Found:", profile);
+          console.log("User Role:", profile.role);
+          console.log("User Area:", profile.area);
+          setCurrentUser(profile);
+
+          // ALWAYS route user to their role-specific dashboard after login
+          routeUser(profile);
+        } else {
+          console.warn("No Firestore Profile found for UID. Creating default applicant profile.");
+
+          // Create a default applicant profile
+          const newProfile: User = {
+            uid: user.uid,
+            email: user.email || '',
+            role: 'applicant',
+            displayName: user.displayName || undefined,
+            createdAt: Date.now()
+          };
+
+          setCurrentUser(newProfile);
+          setCurrentPage('applicant');
+        }
+      } else {
+        setCurrentUser(null);
+        setCurrentPage('home');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Enforce role-based access control during session
+  useEffect(() => {
+      if (!currentUser) return;
+
+      const role: Role = currentUser.role;
+      console.log("Role enforcement check - Current role:", role, "Current page:", currentPage);
+
+      if (currentPage === 'committee' && role === 'admin') return;
+
+      const expectedPage = getDashboardPageForRole(role);
+      if (currentPage !== expectedPage) {
+        setCurrentPage(expectedPage);
+      }
+  }, [currentUser, currentPage]);
 
   const handleProfileClick = () => {
       if(!currentUser) return;
-      if(currentUser.role === 'admin') setCurrentPage('admin');
-      else if(currentUser.role === 'committee') setCurrentPage('committee');
-      else setCurrentPage('applicant');
+      routeUser(currentUser);
   };
 
   const renderView = () => {
+    // Public views (unauthenticated)
     if (!currentUser) {
-        switch(currentPage) {
-            case 'timeline': return <Timeline />;
-            case 'check-postcode': return <PostcodeChecker />;
-            case 'priorities': return <Priorities />;
-            case 'documents': return <PublicDocuments />;
-            default: return <Landing onNavigate={(page) => { if(page==='register'){setAuthMode('register');setIsAuthOpen(true);} else setCurrentPage(page); }} />;
+        const page = currentPage.split(':')[0];
+        switch(page) {
+            case 'timeline':
+              return <Timeline />;
+            case 'check-postcode':
+              return <PostcodeChecker />;
+            case 'priorities':
+              return <Priorities />;
+            case 'documents':
+              return <PublicDocuments />;
+            default:
+              return <Landing onNavigate={(pageName) => {
+                if (pageName === 'register') {
+                  setAuthMode('register');
+                  setIsAuthOpen(true);
+                } else {
+                  setCurrentPage(pageName);
+                }
+              }} />;
         }
     }
-    if (currentUser.role === 'admin') {
-        if(currentPage === 'committee') return <CommitteeDashboard user={currentUser} onUpdateUser={setCurrentUser} isAdmin onReturnToAdmin={() => setCurrentPage('admin')} />;
-        return <AdminDashboard onNavigatePublic={setCurrentPage} onNavigateScoring={() => setCurrentPage('committee')} />;
+
+    // Authenticated views
+    const role: Role = currentUser.role;
+
+    if (role === 'admin') {
+        // Admin can access committee view as well
+        if (currentPage === 'committee') {
+          return (
+            <CommitteeDashboard
+              user={currentUser}
+              onUpdateUser={setCurrentUser}
+              isAdmin
+              onReturnToAdmin={() => setCurrentPage('admin')}
+            />
+          );
+        }
+        return (
+          <AdminDashboard
+            onNavigatePublic={setCurrentPage}
+            onNavigateScoring={() => setCurrentPage('committee')}
+          />
+        );
     }
-    if (currentUser.role === 'committee') return <CommitteeDashboard user={currentUser} onUpdateUser={setCurrentUser} />;
+
+    if (role === 'committee') {
+      return (
+        <CommitteeDashboard
+          user={currentUser}
+          onUpdateUser={setCurrentUser}
+        />
+      );
+    }
+
+    // Default: Applicant
     return <ApplicantDashboard user={currentUser} />;
   };
+
+  // Determine which logo to show based on authentication state and role
+  const isSecurePortal = currentUser && ['admin', 'committee'].includes(currentUser.role);
+  const logoSrc = isSecurePortal ? PortalLogo : PublicLogo;
+  const logoAlt = isSecurePortal ? "Peoples' Committee Portal" : "Communities' Choice";
 
   return (
     <div className="min-h-screen flex flex-col bg-white font-arial selection:bg-purple-200">
@@ -59,8 +188,8 @@ function App() {
             {/* Logo Section - Logic for Public vs Portal Logo */}
             <div className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentPage('home')}>
                 <img 
-                    src={currentUser ? "/public/images/Peoples’ Committee Portal logo 2.png" : "/public/images/PB English Transparent.png"} 
-                    alt="Communities' Choice Logo" 
+                    src={logoSrc}
+                    alt={logoAlt}
                     className="h-20 w-auto object-contain drop-shadow-sm" 
                     onError={(e) => e.currentTarget.style.display='none'} 
                 />
@@ -98,7 +227,7 @@ function App() {
                             />
                             <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></div>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => { setCurrentUser(null); setCurrentPage('home'); }}>
+                        <Button variant="ghost" size="sm" onClick={() => { auth.signOut(); }}>
                             <span className="text-red-500 hover:text-red-700">Log Out</span>
                         </Button>
                     </div>
@@ -117,49 +246,35 @@ function App() {
         <div className="container mx-auto px-4">
             <div className="flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="text-center md:text-left">
-                    <img src="/public/images/PB English Transparent.png" alt="Logo" className="h-12 mb-4 mx-auto md:mx-0 opacity-80" />
-                    <p className="text-gray-500 text-sm max-w-md leading-relaxed">
-                        <strong>Communities' Choice</strong> is a participatory budgeting initiative empowering Torfaen residents to make decisions about public funding in their local areas.
-                    </p>
+                    <img src={PublicLogo} alt="Logo" className="h-12 mb-4 mx-auto md:mx-0 opacity-80" />
+                    <p className="text-gray-600 max-w-sm">Communities' Choice is a participatory budgeting initiative empowering local residents to shape their communities.</p>
                 </div>
-                <div className="flex gap-8 text-sm font-bold text-gray-600">
-                    <a href="#" className="hover:text-brand-purple transition-colors">Privacy Policy</a>
-                    <a href="#" className="hover:text-brand-purple transition-colors">Accessibility</a>
-                    <a href="#" className="hover:text-brand-purple transition-colors">Contact Us</a>
+                <div className="text-center md:text-right">
+                    <p className="text-gray-400 text-sm">&copy; 2025 Communities' Choice Torfaen</p>
                 </div>
-            </div>
-            <div className="mt-12 pt-8 border-t border-gray-200 text-center text-xs text-gray-400 uppercase tracking-widest">
-                &copy; 2026 Torfaen County Borough Council & TVA
             </div>
         </div>
       </footer>
 
       {/* AUTH MODAL */}
-      <Modal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} title={authMode === 'login' ? 'Portal Access' : 'Join the Community'}>
-        <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <img src="/public/images/Peoples’ Committee Portal logo 2.png" alt="Logo" className="h-12 w-auto" onError={e => e.currentTarget.style.display='none'} />
-            </div>
-            <h3 className="font-dynapuff text-xl text-brand-purple mb-1">Welcome Back</h3>
-            <p className="text-gray-500 text-sm">Secure access for Applicants & Committee Members</p>
-        </div>
-        <form onSubmit={handleLogin} className="space-y-5 px-4 pb-4">
-            {authMode === 'register' && <Input label="Full Name" value={displayName} onChange={e => setDisplayName(e.target.value)} required placeholder="Jane Doe" />}
-            <Input label="Email or Username" value={emailOrUser} onChange={e => setEmailOrUser(e.target.value)} required placeholder="user@example.com" />
-            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" />
-            {error && <div className="text-red-600 bg-red-50 p-4 rounded-xl text-sm font-bold border border-red-100 flex items-center gap-2">⚠️ {error}</div>}
-            <Button type="submit" className="w-full shadow-lg py-4 text-lg" disabled={loading}>
-                {loading ? 'Processing...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
-            </Button>
-            <div className="text-center text-sm text-gray-500 mt-6 pt-6 border-t border-gray-100">
-                {authMode === 'login' ? 'New to Communities\' Choice?' : 'Already have an account?'}
-                <button type="button" onClick={() => { setError(''); setAuthMode(authMode === 'login' ? 'register' : 'login'); }} className="text-brand-purple font-bold ml-2 hover:underline">
-                    {authMode === 'login' ? 'Create an account' : 'Log in'}
-                </button>
+      <Modal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} title={authMode === 'login' ? 'Portal Login' : 'Create Account'}>
+        <form onSubmit={handleLogin} className="space-y-4">
+            <Input label={authMode === 'login' ? 'Email or Username' : 'Email'} value={emailOrUser} onChange={e => setEmailOrUser(e.target.value)} required />
+            {authMode === 'register' && <Input label="Display Name" value={displayName} onChange={e => setDisplayName(e.target.value)} required />}
+            <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+            {error && <div className="text-red-500 text-sm">{error}</div>}
+            <Button type="submit" className="w-full" disabled={loading}>{loading ? 'Please wait...' : authMode === 'login' ? 'Login' : 'Register'}</Button>
+            <div className="text-center text-sm text-gray-500">
+                {authMode === 'login' ? (
+                    <button type="button" onClick={() => setAuthMode('register')} className="text-brand-purple font-bold">Need an account?</button>
+                ) : (
+                    <button type="button" onClick={() => setAuthMode('login')} className="text-brand-purple font-bold">Already have an account?</button>
+                )}
             </div>
         </form>
       </Modal>
     </div>
   );
 }
+
 export default App;

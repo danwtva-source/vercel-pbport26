@@ -167,10 +167,10 @@ const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavi
                             </button>
                         </div>
 
-                        {/* Trevethin, Penygarn & St. Cadocs Slide */}
+                        {/* Trevethin–Penygarn–St Cadoc’s Slide */}
                         <div className="swiper-slide">
-                            <img src="/images/tps.png" alt="Trevethin, Penygarn & St Cadocs Area Map" className="area-img" />
-                            <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Trevethin, Penygarn & St. Cadocs</h3>
+                            <img src="/images/tps.png" alt="Trevethin–Penygarn–St Cadoc’s Area Map" className="area-img" />
+                            <h3 className="text-2xl font-semibold text-purple-700 mb-2 dynapuff">Trevethin–Penygarn–St Cadoc’s</h3>
                             <p className="text-gray-700 mb-4 arial-nova">See projects in this area and vote for your favourite three!</p>
                             <button
                                 onClick={() => goToVotePage('trevethin')}
@@ -290,7 +290,7 @@ export const Priorities: React.FC = () => {
                     {[
                         { id: 'blaenavon', label: 'Blaenavon', col: '#FFD447' },
                         { id: 'thornhill', label: 'Thornhill & Upper Cwmbran', col: '#2FBF71' },
-                        { id: 'trevethin', label: 'Trevethin, Penygarn & St. Cadocs', col: '#3A86FF' }
+                        { id: 'trevethin', label: 'Trevethin–Penygarn–St Cadoc’s', col: '#3A86FF' }
                     ].map(tab => (
                         <button
                             key={tab.id}

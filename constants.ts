@@ -3,7 +3,7 @@ import { ScoreCriterion } from "./types";
 export const POSTCODES = {
   'Blaenavon': ['NP49AA','NP49AB','NP49AD'], // (Truncated for brevity, logic exists in app)
   'Thornhill & Upper Cwmbran': ['NP441AA','NP441AB'],
-  'Trevethin, Penygarn & St. Cadocs': ['NP48AA','NP48AB']
+  'Trevethin–Penygarn–St Cadoc’s': ['NP48AA','NP48AB']
 };
 
 // Full text from PB 1.1 Form
