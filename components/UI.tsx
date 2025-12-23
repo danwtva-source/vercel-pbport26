@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 // --- Button ---
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -31,6 +31,84 @@ export const Input: React.FC<InputProps> = ({ label, className = '', ...props })
     <input className={`w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-purple focus:ring-4 focus:ring-purple-100 outline-none transition-all font-arial ${className}`} {...props} />
   </div>
 );
+
+// --- Rich Text Area ---
+export const RichTextArea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; maxWords?: number }> = ({ label, maxWords, value, className = '', ...props }) => {
+  const wordCount = typeof value === 'string' && value.trim() ? value.trim().split(/\s+/).length : 0;
+  const isOver = maxWords ? wordCount > maxWords : false;
+
+  return (
+    <div className="mb-4">
+      <div className="flex justify-between items-end mb-2">
+        {label && <label className="block text-sm font-bold text-gray-700 font-dynapuff">{label}</label>}
+        {maxWords && (
+          <span className={`text-xs font-bold ${isOver ? 'text-red-600' : 'text-gray-400'}`}>
+            {wordCount} / {maxWords} words
+          </span>
+        )}
+      </div>
+      <textarea
+        className={`w-full px-4 py-3 rounded-xl border ${isOver ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:border-brand-purple focus:ring-purple-100'} focus:ring-4 outline-none transition-all font-arial ${className}`}
+        value={value}
+        {...props}
+      />
+    </div>
+  );
+};
+
+// --- File Upload ---
+export const FileUpload: React.FC<{
+  label: string;
+  accept?: string;
+  currentUrl?: string;
+  onUpload: (file: File) => Promise<void>;
+  onDelete?: () => void;
+  disabled?: boolean;
+}> = ({ label, accept, currentUrl, onUpload, onDelete, disabled }) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setLoading(true);
+      try {
+        await onUpload(e.target.files[0]);
+      } catch (err) {
+        alert('Upload failed');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+      <label className="block text-sm font-bold text-gray-700 mb-2 font-dynapuff">{label}</label>
+      <div className="flex items-center gap-4">
+        {currentUrl ? (
+          <div className="flex-1 flex items-center justify-between bg-white p-3 rounded-lg border">
+            <a href={currentUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-bold truncate">View Uploaded Document</a>
+            {!disabled && onDelete && (
+              <button type="button" onClick={onDelete} className="text-red-500 hover:text-red-700 text-sm font-bold">Remove</button>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 relative">
+            <input
+              type="file"
+              accept={accept || ".pdf,.doc,.docx,.jpg,.png"}
+              onChange={handleChange}
+              disabled={loading || disabled}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+            />
+            <div className={`flex items-center justify-center p-3 border-2 border-dashed rounded-lg text-sm font-bold text-gray-500 hover:bg-gray-100 transition-colors ${loading ? 'bg-gray-100' : 'bg-white'}`}>
+              {loading ? 'Uploading...' : 'Click to Upload File'}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // --- Modal ---
 export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; size?: 'md' | 'lg' | 'xl' | 'full' }> = ({ isOpen, onClose, title, children, size = 'md' }) => {
