@@ -9,7 +9,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "fire
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
 // Set to TRUE for demo/development without Firebase.
-export const USE_DEMO_MODE = true; // ⚠️ Enable demo mode for deployment without Firebase env vars
+export const USE_DEMO_MODE = false; // Production mode with Firebase
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
