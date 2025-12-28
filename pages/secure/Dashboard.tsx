@@ -29,8 +29,7 @@ import {
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const currentUser = DataService.getCurrentUser();
-
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [allApplications, setAllApplications] = useState<Application[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]);
@@ -41,23 +40,24 @@ const Dashboard: React.FC = () => {
   const [selectedArea, setSelectedArea] = useState<string>('All');
 
   useEffect(() => {
-    loadData();
-  }, [currentUser]);
-
-  const loadData = async () => {
-    if (!currentUser) {
+    const user = DataService.getCurrentUser();
+    setCurrentUser(user);
+    if (user) {
+      loadData(user);
+    } else {
       navigate('/login');
-      return;
     }
+  }, []);
 
+  const loadData = async (user: User) => {
     setLoading(true);
     try {
       const [appsData, votesData, scoresData, assignmentsData, usersData] = await Promise.all([
         DataService.getApplications(),
         DataService.getVotes(),
         DataService.getScores(),
-        currentUser.role === 'committee' ? DataService.getAssignments(currentUser.uid) : Promise.resolve([]),
-        currentUser.role === 'admin' ? DataService.getUsers() : Promise.resolve([])
+        user.role === 'committee' ? DataService.getAssignments(user.uid) : Promise.resolve([]),
+        user.role === 'admin' ? DataService.getUsers() : Promise.resolve([])
       ]);
 
       setAllApplications(appsData);
@@ -67,13 +67,13 @@ const Dashboard: React.FC = () => {
       setUsers(usersData);
 
       // Filter applications based on role
-      if (currentUser.role === 'applicant') {
-        setApplications(appsData.filter(app => app.userId === currentUser.uid));
-      } else if (currentUser.role === 'committee') {
+      if (user.role === 'applicant') {
+        setApplications(appsData.filter(app => app.userId === user.uid));
+      } else if (user.role === 'committee') {
         const assignedAppIds = assignmentsData.map(a => a.applicationId);
         const committeeApps = appsData.filter(app =>
           assignedAppIds.includes(app.id) ||
-          (currentUser.area && (app.area === currentUser.area || app.area === 'Cross-Area'))
+          (user.area && (app.area === user.area || app.area === 'Cross-Area'))
         );
         setApplications(committeeApps);
       } else {
