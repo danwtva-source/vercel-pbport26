@@ -180,7 +180,7 @@ This document verifies that all admin functionality has been successfully integr
 #### Dependencies
 - **Status:** ✅ INSTALLED
 - React 18.3.1
-- Firebase 10.12.2
+- Firebase 10.14.1
 - Vite 5.2.0
 - TypeScript 5.4.0
 
