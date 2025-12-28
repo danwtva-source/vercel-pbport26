@@ -1,6 +1,6 @@
 # Communities' Choice Participatory Budgeting Portal
 
-A modern, role-based Participatory Budgeting (PB) application built with React, TypeScript, and Firebase. This portal enables applicants to submit project proposals, committees to score and vote on them, and administrators to manage the entire process.
+A modern, role-based Participatory Budgeting (PB) application built with React, TypeScript, and Firebase. This portal enables applicants to submit project  proposals, committees to score and vote on them, and administrators to manage the entire process.
 
 ## Project Overview
 
