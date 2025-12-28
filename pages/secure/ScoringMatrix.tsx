@@ -1,20 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
-import { Application, Score, UserRole } from '../../types';
+import { Application, Score, UserRole, User } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
-
-interface ScoringMatrixProps {
-  currentUser: {
-    uid: string;
-    name: string;
-    email: string;
-    role: UserRole;
-    area?: string;
-  };
-}
 
 interface CriterionScore {
   score: number;
@@ -27,7 +18,9 @@ interface ApplicationWithScores extends Application {
   isScored: boolean;
 }
 
-const ScoringMatrix: React.FC<ScoringMatrixProps> = ({ currentUser }) => {
+const ScoringMatrix: React.FC = () => {
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [applications, setApplications] = useState<ApplicationWithScores[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,13 +29,33 @@ const ScoringMatrix: React.FC<ScoringMatrixProps> = ({ currentUser }) => {
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
 
-  const isAdmin = currentUser.role === UserRole.ADMIN;
-  const isCommittee = currentUser.role === UserRole.COMMITTEE || isAdmin;
+  // Get current user on mount
+  useEffect(() => {
+    const user = DataService.getCurrentUser();
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    setCurrentUser(user);
+  }, [navigate]);
+
+  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
+  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
 
   // Access control - CRITICAL: Committee and Admin only
+  if (!currentUser) {
+    return (
+      <SecureLayout userRole={UserRole.PUBLIC}>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </SecureLayout>
+    );
+  }
+
   if (!isCommittee) {
     return (
-      <SecureLayout userRole={currentUser.role}>
+      <SecureLayout userRole={currentUser.role as UserRole}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <Card className="max-w-md text-center">
             <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
@@ -57,8 +70,10 @@ const ScoringMatrix: React.FC<ScoringMatrixProps> = ({ currentUser }) => {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (currentUser) {
+      loadData();
+    }
+  }, [currentUser]);
 
   const loadData = async () => {
     setLoading(true);
