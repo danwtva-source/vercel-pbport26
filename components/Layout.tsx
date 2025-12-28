@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { api as AuthService, DataService } from '../services/firebase';
+import { api as AuthService, USE_DEMO_MODE } from '../services/firebase';
 import { LogOut, LayoutDashboard, FileText, BarChart3, Settings, Menu, X, Home, Vote, FileQuestion, BookOpen, Briefcase } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -9,8 +9,7 @@ interface LayoutProps {
 }
 
 const DemoBanner = () => {
-  const [isDemo, setIsDemo] = useState(DataService.isDemoMode());
-  if (!isDemo) return null;
+  if (!USE_DEMO_MODE) return null;
   return (
     <div className="bg-amber-500 text-white text-[9px] font-bold text-center py-1 tracking-tighter sticky top-0 z-[60] uppercase shadow-inner">
       Simulation Active — Data is temporary
