@@ -999,7 +999,152 @@ Before testing, ensure:
 
 ---
 
-## 14. Final Sign-Off
+## 14. New Component Tests (Post-Merge Enhancements)
+
+### 14.1 ScoringModal (Committee Inline Scoring)
+- [ ] Login as Committee member
+- [ ] Navigate to Dashboard
+- [ ] Find a Stage 2 application that needs scoring
+- [ ] Click "Score App" button on the card
+- [ ] Verify ScoringModal opens as overlay
+- [ ] Verify all 10 scoring criteria are displayed with weights
+- [ ] Verify sliders work (0-100 range, step 5)
+- [ ] Verify weighted total calculates in real-time
+- [ ] Add optional notes for at least one criterion
+- [ ] Click "Submit Score" button
+- [ ] Verify modal closes
+- [ ] Verify dashboard refreshes
+- [ ] Verify application card now shows "Scored" status (green border)
+- [ ] Verify cannot score the same application twice (button changes or disabled)
+
+### 14.2 ScoringMonitor (Admin Scoring Progress Tracking)
+- [ ] Login as Admin
+- [ ] Navigate to `/portal/admin` (Master Console)
+- [ ] Verify "Enter Scoring Mode" button is visible on Overview tab
+- [ ] Click "Enter Scoring Mode" button
+- [ ] Verify ScoringMonitor interface loads
+- [ ] Verify only Stage 2 applications are displayed
+- [ ] Verify area filter dropdown works (Blaenavon, Thornhill & Upper Cwmbran, Trevethin–Penygarn–St Cadoc's)
+- [ ] Verify each application card shows:
+  - [ ] Application ref number (e.g., "APP-001")
+  - [ ] Project title and organization name
+  - [ ] Progress indicator (e.g., "5 / 8" scores submitted)
+  - [ ] Average score percentage
+  - [ ] Color coding: Green if ≥50%, Red if <50%
+- [ ] Click on an application card to expand
+- [ ] Verify committee member breakdown appears
+- [ ] Verify individual scores shown for members who have scored
+- [ ] Verify "Pending" status shown for members who haven't scored
+- [ ] Verify green checkmark indicator for completed scores
+- [ ] Click "Exit Scoring Mode" button
+- [ ] Verify returns to Admin Console Overview tab
+
+### 14.3 BarChart Visualization (Admin Analytics)
+- [ ] Login as Admin
+- [ ] Navigate to `/portal/admin`
+- [ ] On Overview tab, locate "Application Status Distribution" section
+- [ ] Verify BarChart displays with all application statuses
+- [ ] Verify bar widths are proportional to counts
+- [ ] Verify labels are clear (Draft, Stage 1, Stage 2, Funded, etc.)
+- [ ] Verify counts are accurate (compare to Master List tab)
+- [ ] Verify purple color scheme matches branding
+
+### 14.4 Data Enrichment (Admin Master List)
+- [ ] Login as Admin
+- [ ] Navigate to `/portal/admin` → Master List tab
+- [ ] Verify Master List table includes these columns:
+  - [ ] Ref Number
+  - [ ] Project Title / Organization
+  - [ ] Area
+  - [ ] Amount Requested
+  - [ ] **Stage 1 (Votes)** - shows "X Yes | Y No" format
+  - [ ] **Stage 2 (Score)** - shows "Z% (N)" format (average % with scorer count)
+  - [ ] Status
+  - [ ] Actions
+- [ ] Verify vote counts are accurate:
+  - [ ] Create test votes for an application
+  - [ ] Refresh page
+  - [ ] Verify vote column updates correctly
+- [ ] Verify score analytics are accurate:
+  - [ ] Create test scores for an application
+  - [ ] Refresh page
+  - [ ] Verify score column shows average % and count
+  - [ ] Verify badge color: Green if ≥threshold, Red if <threshold
+- [ ] Verify status dropdown allows changing application status
+- [ ] Verify View/Edit buttons work for each application
+
+### 14.5 Committee Inline Voting & Color-Coded Cards
+- [ ] Login as Committee member
+- [ ] Navigate to Dashboard
+- [ ] Verify application cards have color-coded left borders:
+  - [ ] **Orange border** = Vote Needed (Stage 1, not voted yet)
+  - [ ] **Purple border** = Score Needed (Stage 2, not scored yet)
+  - [ ] **Green border** = Already voted/scored
+  - [ ] **Gray border** = No action required
+- [ ] Find a Stage 1 application that needs voting (orange border)
+- [ ] Verify "Yes" and "No" buttons are visible on the card
+- [ ] Click "Yes" button
+- [ ] Verify page refreshes
+- [ ] Verify card border changes to green
+- [ ] Verify status badge shows "Voted"
+- [ ] Find a Stage 2 application that needs scoring (purple border)
+- [ ] Verify "Score App" button is visible
+- [ ] Click "Score App" button
+- [ ] Verify ScoringModal opens (tested in 14.1 above)
+
+### 14.6 Matrix Evaluation Page (Committee & Admin)
+- [ ] Login as Committee member
+- [ ] Click "Matrix Evaluation" in sidebar navigation
+- [ ] Verify navigates to `/portal/scoring`
+- [ ] Verify page loads without errors
+- [ ] Verify assigned applications are displayed
+- [ ] Verify scoring interface works (same functionality as ScoringMatrix)
+- [ ] Logout and login as Admin
+- [ ] Click "Matrix Evaluation" in sidebar navigation
+- [ ] Verify Admin can access the page
+- [ ] Verify Admin sees all applications (not area-filtered)
+- [ ] Verify Admin can VIEW scoring data but check if submit is restricted
+
+### 14.7 Master Console Navigation (Admin)
+- [ ] Login as Admin
+- [ ] Click "Master Console" in sidebar navigation
+- [ ] Verify navigates to `/portal/admin`
+- [ ] Verify all 7 tabs are visible and clickable:
+  - [ ] Overview
+  - [ ] Master List
+  - [ ] Users
+  - [ ] Rounds
+  - [ ] Documents
+  - [ ] Settings
+  - [ ] Audit Logs
+- [ ] Click each tab and verify content loads correctly
+- [ ] Verify no logout or navigation errors occur
+
+### 14.8 DynaPuff Font Verification
+- [ ] Open application in browser
+- [ ] Open DevTools (F12) → Elements tab
+- [ ] Find an element with `font-display` class (e.g., page heading)
+- [ ] Verify Computed Style shows "DynaPuff" as the font family
+- [ ] Verify text displays with the correct decorative font (not Arial)
+- [ ] Check public pages (landing, priorities) for DynaPuff usage
+- [ ] Check secure pages (dashboard, admin console) for DynaPuff usage
+
+### 14.9 Refresh-Safe Routing (Vercel Deployment)
+- [ ] Deploy application to Vercel (or test with production build preview)
+- [ ] Navigate to `/portal/dashboard`
+- [ ] Press F5 to refresh page
+- [ ] Verify page loads correctly (no 404 error)
+- [ ] Navigate to `/portal/admin`
+- [ ] Press F5 to refresh page
+- [ ] Verify page loads correctly (no 404 error)
+- [ ] Navigate to `/portal/scoring`
+- [ ] Press F5 to refresh page
+- [ ] Verify page loads correctly (no 404 error)
+- [ ] Verify vercel.json rewrites configuration is working
+
+---
+
+## 15. Final Sign-Off
 
 ### Tester Information
 - [ ] Tester Name: _____________________
@@ -1031,6 +1176,9 @@ Before testing, ensure:
 
 ---
 
-**Testing Guide Completed**: December 2025
-**Total Test Cases**: 200+
-**Estimated Testing Time**: 8-10 hours per tester
+**Testing Guide Completed**: 2025-12-28
+**Version**: 2.0 (includes post-merge enhancements)
+**Total Test Cases**: 250+ (including new component tests)
+**Estimated Testing Time**: 10-12 hours per tester (comprehensive)
+**Critical Tests**: 80+ (auth, workflows, scoring, admin functions)
+**Enhancement Tests**: 50+ (ScoringModal, ScoringMonitor, inline voting, data enrichment)
