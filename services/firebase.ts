@@ -7,8 +7,9 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writ
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 // --- CONFIGURATION ---
-// Set to FALSE for production.
-export const USE_DEMO_MODE = false;
+// Set to FALSE for production with Firebase configured.
+// Set to TRUE for demo/development without Firebase.
+export const USE_DEMO_MODE = true; // ⚠️ Enable demo mode for deployment without Firebase env vars
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,10 +21,33 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Check if Firebase config is available, otherwise log warning
+const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
+
+if (!hasFirebaseConfig && !USE_DEMO_MODE) {
+  console.warn('⚠️ Firebase configuration missing. Set environment variables or enable USE_DEMO_MODE.');
+}
+
+// Initialize Firebase only if config is available
+let app: any;
+let auth: any;
+let db: any;
+let storage: any;
+
+try {
+  if (hasFirebaseConfig) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+  } else if (!USE_DEMO_MODE) {
+    console.error('❌ Cannot initialize Firebase: Missing configuration');
+  }
+} catch (error) {
+  console.error('❌ Firebase initialization error:', error);
+}
+
+export { auth, db, storage };
 
 const DEFAULT_SETTINGS: PortalSettings = {
     stage1Visible: true,
