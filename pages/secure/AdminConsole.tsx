@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { SecureLayout } from '../../components/Layout';
-import { Button, Card, Input, Modal, Badge } from '../../components/UI';
+import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV } from '../../services/firebase';
-import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score } from '../../types';
+import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
@@ -68,17 +68,37 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, docsData, logsData, scoresData, settingsData] = await Promise.all([
+      const [appsData, usersData, roundsData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
         DataService.getDocuments(),
         DataService.getAuditLogs(),
         DataService.getScores(),
-        DataService.getPortalSettings()
+        DataService.getPortalSettings(),
+        DataService.getVotes()
       ]);
 
-      setApplications(appsData);
+      // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
+      const enrichedApps = appsData.map(app => {
+        const appScores = scoresData.filter(s => s.appId === app.id);
+        const appVotes = votesData.filter(v => v.appId === app.id);
+        const avg = appScores.length > 0
+          ? Math.round(appScores.reduce((sum, curr) => sum + curr.weightedTotal, 0) / appScores.length)
+          : 0;
+        const yes = appVotes.filter(v => v.decision === 'yes').length;
+        const no = appVotes.filter(v => v.decision === 'no').length;
+
+        return {
+          ...app,
+          averageScore: avg,
+          scoreCount: appScores.length,
+          voteCountYes: yes,
+          voteCountNo: no
+        } as any;
+      });
+
+      setApplications(enrichedApps);
       setUsers(usersData);
       setRounds(roundsData);
       setDocuments(docsData);
@@ -203,6 +223,21 @@ const AdminConsole: React.FC = () => {
             </div>
           </Card>
         </div>
+
+        {/* Application Status Chart */}
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <BarChart3 size={24} />
+            Application Status Distribution
+          </h3>
+          <BarChart data={[
+            { label: 'Draft', value: applications.filter(a => a.status === 'Draft').length },
+            { label: 'Submitted Stage 1', value: applications.filter(a => a.status === 'Submitted-Stage1').length },
+            { label: 'Invited Stage 2', value: applications.filter(a => a.status === 'Invited-Stage2').length },
+            { label: 'Submitted Stage 2', value: applications.filter(a => a.status === 'Submitted-Stage2').length },
+            { label: 'Funded', value: applications.filter(a => a.status === 'Funded').length }
+          ]} />
+        </Card>
 
         {/* Scoring Monitor - VIEW ONLY (NO SUBMISSION) */}
         <Card>
@@ -384,54 +419,73 @@ const AdminConsole: React.FC = () => {
                   <th className="text-left p-3 font-bold text-sm text-gray-700">Organisation</th>
                   <th className="text-left p-3 font-bold text-sm text-gray-700">Area</th>
                   <th className="text-left p-3 font-bold text-sm text-gray-700">Amount</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Stage 1 (Votes)</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Stage 2 (Score)</th>
                   <th className="text-left p-3 font-bold text-sm text-gray-700">Status</th>
                   <th className="text-left p-3 font-bold text-sm text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredApps.map(app => (
-                  <tr key={app.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
-                    <td className="p-3 font-mono text-sm font-bold">{app.ref}</td>
-                    <td className="p-3">
-                      <p className="font-bold text-gray-800">{app.projectTitle}</p>
-                      <p className="text-xs text-gray-500">{app.applicantName}</p>
-                    </td>
-                    <td className="p-3 text-sm">{app.orgName}</td>
-                    <td className="p-3 text-sm">{app.area}</td>
-                    <td className="p-3 text-sm font-bold">£{app.amountRequested.toLocaleString()}</td>
-                    <td className="p-3">
-                      <Badge>{app.status}</Badge>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedApp(app);
-                            setModalType('app');
-                            setShowModal(true);
-                          }}
-                          className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700"
-                          title="View & Edit"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <select
-                          className="text-xs p-1 rounded border border-gray-200 bg-white"
-                          value={app.status}
-                          onChange={(e) => handleStatusChange(app.id, e.target.value)}
-                        >
-                          <option value="Draft">Draft</option>
-                          <option value="Submitted-Stage1">Submitted - Stage 1</option>
-                          <option value="Invited-Stage2">Invite to Stage 2</option>
-                          <option value="Submitted-Stage2">Submitted - Stage 2</option>
-                          <option value="Funded">Mark as Funded</option>
-                          <option value="Not-Funded">Mark as Not Funded</option>
-                          <option value="Rejected-Stage1">Reject Stage 1</option>
-                        </select>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredApps.map(app => {
+                  const enrichedApp = app as any;
+                  return (
+                    <tr key={app.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
+                      <td className="p-3 font-mono text-sm font-bold">{app.ref}</td>
+                      <td className="p-3">
+                        <p className="font-bold text-gray-800">{app.projectTitle}</p>
+                        <p className="text-xs text-gray-500">{app.applicantName}</p>
+                      </td>
+                      <td className="p-3 text-sm">{app.orgName}</td>
+                      <td className="p-3 text-sm">{app.area}</td>
+                      <td className="p-3 text-sm font-bold">£{app.amountRequested.toLocaleString()}</td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-green-600 font-bold">{enrichedApp.voteCountYes || 0} Yes</span>
+                          <span className="text-gray-300">|</span>
+                          <span className="text-red-500 font-bold">{enrichedApp.voteCountNo || 0} No</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {enrichedApp.averageScore ? (
+                          <Badge className={enrichedApp.averageScore >= (settings.scoringThreshold || 50) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                            {enrichedApp.averageScore}% ({enrichedApp.scoreCount})
+                          </Badge>
+                        ) : '-'}
+                      </td>
+                      <td className="p-3">
+                        <Badge>{app.status}</Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedApp(app);
+                              setModalType('app');
+                              setShowModal(true);
+                            }}
+                            className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700"
+                            title="View & Edit"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <select
+                            className="text-xs p-1 rounded border border-gray-200 bg-white"
+                            value={app.status}
+                            onChange={(e) => handleStatusChange(app.id, e.target.value)}
+                          >
+                            <option value="Draft">Draft</option>
+                            <option value="Submitted-Stage1">Submitted - Stage 1</option>
+                            <option value="Invited-Stage2">Invite to Stage 2</option>
+                            <option value="Submitted-Stage2">Submitted - Stage 2</option>
+                            <option value="Funded">Mark as Funded</option>
+                            <option value="Not-Funded">Mark as Not Funded</option>
+                            <option value="Rejected-Stage1">Reject Stage 1</option>
+                          </select>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filteredApps.length === 0 && (

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area } from '../../types';
+import { ScoringModal } from '../../components/ScoringModal';
 import {
   Plus,
   FileText,
@@ -342,6 +343,7 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   setSelectedArea,
   navigate
 }) => {
+  const [scoringApp, setScoringApp] = useState<Application | null>(null);
   const myVotes = votes.filter(v => v.voterId === currentUser.uid);
   const myScores = scores.filter(s => s.scorerId === currentUser.uid);
 
@@ -356,6 +358,22 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
     : applications.filter(app => app.area === selectedArea || app.area === 'Cross-Area');
 
   const areas: Area[] = ['Blaenavon', 'Thornhill & Upper Cwmbran', 'Trevethin, Penygarn & St. Cadocs'];
+
+  const handleVote = async (appId: string, decision: 'yes' | 'no') => {
+    await DataService.saveVote({
+      id: `${appId}_${currentUser.uid}`,
+      appId,
+      voterId: currentUser.uid,
+      decision,
+      createdAt: new Date().toISOString()
+    });
+    window.location.reload(); // Refresh to show updated state
+  };
+
+  const handleScoringComplete = () => {
+    setScoringApp(null);
+    window.location.reload(); // Refresh to show updated state
+  };
 
   return (
     <div className="space-y-6">
@@ -490,38 +508,80 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
             <p className="text-gray-600">No applications to review in this area</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredApps.slice(0, 5).map(app => {
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredApps.map(app => {
               const hasVoted = myVotes.some(v => v.appId === app.id);
               const hasScored = myScores.some(s => s.appId === app.id);
 
+              let actionRequired = false;
+              let statusBadge = <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold">Pending</span>;
+              let cardBorder = "border-l-gray-300";
+
+              if (app.status === 'Submitted-Stage1') {
+                if (hasVoted) {
+                  statusBadge = <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Voted</span>;
+                  cardBorder = "border-l-green-500";
+                } else {
+                  statusBadge = <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">Vote Needed</span>;
+                  actionRequired = true;
+                  cardBorder = "border-l-orange-500";
+                }
+              } else if (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2') {
+                if (hasScored) {
+                  statusBadge = <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Scored</span>;
+                  cardBorder = "border-l-green-500";
+                } else {
+                  statusBadge = <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">Score Needed</span>;
+                  actionRequired = true;
+                  cardBorder = "border-l-purple-500";
+                }
+              } else {
+                statusBadge = <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold">Info Only</span>;
+              }
+
               return (
-                <div
-                  key={app.id}
-                  onClick={() => navigate(`/portal/applications/${app.id}`)}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    <FileText className="text-purple-600" size={20} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{app.projectTitle}</h3>
-                      <p className="text-sm text-gray-600 truncate">{app.orgName} • {app.area}</p>
-                    </div>
+                <div key={app.id} className={`bg-white rounded-xl shadow-md border-l-4 ${cardBorder} p-5 flex flex-col h-full hover:shadow-lg transition`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">{app.ref}</span>
+                    {statusBadge}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {hasVoted && (
-                      <span className="hidden sm:inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
-                        <ThumbsUp size={12} />
-                        Voted
-                      </span>
+
+                  <h3 className="font-bold text-lg mb-1 leading-tight line-clamp-2">{app.projectTitle}</h3>
+                  <p className="text-sm text-gray-500 mb-4">{app.orgName}</p>
+
+                  <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/portal/applications/${app.id}`)}
+                      className="flex-1 px-4 py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 rounded-lg text-sm font-bold transition"
+                    >
+                      View
+                    </button>
+
+                    {actionRequired && app.status === 'Submitted-Stage1' && (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleVote(app.id, 'yes'); }}
+                          className="px-4 py-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg text-sm font-bold transition"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleVote(app.id, 'no'); }}
+                          className="px-4 py-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg text-sm font-bold transition"
+                        >
+                          No
+                        </button>
+                      </>
                     )}
-                    {hasScored && (
-                      <span className="hidden sm:inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">
-                        <BarChart3 size={12} />
-                        Scored
-                      </span>
+
+                    {actionRequired && (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2') && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setScoringApp(app); }}
+                        className="px-4 py-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg text-sm font-bold transition"
+                      >
+                        Score App
+                      </button>
                     )}
-                    <ChevronRight className="text-gray-400" size={20} />
                   </div>
                 </div>
               );
@@ -529,6 +589,17 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
           </div>
         )}
       </div>
+
+      {/* ScoringModal */}
+      {scoringApp && (
+        <ScoringModal
+          isOpen={!!scoringApp}
+          onClose={() => setScoringApp(null)}
+          app={scoringApp}
+          user={currentUser}
+          onSave={handleScoringComplete}
+        />
+      )}
 
       {/* Quick Actions */}
       <div className="bg-white rounded-xl shadow-md p-6">
