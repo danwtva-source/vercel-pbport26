@@ -3,6 +3,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV } from '../../services/firebase';
 import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
+import { ScoringMonitor } from '../../components/ScoringMonitor';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
@@ -37,6 +38,7 @@ import {
 const AdminConsole: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
+  const [isScoringMode, setIsScoringMode] = useState(false);
 
   // Data state
   const [applications, setApplications] = useState<Application[]>([]);
@@ -136,9 +138,15 @@ const AdminConsole: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold text-purple-900 mb-2">Admin Dashboard</h2>
-          <p className="text-gray-600">Complete overview of the participatory budgeting portal</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold text-purple-900 mb-2">Admin Dashboard</h2>
+            <p className="text-gray-600">Complete overview of the participatory budgeting portal</p>
+          </div>
+          <Button onClick={() => setIsScoringMode(true)} variant="secondary">
+            <BarChart3 size={18} className="mr-2" />
+            Enter Scoring Mode
+          </Button>
         </div>
 
         {/* KPI Cards */}
@@ -1080,6 +1088,15 @@ const AdminConsole: React.FC = () => {
             <p className="text-gray-600">Loading admin console...</p>
           </div>
         </div>
+      </SecureLayout>
+    );
+  }
+
+  // If in scoring mode, show ScoringMonitor instead of tabs
+  if (isScoringMode) {
+    return (
+      <SecureLayout userRole={UserRole.ADMIN}>
+        <ScoringMonitor onExit={() => setIsScoringMode(false)} />
       </SecureLayout>
     );
   }

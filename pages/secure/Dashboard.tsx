@@ -619,9 +619,9 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
           />
           <QuickActionCard
             icon={<Activity />}
-            title="My Activity"
-            description="View your votes and scores"
-            onClick={() => navigate('/portal/activity')}
+            title="Scoring Matrix"
+            description="View scoring tools"
+            onClick={() => navigate('/portal/scoring')}
           />
         </div>
       </div>
@@ -830,21 +830,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <QuickActionCard
             icon={<Settings />}
-            title="Portal Settings"
-            description="Configure system settings"
+            title="Admin Console"
+            description="Full admin control panel"
             onClick={() => navigate('/portal/admin')}
           />
           <QuickActionCard
             icon={<Users />}
-            title="User Management"
-            description="Manage users and roles"
-            onClick={() => navigate('/portal/admin/users')}
+            title="Manage Users"
+            description="Create and edit user accounts"
+            onClick={() => navigate('/portal/admin')}
           />
           <QuickActionCard
             icon={<FileText />}
-            title="Application Overview"
-            description="Master application view"
-            onClick={() => navigate('/portal/applications')}
+            title="Master List"
+            description="View all applications with analytics"
+            onClick={() => navigate('/portal/admin')}
           />
         </div>
       </div>
