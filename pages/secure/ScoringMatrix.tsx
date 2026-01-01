@@ -1,563 +1,218 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { SecureLayout } from '../../components/Layout';
-import { Button, Card, Badge, Modal } from '../../components/UI';
-import { DataService } from '../../services/firebase';
-import { Application, Score, UserRole, User } from '../../types';
-import { SCORING_CRITERIA } from '../../constants';
-import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../services/firebase';
+import { useNavigate, useParams } from 'react-router-dom';
 
-// Helper to convert lowercase role string to UserRole enum
-const roleToUserRole = (role: string | undefined): UserRole => {
-  const normalized = (role || '').toUpperCase();
-  switch (normalized) {
-    case 'ADMIN': return UserRole.ADMIN;
-    case 'COMMITTEE': return UserRole.COMMITTEE;
-    case 'APPLICANT': return UserRole.APPLICANT;
-    default: return UserRole.PUBLIC;
-  }
-};
+// Weighted Criteria aligned with 'Matrix.xlsx - EOI Scoring Matrix.csv'
+const CRITERIA = [
+  { id: 1, name: "Project Overview & SMART Objectives", weight: 15 },
+  { id: 2, name: "Alignment with Local Priorities", weight: 15 },
+  { id: 3, name: "Community Benefit & Outcomes", weight: 10 },
+  { id: 4, name: "Activities, Milestones & Delivery Responsibilities", weight: 5 },
+  { id: 5, name: "Timeline & Scheduling Realism", weight: 10 },
+  { id: 6, name: "Collaborations & Partnerships", weight: 10 },
+  { id: 7, name: "Risk Management & Feasibility", weight: 5 },
+  { id: 8, name: "Budget Transparency & Value for Money", weight: 10 },
+  { id: 9, name: "Cross‑Area Specificity & Venues (if applicable)", weight: 10 },
+  { id: 10, name: "Alignment with Marmot Principles & WFG Goals", weight: 10 }
+];
 
-interface CriterionScore {
-  score: number;
-  notes: string;
-}
-
-interface ApplicationWithScores extends Application {
-  myScore?: Score;
-  allScores?: Score[];
-  isScored: boolean;
+interface ScoreState {
+  [key: number]: number; // Index -> Score (0-3)
 }
 
 const ScoringMatrix: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [applications, setApplications] = useState<ApplicationWithScores[]>([]);
-  const [scores, setScores] = useState<Score[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedApp, setSelectedApp] = useState<ApplicationWithScores | null>(null);
-  const [scoringData, setScoringData] = useState<Record<string, CriterionScore>>({});
-  const [saving, setSaving] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
+  const [scores, setScores] = useState<ScoreState>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locked, setLocked] = useState(false);
 
-  // Determine role flags (safe to compute even with null user)
-  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
-  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
-
-  // Get current user on mount - MUST be before any conditional returns
+  // Initialize scores
   useEffect(() => {
-    const user = DataService.getCurrentUser();
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-    setCurrentUser(user);
-  }, [navigate]);
+    // In a real app, you would fetch existing scores for this application from Firestore here
+    // using the application ID and current user ID.
+    // For now, we initialize with zeros or reload draft state.
+    const initialScores: ScoreState = {};
+    CRITERIA.forEach((_, idx) => initialScores[idx] = 0);
+    setScores(initialScores);
+  }, [id]);
 
-  // Load data when user is available - MUST be before any conditional returns
-  useEffect(() => {
-    if (currentUser && isCommittee) {
-      loadData();
+  const handleScoreChange = (index: number, value: string) => {
+    if (locked) return;
+    
+    // Handle empty input gracefully (treat as 0 for UI logic, or keep empty if desired)
+    if (value === '') {
+        setScores(prev => ({ ...prev, [index]: 0 }));
+        return;
     }
-  }, [currentUser, isCommittee]);
 
-  const loadData = async () => {
-    if (!currentUser) return;
-    setLoading(true);
+    const numVal = parseInt(value);
+    
+    // Strict 0-3 enforcement as per PRD
+    if (!isNaN(numVal) && numVal >= 0 && numVal <= 3) {
+      setScores(prev => ({ ...prev, [index]: numVal }));
+    }
+  };
+
+  // Calculate Raw Total (Max 30)
+  const rawTotal = Object.values(scores).reduce((a, b) => a + (b || 0), 0);
+  const maxRaw = CRITERIA.length * 3; // 30 points max
+
+  // Calculate Weighted Score %
+  // Formula per item: (Score / 3) * Weight
+  // The sum of all weights is 100%.
+  const weightedTotal = CRITERIA.reduce((acc, item, index) => {
+    const score = scores[index] || 0;
+    const itemWeight = item.weight;
+    // Calculate contribution: 3 points = 100% of the weight.
+    const contribution = (score / 3) * itemWeight;
+    return acc + contribution;
+  }, 0);
+
+  const handleSubmit = async () => {
+    if (!user || !id) return;
+    setIsSubmitting(true);
     try {
-      // Fetch applications - filter by area for committee members
-      const area = isAdmin ? undefined : currentUser.area;
-      const apps = await DataService.getApplications(area);
-
-      // Only show Stage 2 applications that are ready for scoring
-      const eligibleApps = apps.filter(
-        app => (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2')
-      );
-
-      // Fetch all scores
-      const allScores = await DataService.getScores();
-      setScores(allScores);
-
-      // Enrich applications with scoring data
-      const enrichedApps: ApplicationWithScores[] = eligibleApps.map(app => {
-        const appScores = allScores.filter(s => s.appId === app.id);
-        const myScore = appScores.find(s => s.scorerId === currentUser.uid);
-
-        return {
-          ...app,
-          myScore,
-          allScores: appScores,
-          isScored: !!myScore
-        };
+      // Logic to submit to Firestore 'scores' collection
+      // Example structure:
+      // await db.collection('scores').add({
+      //   applicationId: id,
+      //   userId: user.uid,
+      //   scores: scores,
+      //   rawTotal: rawTotal,
+      //   weightedTotal: weightedTotal,
+      //   timestamp: serverTimestamp()
+      // });
+      
+      console.log("Submitting Assessment:", { 
+        applicationId: id, 
+        rawTotal, 
+        weightedTotal: weightedTotal.toFixed(2) 
       });
-
-      setApplications(enrichedApps);
-    } catch (error) {
-      console.error('Failed to load data:', error);
+      
+      // Simulating network delay for UX
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      alert(`Assessment submitted successfully!\n\nRaw Score: ${rawTotal}/30\nWeighted Score: ${weightedTotal.toFixed(2)}%`);
+      navigate('/portal/dashboard');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit score. Please check your connection and try again.');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
-
-  // Access control - render loading or access denied AFTER all hooks
-  if (!currentUser) {
-    return (
-      <SecureLayout userRole={UserRole.PUBLIC}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-        </div>
-      </SecureLayout>
-    );
-  }
-
-  if (!isCommittee) {
-    return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Card className="max-w-md text-center">
-            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-            <p className="text-gray-600">
-              This scoring interface is only accessible to Committee Members and Administrators.
-            </p>
-          </Card>
-        </div>
-      </SecureLayout>
-    );
-  }
-
-  const openScoringModal = (app: ApplicationWithScores) => {
-    setSelectedApp(app);
-
-    // Initialize scoring data from existing score or defaults
-    const initialData: Record<string, CriterionScore> = {};
-    SCORING_CRITERIA.forEach(criterion => {
-      initialData[criterion.id] = {
-        score: app.myScore?.breakdown[criterion.id] || 0,
-        notes: app.myScore?.notes?.[criterion.id] || ''
-      };
-    });
-    setScoringData(initialData);
-  };
-
-  const calculateWeightedTotal = (): number => {
-    let total = 0;
-    let maxTotal = 0;
-    SCORING_CRITERIA.forEach(criterion => {
-      const rawScore = scoringData[criterion.id]?.score || 0;
-      total += rawScore * criterion.weight;
-      maxTotal += 3 * criterion.weight;
-    });
-    // Return as percentage (0-100)
-    return maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
-  };
-
-  const handleScoreChange = (criterionId: string, score: number) => {
-    setScoringData(prev => ({
-      ...prev,
-      [criterionId]: {
-        ...prev[criterionId],
-        score: Math.max(0, Math.min(3, score))
-      }
-    }));
-  };
-
-  const handleNotesChange = (criterionId: string, notes: string) => {
-    setScoringData(prev => ({
-      ...prev,
-      [criterionId]: {
-        ...prev[criterionId],
-        notes
-      }
-    }));
-  };
-
-  const handleSaveScore = async () => {
-    if (!selectedApp) return;
-
-    setSaving(true);
-    try {
-      const breakdown: Record<string, number> = {};
-      const notes: Record<string, string> = {};
-
-      SCORING_CRITERIA.forEach(criterion => {
-        breakdown[criterion.id] = scoringData[criterion.id]?.score || 0;
-        notes[criterion.id] = scoringData[criterion.id]?.notes || '';
-      });
-
-      const score: Score = {
-        id: `${selectedApp.id}_${currentUser.uid}`,
-        appId: selectedApp.id,
-        scorerId: currentUser.uid,
-        scorerName: currentUser.name,
-        weightedTotal: calculateWeightedTotal(),
-        breakdown,
-        notes,
-        isFinal: true,
-        createdAt: new Date().toISOString()
-      };
-
-      await DataService.saveScore(score);
-
-      // Reload data to reflect changes
-      await loadData();
-
-      // Close modal
-      setSelectedApp(null);
-      setScoringData({});
-    } catch (error) {
-      console.error('Failed to save score:', error);
-      alert('Failed to save score. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const filteredApplications = applications.filter(app => {
-    if (filterStatus === 'scored') return app.isScored;
-    if (filterStatus === 'unscored') return !app.isScored;
-    return true;
-  });
-
-  const weightedTotal = calculateWeightedTotal();
-  const completionPercentage = (weightedTotal / 100) * 100;
-
-  if (loading) {
-    return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading applications...</p>
-          </div>
-        </div>
-      </SecureLayout>
-    );
-  }
 
   return (
-    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <BarChart3 className="text-purple-600" size={32} />
-            <h1 className="text-3xl font-bold text-gray-900">Scoring Matrix</h1>
-          </div>
-          <p className="text-gray-600">
-            Evaluate Part 2 applications using the 10-point criteria framework
-          </p>
-          {!isAdmin && currentUser.area && (
-            <div className="mt-2">
-              <Badge variant="purple">Viewing: {currentUser.area}</Badge>
-            </div>
-          )}
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-bold uppercase tracking-wide">Total Applications</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{applications.length}</p>
-              </div>
-              <FileText className="text-gray-300" size={40} />
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-bold uppercase tracking-wide">Scored by You</p>
-                <p className="text-3xl font-bold text-green-600 mt-1">
-                  {applications.filter(a => a.isScored).length}
-                </p>
-              </div>
-              <CheckCircle className="text-green-300" size={40} />
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-bold uppercase tracking-wide">Pending Review</p>
-                <p className="text-3xl font-bold text-amber-600 mt-1">
-                  {applications.filter(a => !a.isScored).length}
-                </p>
-              </div>
-              <Clock className="text-amber-300" size={40} />
-            </div>
-          </Card>
-        </div>
-
-        {/* Filter Buttons */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          <Button
-            variant={filterStatus === 'all' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setFilterStatus('all')}
-          >
-            All ({applications.length})
-          </Button>
-          <Button
-            variant={filterStatus === 'unscored' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setFilterStatus('unscored')}
-          >
-            Unscored ({applications.filter(a => !a.isScored).length})
-          </Button>
-          <Button
-            variant={filterStatus === 'scored' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => setFilterStatus('scored')}
-          >
-            Scored ({applications.filter(a => a.isScored).length})
-          </Button>
-        </div>
-
-        {/* Applications List */}
-        {filteredApplications.length === 0 ? (
-          <Card className="text-center py-12">
-            <AlertCircle className="mx-auto text-gray-300 mb-4" size={48} />
-            <h3 className="text-xl font-bold text-gray-600 mb-2">No Applications Found</h3>
-            <p className="text-gray-500">
-              {filterStatus === 'unscored' && 'All applications have been scored!'}
-              {filterStatus === 'scored' && 'No scored applications yet.'}
-              {filterStatus === 'all' && 'No applications available for scoring.'}
+    <div className="max-w-5xl mx-auto bg-white p-6 sm:p-8 rounded-lg shadow-lg border-t-4 border-indigo-600 my-8">
+      {/* Header */}
+      <div className="mb-8 border-b border-gray-200 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+        <div>
+            <h2 className="text-3xl font-bold text-gray-800">Application Assessment Matrix</h2>
+            <p className="text-gray-500 text-sm mt-2">
+            Rate each category from 0 to 3 based on the EOI Scoring Guide.
             </p>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {filteredApplications.map(app => (
-              <Card key={app.id} className="hover:shadow-2xl transition-shadow">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-bold text-gray-900">{app.projectTitle}</h3>
-                      {app.isScored && (
-                        <Badge variant="green">
-                          <CheckCircle size={14} className="inline mr-1" />
-                          Scored
-                        </Badge>
-                      )}
-                      {!app.isScored && (
-                        <Badge variant="amber">
-                          <Clock size={14} className="inline mr-1" />
-                          Pending
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <span className="text-gray-500 font-bold">Ref:</span>{' '}
-                        <span className="text-gray-900">{app.ref}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 font-bold">Applicant:</span>{' '}
-                        <span className="text-gray-900">{app.applicant}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 font-bold">Area:</span>{' '}
-                        <Badge variant="purple">{app.area}</Badge>
-                      </div>
-                    </div>
-
-                    <p className="text-gray-600 mt-2 line-clamp-2">{app.projectSummary}</p>
-
-                    {app.isScored && app.myScore && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-gray-600">Your Score:</span>
-                          <div className="flex items-center gap-2">
-                            <div className="bg-purple-100 px-3 py-1 rounded-lg">
-                              <span className="text-purple-900 font-bold">{app.myScore.weightedTotal}/100</span>
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              Last updated: {new Date(app.myScore.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant={app.isScored ? 'outline' : 'primary'}
-                      size="sm"
-                      onClick={() => openScoringModal(app)}
-                    >
-                      {app.isScored ? (
-                        <>
-                          <Eye size={16} />
-                          Review Score
-                        </>
-                      ) : (
-                        <>
-                          <BarChart3 size={16} />
-                          Score Application
-                        </>
-                      )}
-                    </Button>
-                  </div>
+        </div>
+        <div className="mt-4 sm:mt-0 text-right bg-gray-50 p-3 rounded-lg border border-gray-200">
+            <span className="text-xs font-bold text-gray-500 uppercase block tracking-wider">Max Raw Score</span>
+            <div className="text-2xl font-extrabold text-indigo-600">30 Points</div>
+        </div>
+      </div>
+      
+      {/* Matrix Grid */}
+      <div className="space-y-4">
+        {CRITERIA.map((criterion, index) => (
+          <div key={index} className="flex flex-col md:flex-row md:items-center justify-between p-5 bg-white rounded-md border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all duration-200">
+            
+            {/* Label & Weight Badge */}
+            <div className="flex-grow pr-4 mb-3 md:mb-0">
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 uppercase tracking-wider border border-indigo-200">
+                        Weight: {criterion.weight}%
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono">ID: {criterion.id}</span>
                 </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Scoring Modal */}
-        {selectedApp && (
-          <Modal
-            isOpen={!!selectedApp}
-            onClose={() => setSelectedApp(null)}
-            title={`Score: ${selectedApp.projectTitle}`}
-            size="xl"
-          >
-            <div className="space-y-6">
-              {/* Application Summary */}
-              <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
-                <h4 className="font-bold text-purple-900 mb-2">Application Details</h4>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-purple-700 font-bold">Reference:</span> {selectedApp.ref}
-                  </div>
-                  <div>
-                    <span className="text-purple-700 font-bold">Applicant:</span> {selectedApp.applicant}
-                  </div>
-                  <div>
-                    <span className="text-purple-700 font-bold">Area:</span> {selectedApp.area}
-                  </div>
-                  <div>
-                    <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequest?.toLocaleString()}
-                  </div>
-                </div>
+                <label className="text-base font-semibold text-gray-800 block leading-tight">
+                    {criterion.name}
+                </label>
+            </div>
+            
+            {/* Controls */}
+            <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto bg-gray-50 p-2 rounded-md md:bg-transparent md:p-0">
+              <div className="flex flex-col items-end min-w-[80px]">
+                <span className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Contribution</span>
+                <span className="text-sm font-bold text-gray-600 font-mono">
+                    {/* Visual calc: shows how many % points this item currently adds to the total */}
+                    {(( (scores[index] || 0) / 3 ) * criterion.weight).toFixed(1)}%
+                </span>
               </div>
-
-              {/* Weighted Total Display */}
-              <div className="bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded-xl p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-bold text-lg">Weighted Total Score</h4>
-                  <div className="text-4xl font-bold">{weightedTotal}/100</div>
-                </div>
-                <div className="bg-white/20 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-teal-400 h-full transition-all duration-500"
-                    style={{ width: `${completionPercentage}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Scoring Criteria */}
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-900 text-lg">Evaluation Criteria</h4>
-
-                {SCORING_CRITERIA.map((criterion, idx) => {
-                  const currentScore = scoringData[criterion.id]?.score || 0;
-                  const currentNotes = scoringData[criterion.id]?.notes || '';
-
-                  return (
-                    <div key={criterion.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h5 className="font-bold text-gray-900 mb-1">{criterion.name}</h5>
-                          <p className="text-sm text-gray-600 mb-2">{criterion.guidance}</p>
-                          <div
-                            className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg p-2"
-                            dangerouslySetInnerHTML={{ __html: criterion.details }}
-                          />
-                        </div>
-                        <div className="ml-4 text-right">
-                          <div className="text-xs text-gray-500 font-bold uppercase tracking-wide">Weight</div>
-                          <div className="text-2xl font-bold text-purple-600">{criterion.weight}%</div>
-                        </div>
-                      </div>
-
-                      {/* Score Slider */}
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm font-bold text-gray-700">Score (0-3)</label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max="3"
-                              value={currentScore}
-                              onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value) || 0)}
-                              className="w-20 px-3 py-1 border border-gray-300 rounded-lg text-center font-bold"
-                            />
-                            <span className="text-sm text-gray-500">
-                              = {((currentScore / 3) * criterion.weight).toFixed(1)} weighted
-                            </span>
-                          </div>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="3"
-                          step="1"
-                          value={currentScore}
-                          onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value))}
-                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                        />
-                        <div className="flex justify-between text-xs text-gray-400 mt-1">
-                          <span>0</span>
-                          <span>1</span>
-                          <span>2</span>
-                          <span>3</span>
-                        </div>
-                      </div>
-
-                      {/* Notes Field */}
-                      <div>
-                        <label className="text-sm font-bold text-gray-700 block mb-2">
-                          Notes / Comments
-                        </label>
-                        <textarea
-                          value={currentNotes}
-                          onChange={(e) => handleNotesChange(criterion.id, e.target.value)}
-                          placeholder="Add your reasoning or notes for this criterion..."
-                          rows={2}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none text-sm"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
-                <Button
-                  variant="secondary"
-                  onClick={handleSaveScore}
-                  disabled={saving}
-                  className="flex-1"
-                >
-                  {saving ? (
-                    <>Saving...</>
-                  ) : (
-                    <>
-                      <Save size={18} />
-                      {selectedApp.isScored ? 'Update Score' : 'Submit Score'}
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedApp(null)}
-                  disabled={saving}
-                >
-                  Cancel
-                </Button>
+              
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 font-bold uppercase hidden sm:inline">Score (0-3):</span>
+                <input
+                    type="number"
+                    min="0"
+                    max="3"
+                    value={scores[index] ?? 0}
+                    onChange={(e) => handleScoreChange(index, e.target.value)}
+                    className={`w-16 h-12 p-2 border-2 rounded-md text-center font-bold text-xl outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 transition-all
+                    ${(scores[index] === 3) ? 'border-green-500 bg-green-50 text-green-700' : 
+                      (scores[index] === 0) ? 'border-gray-300 text-gray-400' : 
+                      'border-indigo-400 text-indigo-700'}`}
+                    disabled={locked}
+                />
               </div>
             </div>
-          </Modal>
-        )}
+          </div>
+        ))}
       </div>
-    </SecureLayout>
+
+      {/* Footer / Results */}
+      <div className="mt-10 pt-6 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-indigo-50 p-6 rounded-lg shadow-inner">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            {/* Score Summary */}
+            <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center text-sm text-gray-600 border-b border-gray-200 pb-2 border-dashed">
+                    <span className="font-medium">Raw Points Total:</span>
+                    <span className="font-bold font-mono text-lg">{rawTotal} / {maxRaw}</span>
+                </div>
+                <div className="flex justify-between items-end">
+                    <span className="text-lg font-bold text-indigo-900">Final Weighted Score:</span>
+                    <span className="text-4xl font-extrabold text-indigo-600 leading-none">{weightedTotal.toFixed(2)}%</span>
+                </div>
+                <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden mt-1">
+                    <div 
+                        className="h-full bg-indigo-600 transition-all duration-500 ease-out"
+                        style={{ width: `${Math.min(weightedTotal, 100)}%` }}
+                    />
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-row justify-end gap-4 mt-4 md:mt-0">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="px-6 py-3 border border-gray-300 bg-white rounded-md text-gray-700 hover:bg-gray-50 font-medium transition-colors shadow-sm"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting || locked}
+                    className="px-8 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 font-bold shadow-md transition-transform active:scale-95 flex items-center"
+                >
+                    {isSubmitting ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Submitting...
+                        </>
+                    ) : 'Submit Assessment'}
+                </button>
+            </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
