@@ -40,7 +40,11 @@ const ScoringMatrix: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
 
-  // Get current user on mount
+  // Determine role flags (safe to compute even with null user)
+  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
+  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
+
+  // Get current user on mount - MUST be before any conditional returns
   useEffect(() => {
     const user = DataService.getCurrentUser();
     if (!user) {
@@ -50,53 +54,24 @@ const ScoringMatrix: React.FC = () => {
     setCurrentUser(user);
   }, [navigate]);
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
-  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
-
-  // Access control - CRITICAL: Committee and Admin only
-  if (!currentUser) {
-    return (
-      <SecureLayout userRole={UserRole.PUBLIC}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-        </div>
-      </SecureLayout>
-    );
-  }
-
-  if (!isCommittee) {
-    return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Card className="max-w-md text-center">
-            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-            <p className="text-gray-600">
-              This scoring interface is only accessible to Committee Members and Administrators.
-            </p>
-          </Card>
-        </div>
-      </SecureLayout>
-    );
-  }
-
+  // Load data when user is available - MUST be before any conditional returns
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && isCommittee) {
       loadData();
     }
-  }, [currentUser]);
+  }, [currentUser, isCommittee]);
 
   const loadData = async () => {
+    if (!currentUser) return;
     setLoading(true);
     try {
       // Fetch applications - filter by area for committee members
       const area = isAdmin ? undefined : currentUser.area;
       const apps = await DataService.getApplications(area);
 
-      // Only show Part 2 (Stage 2) applications that are submitted
+      // Only show Stage 2 applications that are ready for scoring
       const eligibleApps = apps.filter(
-        app => app.stage === 'Part 2' &&
-        (app.status === 'Submitted' || app.status === 'Scored')
+        app => (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2')
       );
 
       // Fetch all scores
@@ -123,6 +98,33 @@ const ScoringMatrix: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Access control - render loading or access denied AFTER all hooks
+  if (!currentUser) {
+    return (
+      <SecureLayout userRole={UserRole.PUBLIC}>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </SecureLayout>
+    );
+  }
+
+  if (!isCommittee) {
+    return (
+      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="max-w-md text-center">
+            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
+            <p className="text-gray-600">
+              This scoring interface is only accessible to Committee Members and Administrators.
+            </p>
+          </Card>
+        </div>
+      </SecureLayout>
+    );
+  }
 
   const openScoringModal = (app: ApplicationWithScores) => {
     setSelectedApp(app);

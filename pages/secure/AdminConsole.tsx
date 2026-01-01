@@ -333,9 +333,11 @@ const AdminConsole: React.FC = () => {
 
   const MasterListTab = () => {
     const filteredApps = applications.filter(app => {
-      const matchesSearch = app.projectTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           app.orgName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           app.ref.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = (app.projectTitle || '').toLowerCase().includes(searchLower) ||
+                           (app.orgName || '').toLowerCase().includes(searchLower) ||
+                           (app.ref || '').toLowerCase().includes(searchLower) ||
+                           (app.applicantName || '').toLowerCase().includes(searchLower);
       const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -438,14 +440,14 @@ const AdminConsole: React.FC = () => {
                   const enrichedApp = app as any;
                   return (
                     <tr key={app.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
-                      <td className="p-3 font-mono text-sm font-bold">{app.ref}</td>
+                      <td className="p-3 font-mono text-sm font-bold">{app.ref || '-'}</td>
                       <td className="p-3">
-                        <p className="font-bold text-gray-800">{app.projectTitle}</p>
-                        <p className="text-xs text-gray-500">{app.applicantName}</p>
+                        <p className="font-bold text-gray-800">{app.projectTitle || 'Untitled'}</p>
+                        <p className="text-xs text-gray-500">{app.applicantName || '-'}</p>
                       </td>
-                      <td className="p-3 text-sm">{app.orgName}</td>
-                      <td className="p-3 text-sm">{app.area}</td>
-                      <td className="p-3 text-sm font-bold">£{app.amountRequested.toLocaleString()}</td>
+                      <td className="p-3 text-sm">{app.orgName || '-'}</td>
+                      <td className="p-3 text-sm">{app.area || '-'}</td>
+                      <td className="p-3 text-sm font-bold">£{(app.amountRequested || 0).toLocaleString()}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 text-xs">
                           <span className="text-green-600 font-bold">{enrichedApp.voteCountYes || 0} Yes</span>
