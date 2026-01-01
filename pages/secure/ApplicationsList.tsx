@@ -5,6 +5,7 @@ import { Button, Card, Badge, Input } from '../../components/UI';
 import { api } from '../../services/firebase';
 import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
+import { formatCurrency, ROUTES } from '../../utils';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -42,7 +43,7 @@ const ApplicationsList: React.FC = () => {
       let apps: Application[] = [];
 
       if (!currentUser) {
-        navigate('/login');
+        navigate(ROUTES.PUBLIC.LOGIN);
         return;
       }
 
@@ -177,7 +178,7 @@ const ApplicationsList: React.FC = () => {
               </Button>
             )}
             {canCreate && (
-              <Button variant="primary" size="md" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" size="md" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}>
                 <Plus size={18} />
                 New Application
               </Button>
@@ -271,7 +272,7 @@ const ApplicationsList: React.FC = () => {
                 : 'No applications available yet'}
             </p>
             {canCreate && !searchTerm && filterStatus === 'All' && (
-              <Button variant="primary" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}>
                 <Plus size={18} />
                 Create Application
               </Button>
@@ -333,13 +334,13 @@ const ApplicationsList: React.FC = () => {
                         <Badge>{app.status}</Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-bold text-gray-900">£{app.amountRequested.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">of £{app.totalCost.toLocaleString()}</div>
+                        <div className="font-bold text-gray-900">{formatCurrency(app.amountRequested)}</div>
+                        <div className="text-xs text-gray-500">of {formatCurrency(app.totalCost)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => navigate(`/portal/application/${app.id}`)}
+                            onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                             className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
                             title="View"
                           >
@@ -347,7 +348,7 @@ const ApplicationsList: React.FC = () => {
                           </button>
                           {canEdit(app) && (
                             <button
-                              onClick={() => navigate(`/portal/application/${app.id}`)}
+                              onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                               className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                               title="Edit"
                             >

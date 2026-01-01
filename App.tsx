@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { api as AuthService } from './services/firebase';
 import { User, UserRole } from './types';
+import { ROUTES } from './utils';
 
 // Lazy load pages for better performance
 import LandingPage from './pages/public/LandingPage';
@@ -61,13 +62,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
         // Redirect to appropriate dashboard based on role
         switch (userRoleNormalized) {
           case UserRole.COMMITTEE:
-            navigate('/portal/dashboard', { replace: true });
+            navigate(ROUTES.PORTAL.DASHBOARD, { replace: true });
             break;
           case UserRole.APPLICANT:
-            navigate('/portal/dashboard', { replace: true });
+            navigate(ROUTES.PORTAL.DASHBOARD, { replace: true });
             break;
           default:
-            navigate('/login', { replace: true });
+            navigate(ROUTES.PUBLIC.LOGIN, { replace: true });
         }
         setLoading(false);
         return;
@@ -97,16 +98,16 @@ const App: React.FC = () => {
     <HashRouter>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/vote" element={<PostcodeCheckPage />} />
-        <Route path="/priorities" element={<PrioritiesPage />} />
-        <Route path="/documents" element={<DocumentsPage />} />
-        <Route path="/timeline" element={<TimelinePage />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route path={ROUTES.PUBLIC.HOME} element={<LandingPage />} />
+        <Route path={ROUTES.PUBLIC.VOTING_ZONE} element={<PostcodeCheckPage />} />
+        <Route path={ROUTES.PUBLIC.PRIORITIES} element={<PrioritiesPage />} />
+        <Route path={ROUTES.PUBLIC.RESOURCES} element={<DocumentsPage />} />
+        <Route path={ROUTES.PUBLIC.TIMELINE} element={<TimelinePage />} />
+        <Route path={ROUTES.PUBLIC.LOGIN} element={<LoginPage />} />
 
         {/* Protected Routes - All authenticated users */}
         <Route
-          path="/portal/dashboard"
+          path={ROUTES.PORTAL.DASHBOARD}
           element={
             <ProtectedRoute>
               <Dashboard />
@@ -115,7 +116,7 @@ const App: React.FC = () => {
         />
 
         <Route
-          path="/portal/applications"
+          path={ROUTES.PORTAL.APPLICATIONS}
           element={
             <ProtectedRoute>
               <ApplicationsList />
@@ -124,7 +125,16 @@ const App: React.FC = () => {
         />
 
         <Route
-          path="/portal/application/:id"
+          path={`${ROUTES.PORTAL.APPLICATIONS}/:id`}
+          element={
+            <ProtectedRoute>
+              <ApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+        
+        <Route
+          path={ROUTES.PORTAL.APPLICATIONS_NEW}
           element={
             <ProtectedRoute>
               <ApplicationForm />
@@ -134,7 +144,7 @@ const App: React.FC = () => {
 
         {/* Committee & Admin Only */}
         <Route
-          path="/portal/scoring"
+          path={ROUTES.PORTAL.SCORING}
           element={
             <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
               <ScoringMatrix />
@@ -144,7 +154,7 @@ const App: React.FC = () => {
 
         {/* Admin Only */}
         <Route
-          path="/portal/admin"
+          path={ROUTES.PORTAL.ADMIN}
           element={
             <ProtectedRoute requiredRole={UserRole.ADMIN}>
               <AdminConsole />
@@ -153,7 +163,7 @@ const App: React.FC = () => {
         />
 
         {/* Fallback - Redirect to home */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={ROUTES.PUBLIC.HOME} replace />} />
       </Routes>
     </HashRouter>
   );
