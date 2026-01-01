@@ -4,7 +4,6 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
-import { formatCurrency, ROUTES } from '../../utils';
 import {
   Plus,
   FileText,
@@ -47,7 +46,7 @@ const Dashboard: React.FC = () => {
     if (user) {
       loadData(user);
     } else {
-      navigate(ROUTES.PUBLIC.LOGIN);
+      navigate('/login');
     }
   }, []);
 
@@ -125,7 +124,7 @@ const Dashboard: React.FC = () => {
           </div>
           {userRole === UserRole.APPLICANT && (
             <button
-              onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}
+              onClick={() => navigate('/portal/applications/new')}
               className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg"
             >
               <Plus size={20} />
@@ -228,7 +227,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
         <StatCard
           icon={<DollarSign className="text-teal-600" size={24} />}
           label="Total Requested"
-          value={formatCurrency(applications.reduce((sum, app) => sum + app.amountRequested, 0))}
+          value={`£${applications.reduce((sum, app) => sum + app.amountRequested, 0).toLocaleString()}`}
           bgColor="bg-teal-50"
         />
       </div>
@@ -242,7 +241,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
           </h2>
           {applications.length > 0 && (
             <button
-              onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}
+              onClick={() => navigate('/portal/applications')}
               className="text-purple-600 hover:text-purple-800 font-semibold flex items-center gap-1"
             >
               View All
@@ -257,7 +256,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
             <h3 className="text-lg font-semibold text-gray-700 mb-2">No applications yet</h3>
             <p className="text-gray-500 mb-6">Start your first application to access funding opportunities</p>
             <button
-              onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}
+              onClick={() => navigate('/portal/applications/new')}
               className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition"
             >
               <Plus size={20} />
@@ -269,7 +268,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
             {applications.slice(0, 5).map(app => (
               <div
                 key={app.id}
-                onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
+                onClick={() => navigate(`/portal/applications/${app.id}`)}
                 className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition cursor-pointer"
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -281,7 +280,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right hidden sm:block">
-                    <p className="font-semibold text-gray-900">{formatCurrency(app.amountRequested)}</p>
+                    <p className="font-semibold text-gray-900">£{app.amountRequested.toLocaleString()}</p>
                     <p className="text-xs text-gray-500">{app.area}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(app.status)}`}>
@@ -302,19 +301,19 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
             icon={<Plus />}
             title="New Application"
             description="Start a new funding application"
-            onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}
+            onClick={() => navigate('/portal/applications/new')}
           />
           <QuickActionCard
             icon={<FileText />}
             title="View All Applications"
             description="See all your submissions"
-            onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}
+            onClick={() => navigate('/portal/applications')}
           />
           <QuickActionCard
             icon={<Settings />}
             title="Account Settings"
             description="Update your profile"
-              onClick={() => navigate(ROUTES.PORTAL.DASHBOARD)} // Settings not yet implemented
+            onClick={() => navigate('/portal/settings')}
           />
         </div>
       </div>
@@ -354,11 +353,10 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   const stage1Apps = applications.filter(app => app.status === 'Submitted-Stage1');
   const stage2Apps = applications.filter(app => app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2');
 
-  const filteredApps = selectedArea === 'All'
-    ? applications
-    : applications.filter(app => app.area === selectedArea || app.area === 'Cross-Area');
-
-  const areas: Area[] = ['Blaenavon', 'Thornhill & Upper Cwmbran', 'Trevethin, Penygarn & St. Cadocs'];
+  // Committee members can only see applications in their assigned area
+  const filteredApps = currentUser.area
+    ? applications.filter(app => app.area === currentUser.area || app.area === 'Cross-Area')
+    : applications;
 
   const handleVote = async (appId: string, decision: 'yes' | 'no') => {
     await DataService.saveVote({
@@ -368,12 +366,12 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
       decision,
       createdAt: new Date().toISOString()
     });
-    await loadData(currentUser); // Refresh to show updated state
+    window.location.reload(); // Refresh to show updated state
   };
 
   const handleScoringComplete = () => {
     setScoringApp(null);
-    loadData(currentUser); // Refresh to show updated state
+    window.location.reload(); // Refresh to show updated state
   };
 
   return (
@@ -406,53 +404,17 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
         />
       </div>
 
-      {/* Area Filter */}
-      {/* Area Badge for Committee (read-only) or Area Selector for Admin */}
-      {currentUser.area && currentUser.role !== 'admin' && (
-        <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-          <div className="flex items-center gap-3">
-            <Target className="text-purple-600" size={24} />
-            <div>
-              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Your Assigned Area</h3>
-              <p className="text-xl font-bold text-purple-900">{currentUser.area}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Area Filter for Admin only */}
-      {currentUser.role === 'admin' && currentUser.area && (
+      {/* Area Indicator - Committee members can only see their assigned area */}
+      {currentUser.area && (
         <div className="bg-white rounded-xl shadow-md p-4">
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter className="text-gray-600" size={20} />
-              <span className="font-semibold text-gray-700">Filter by Area:</span>
+              <span className="font-semibold text-gray-700">Your Assigned Area:</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setSelectedArea('All')}
-                className={`px-4 py-2 rounded-lg font-semibold transition ${
-                  selectedArea === 'All'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All Areas
-              </button>
-              {areas.map(area => (
-                <button
-                  key={area}
-                  onClick={() => setSelectedArea(area)}
-                  className={`px-4 py-2 rounded-lg font-semibold transition ${
-                    selectedArea === area
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {area}
-                </button>
-              ))}
-            </div>
+            <span className="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">
+              {currentUser.area}
+            </span>
           </div>
         </div>
       )}
@@ -509,7 +471,7 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
             Applications to Review ({filteredApps.length})
           </h2>
           <button
-            onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}
+            onClick={() => navigate('/portal/applications')}
             className="text-purple-600 hover:text-purple-800 font-semibold flex items-center gap-1"
           >
             View All
@@ -566,7 +528,7 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
 
                   <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center gap-2">
                     <button
-                      onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
+                      onClick={() => navigate(`/portal/applications/${app.id}`)}
                       className="flex-1 px-4 py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 rounded-lg text-sm font-bold transition"
                     >
                       View
@@ -624,19 +586,19 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
             icon={<BarChart3 />}
             title="Matrix Evaluation"
             description="Score applications"
-            onClick={() => navigate(ROUTES.PORTAL.SCORING)}
+            onClick={() => navigate('/portal/scoring')}
           />
           <QuickActionCard
             icon={<Briefcase />}
             title="All Applications"
             description="View all submissions"
-            onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}
+            onClick={() => navigate('/portal/applications')}
           />
           <QuickActionCard
             icon={<Activity />}
             title="Scoring Matrix"
             description="View scoring tools"
-            onClick={() => navigate(ROUTES.PORTAL.SCORING)}
+            onClick={() => navigate('/portal/scoring')}
           />
         </div>
       </div>
@@ -690,9 +652,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
         <StatCard
           icon={<DollarSign className="text-green-600" size={24} />}
           label="Total Funding Requested"
-          value={formatCurrency(totalFunding)}
+          value={`£${totalFunding.toLocaleString()}`}
           bgColor="bg-green-50"
-          subtitle={`${formatCurrency(totalFunded)} funded`}
+          subtitle={`£${totalFunded.toLocaleString()} funded`}
         />
         <StatCard
           icon={<Users className="text-blue-600" size={24} />}
@@ -797,7 +759,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
             Recent Activity
           </h2>
           <button
-            onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}
+            onClick={() => navigate('/portal/applications')}
             className="text-purple-600 hover:text-purple-800 font-semibold flex items-center gap-1"
           >
             View All
@@ -808,7 +770,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
           {recentApps.map(app => (
             <div
               key={app.id}
-              onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
+              onClick={() => navigate(`/portal/applications/${app.id}`)}
               className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition cursor-pointer"
             >
               <div className="flex items-center gap-4 flex-1">
@@ -820,7 +782,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right hidden lg:block">
-                  <p className="font-semibold text-gray-900">{formatCurrency(app.amountRequested)}</p>
+                  <p className="font-semibold text-gray-900">£{app.amountRequested.toLocaleString()}</p>
                   <p className="text-xs text-gray-500">
                     {new Date(app.updatedAt).toLocaleDateString()}
                   </p>
@@ -847,19 +809,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
             icon={<Settings />}
             title="Admin Console"
             description="Full admin control panel"
-            onClick={() => navigate(ROUTES.PORTAL.ADMIN)}
+            onClick={() => navigate('/portal/admin')}
           />
           <QuickActionCard
             icon={<Users />}
             title="Manage Users"
             description="Create and edit user accounts"
-            onClick={() => navigate(ROUTES.PORTAL.ADMIN)}
+            onClick={() => navigate('/portal/admin')}
           />
           <QuickActionCard
             icon={<FileText />}
             title="Master List"
             description="View all applications with analytics"
-            onClick={() => navigate(ROUTES.PORTAL.ADMIN)}
+            onClick={() => navigate('/portal/admin')}
           />
         </div>
       </div>

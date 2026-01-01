@@ -5,7 +5,6 @@ import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
 import { Application, Score, UserRole, User } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
-import { formatCurrency, ROUTES } from '../../utils';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -49,7 +48,7 @@ const ScoringMatrix: React.FC = () => {
   useEffect(() => {
     const user = DataService.getCurrentUser();
     if (!user) {
-      navigate(ROUTES.PUBLIC.LOGIN);
+      navigate('/login');
       return;
     }
     setCurrentUser(user);
@@ -141,22 +140,16 @@ const ScoringMatrix: React.FC = () => {
     setScoringData(initialData);
   };
 
-  const calculateTotals = () => {
-    let rawTotal = 0;
-    let weightedSum = 0;
-    
+  const calculateWeightedTotal = (): number => {
+    let total = 0;
+    let maxTotal = 0;
     SCORING_CRITERIA.forEach(criterion => {
-      const score = scoringData[criterion.id]?.score || 0;
-      rawTotal += score;
-      // Normalize score to 0-1 range, then multiply by weight
-      const normalizedScore = score / 3;
-      weightedSum += normalizedScore * criterion.weight;
+      const rawScore = scoringData[criterion.id]?.score || 0;
+      total += rawScore * criterion.weight;
+      maxTotal += 3 * criterion.weight;
     });
-    
-    // weightedTotal should be 0-100 scale
-    const weightedTotal = Math.round(weightedSum);
-    
-    return { rawTotal, weightedTotal };
+    // Return as percentage (0-100)
+    return maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
   };
 
   const handleScoreChange = (criterionId: string, score: number) => {
@@ -164,7 +157,7 @@ const ScoringMatrix: React.FC = () => {
       ...prev,
       [criterionId]: {
         ...prev[criterionId],
-        score: Math.max(0, Math.min(3, score)) // Clamp to 0-3
+        score: Math.max(0, Math.min(3, score))
       }
     }));
   };
@@ -192,14 +185,12 @@ const ScoringMatrix: React.FC = () => {
         notes[criterion.id] = scoringData[criterion.id]?.notes || '';
       });
 
-      const { rawTotal, weightedTotal } = calculateTotals();
-
       const score: Score = {
         id: `${selectedApp.id}_${currentUser.uid}`,
         appId: selectedApp.id,
         scorerId: currentUser.uid,
         scorerName: currentUser.name,
-        weightedTotal,
+        weightedTotal: calculateWeightedTotal(),
         breakdown,
         notes,
         isFinal: true,
@@ -440,27 +431,21 @@ const ScoringMatrix: React.FC = () => {
                     <span className="text-purple-700 font-bold">Area:</span> {selectedApp.area}
                   </div>
                   <div>
-                    <span className="text-purple-700 font-bold">Funding:</span> {formatCurrency(selectedApp.amountRequest || 0)}
+                    <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequest?.toLocaleString()}
                   </div>
                 </div>
               </div>
 
               {/* Weighted Total Display */}
               <div className="bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded-xl p-6">
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  <div>
-                    <h4 className="font-bold text-lg">Raw Total Score</h4>
-                    <div className="text-4xl font-bold">{calculateTotals().rawTotal}/30</div>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-lg">Weighted Total Score</h4>
-                    <div className="text-4xl font-bold">{calculateTotals().weightedTotal}/100</div>
-                  </div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-lg">Weighted Total Score</h4>
+                  <div className="text-4xl font-bold">{weightedTotal}/100</div>
                 </div>
                 <div className="bg-white/20 rounded-full h-3 overflow-hidden">
                   <div
                     className="bg-teal-400 h-full transition-all duration-500"
-                    style={{ width: `${calculateTotals().weightedTotal}%` }}
+                    style={{ width: `${completionPercentage}%` }}
                   />
                 </div>
               </div>
@@ -490,40 +475,38 @@ const ScoringMatrix: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Score Buttons */}
+                      {/* Score Slider */}
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-2">
                           <label className="text-sm font-bold text-gray-700">Score (0-3)</label>
                           <div className="flex items-center gap-2">
-                            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-lg font-bold">
-                              {currentScore}/3
-                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="3"
+                              value={currentScore}
+                              onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value) || 0)}
+                              className="w-20 px-3 py-1 border border-gray-300 rounded-lg text-center font-bold"
+                            />
                             <span className="text-sm text-gray-500">
-                              = {Math.round((currentScore / 3) * criterion.weight)} weighted
+                              = {((currentScore / 3) * criterion.weight).toFixed(1)} weighted
                             </span>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          {[0, 1, 2, 3].map(value => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => handleScoreChange(criterion.id, value)}
-                              className={`flex-1 py-3 rounded-lg font-bold text-lg transition ${
-                                currentScore === value
-                                  ? 'bg-purple-600 text-white shadow-lg'
-                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                              }`}
-                            >
-                              {value}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-2">
-                          <span>Not met</span>
-                          <span>Partially met</span>
-                          <span>Well met</span>
-                          <span>Excellently met</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="3"
+                          step="1"
+                          value={currentScore}
+                          onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                        />
+                        <div className="flex justify-between text-xs text-gray-400 mt-1">
+                          <span>0</span>
+                          <span>1</span>
+                          <span>2</span>
+                          <span>3</span>
                         </div>
                       </div>
 

@@ -2,7 +2,7 @@
 import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -306,6 +306,25 @@ class AuthService {
       await deleteDoc(doc(db, 'adminDocuments', id));
   }
 
+  async updateDocument(id: string, updates: Partial<AdminDocument>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDoc(id, updates);
+      await setDoc(doc(db, 'adminDocuments', id), updates, { merge: true });
+  }
+
+  // --- PASSWORD MANAGEMENT ---
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+      if (USE_DEMO_MODE) {
+        console.log('[DEMO] Password change requested');
+        return;
+      }
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error('No authenticated user');
+      // Re-authenticate before password change
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+  }
+
   // --- ROUNDS & ASSIGNMENTS ---
   async getRounds(): Promise<Round[]> {
       if (USE_DEMO_MODE) return this.mockGetRounds();
@@ -494,6 +513,13 @@ class AuthService {
 
   mockDeleteDoc(id: string): Promise<void> {
     this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+    return Promise.resolve();
+  }
+
+  mockUpdateDoc(id: string, updates: Partial<AdminDocument>): Promise<void> {
+    const docs = this.getLocal<AdminDocument>('adminDocs');
+    const i = docs.findIndex(d => d.id === id);
+    if(i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('adminDocs', docs); }
     return Promise.resolve();
   }
 

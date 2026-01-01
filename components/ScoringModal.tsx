@@ -20,7 +20,7 @@ export const ScoringModal: React.FC<ScoringModalProps> = ({ isOpen, onClose, app
   const calculateTotals = () => {
     let rawTotal = 0;
     let weightedSum = 0;
-    
+
     SCORING_CRITERIA.forEach(c => {
       const score = breakdown[c.id] || 0;
       rawTotal += score;
@@ -28,10 +28,10 @@ export const ScoringModal: React.FC<ScoringModalProps> = ({ isOpen, onClose, app
       const normalizedScore = score / 3;
       weightedSum += normalizedScore * c.weight;
     });
-    
+
     // weightedTotal should be 0-100 scale
     const weightedTotal = Math.round(weightedSum);
-    
+
     return { rawTotal, weightedTotal };
   };
 

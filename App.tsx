@@ -16,6 +16,7 @@ import ScoringMatrix from './pages/secure/ScoringMatrix';
 import ApplicationsList from './pages/secure/ApplicationsList';
 import ApplicationForm from './pages/secure/ApplicationForm';
 import AdminConsole from './pages/secure/AdminConsole';
+import UserSettings from './pages/secure/UserSettings';
 
 // Route guard wrapper component
 interface ProtectedRouteProps {
@@ -37,7 +38,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
     const currentUser = AuthService.getCurrentUser();
 
     if (!currentUser) {
-      navigate('/login', { replace: true });
+      navigate(ROUTES.PUBLIC.LOGIN, { replace: true });
       setLoading(false);
       return;
     }
@@ -125,6 +126,15 @@ const App: React.FC = () => {
         />
 
         <Route
+          path={ROUTES.PORTAL.APPLICATIONS_NEW}
+          element={
+            <ProtectedRoute>
+              <ApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path={`${ROUTES.PORTAL.APPLICATIONS}/:id`}
           element={
             <ProtectedRoute>
@@ -132,12 +142,13 @@ const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        
+
+        {/* User Settings - All authenticated users */}
         <Route
-          path={ROUTES.PORTAL.APPLICATIONS_NEW}
+          path="/portal/settings"
           element={
             <ProtectedRoute>
-              <ApplicationForm />
+              <UserSettings />
             </ProtectedRoute>
           }
         />

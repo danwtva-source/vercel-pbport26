@@ -513,7 +513,7 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const UsersTab = () => {
-    const [newUser, setNewUser] = useState<Partial<User>>({ role: 'applicant' });
+    const [newUser, setNewUser] = useState<Partial<User>>({ role: 'applicant', area: null });
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
     const handleCreateUser = async () => {
@@ -607,6 +607,18 @@ const AdminConsole: React.FC = () => {
               <option value="committee">Committee</option>
               <option value="admin">Admin</option>
             </select>
+            {(newUser.role === 'committee' || newUser.role === 'applicant') && (
+              <select
+                className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+                value={newUser.area || ''}
+                onChange={(e) => setNewUser({ ...newUser, area: e.target.value as any || null })}
+              >
+                <option value="">Select Area</option>
+                <option value="Blaenavon">Blaenavon</option>
+                <option value="Thornhill & Upper Cwmbran">Thornhill & Upper Cwmbran</option>
+                <option value="Trevethin, Penygarn & St. Cadocs">Trevethin, Penygarn & St. Cadocs</option>
+              </select>
+            )}
             <Button onClick={handleCreateUser}>
               <Plus size={18} />
               Create User
@@ -690,6 +702,21 @@ const AdminConsole: React.FC = () => {
                   <option value="admin">Admin</option>
                 </select>
               </div>
+              {(editingUser.role === 'committee' || editingUser.role === 'applicant') && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Assigned Area</label>
+                  <select
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                    value={editingUser.area || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, area: e.target.value as any || null })}
+                  >
+                    <option value="">No Area Assigned</option>
+                    <option value="Blaenavon">Blaenavon</option>
+                    <option value="Thornhill & Upper Cwmbran">Thornhill & Upper Cwmbran</option>
+                    <option value="Trevethin, Penygarn & St. Cadocs">Trevethin, Penygarn & St. Cadocs</option>
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setEditingUser(null)}>Cancel</Button>
                 <Button onClick={() => handleUpdateUser(editingUser)}>
@@ -718,6 +745,7 @@ const AdminConsole: React.FC = () => {
       stage2Open: false,
       scoringOpen: false
     });
+    const [editingRound, setEditingRound] = useState<Round | null>(null);
 
     const handleCreateRound = async () => {
       if (!newRound.name || !newRound.startDate || !newRound.endDate) {
@@ -754,6 +782,40 @@ const AdminConsole: React.FC = () => {
       } catch (error) {
         console.error('Error deleting round:', error);
         alert('Failed to delete round');
+      }
+    };
+
+    const handleUpdateRound = async (round: Round) => {
+      try {
+        await DataService.updateRound(round.id, round);
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'ROUND_UPDATE',
+          targetId: round.id,
+          details: { name: round.name, status: round.status }
+        });
+        setEditingRound(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating round:', error);
+        alert('Failed to update round');
+      }
+    };
+
+    const handleToggleRoundStatus = async (round: Round, field: 'stage1Open' | 'stage2Open' | 'scoringOpen') => {
+      try {
+        const updated = { ...round, [field]: !round[field] };
+        await DataService.updateRound(round.id, { [field]: !round[field] });
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'ROUND_TOGGLE',
+          targetId: round.id,
+          details: { field, newValue: !round[field] }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error toggling round status:', error);
+        alert('Failed to update round');
       }
     };
 
@@ -822,19 +884,28 @@ const AdminConsole: React.FC = () => {
                   <span className="font-bold">Period:</span> {round.startDate} to {round.endDate}
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  <Badge variant={round.stage1Open ? 'green' : 'gray'}>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'stage1Open')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.stage1Open ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Stage 1: {round.stage1Open ? 'Open' : 'Closed'}
-                  </Badge>
-                  <Badge variant={round.stage2Open ? 'green' : 'gray'}>
+                  </button>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'stage2Open')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.stage2Open ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Stage 2: {round.stage2Open ? 'Open' : 'Closed'}
-                  </Badge>
-                  <Badge variant={round.scoringOpen ? 'green' : 'gray'}>
+                  </button>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'scoringOpen')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.scoringOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Scoring: {round.scoringOpen ? 'Open' : 'Closed'}
-                  </Badge>
+                  </button>
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" onClick={() => setEditingRound(round)}>
                   <Edit size={14} />
                   Edit
                 </Button>
@@ -849,6 +920,60 @@ const AdminConsole: React.FC = () => {
             <p className="text-gray-500 col-span-2 text-center py-8">No funding rounds created yet</p>
           )}
         </div>
+
+        {/* Edit Round Modal */}
+        {editingRound && (
+          <Modal isOpen={true} onClose={() => setEditingRound(null)} title="Edit Round" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Round Name"
+                value={editingRound.name}
+                onChange={(e) => setEditingRound({ ...editingRound, name: e.target.value })}
+              />
+              <Input
+                label="Year"
+                type="number"
+                value={editingRound.year}
+                onChange={(e) => setEditingRound({ ...editingRound, year: parseInt(e.target.value) })}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Start Date"
+                  type="date"
+                  value={editingRound.startDate}
+                  onChange={(e) => setEditingRound({ ...editingRound, startDate: e.target.value })}
+                />
+                <Input
+                  label="End Date"
+                  type="date"
+                  value={editingRound.endDate}
+                  onChange={(e) => setEditingRound({ ...editingRound, endDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Round Status</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingRound.status}
+                  onChange={(e) => setEditingRound({ ...editingRound, status: e.target.value as any })}
+                >
+                  <option value="planning">Planning</option>
+                  <option value="open">Open</option>
+                  <option value="scoring">Scoring</option>
+                  <option value="voting">Voting</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingRound(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateRound(editingRound)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   };
@@ -858,6 +983,121 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const DocumentsTab = () => {
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [showFolderModal, setShowFolderModal] = useState(false);
+    const [editingDoc, setEditingDoc] = useState<AdminDocument | null>(null);
+    const [newDoc, setNewDoc] = useState<Partial<AdminDocument>>({
+      name: '',
+      type: 'file',
+      category: 'general',
+      parentId: 'root'
+    });
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+    const handleUploadDocument = async () => {
+      if (!newDoc.name) {
+        alert('Please provide a document name');
+        return;
+      }
+      try {
+        const id = 'doc_' + Date.now();
+        // In a real app, you'd upload the file to Firebase Storage first
+        const docData: AdminDocument = {
+          id,
+          name: newDoc.name!,
+          type: newDoc.type as 'file' | 'folder',
+          parentId: newDoc.parentId as string,
+          category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
+          uploadedBy: 'current-admin',
+          createdAt: Date.now(),
+          url: uploadFile ? URL.createObjectURL(uploadFile) : undefined
+        };
+        await DataService.createDocument(docData);
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'DOCUMENT_CREATE',
+          targetId: id,
+          details: { name: newDoc.name, type: newDoc.type }
+        });
+        setNewDoc({ name: '', type: 'file', category: 'general', parentId: 'root' });
+        setUploadFile(null);
+        setShowUploadModal(false);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error uploading document:', error);
+        alert('Failed to upload document');
+      }
+    };
+
+    const handleCreateFolder = async () => {
+      if (!newDoc.name) {
+        alert('Please provide a folder name');
+        return;
+      }
+      try {
+        const id = 'folder_' + Date.now();
+        const folderData: AdminDocument = {
+          id,
+          name: newDoc.name!,
+          type: 'folder',
+          parentId: newDoc.parentId as string || 'root',
+          category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
+          uploadedBy: 'current-admin',
+          createdAt: Date.now()
+        };
+        await DataService.createDocument(folderData);
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'FOLDER_CREATE',
+          targetId: id,
+          details: { name: newDoc.name }
+        });
+        setNewDoc({ name: '', type: 'file', category: 'general', parentId: 'root' });
+        setShowFolderModal(false);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error creating folder:', error);
+        alert('Failed to create folder');
+      }
+    };
+
+    const handleDeleteDocument = async (id: string, name: string) => {
+      if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+      try {
+        await DataService.deleteDocument(id);
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'DOCUMENT_DELETE',
+          targetId: id,
+          details: { name }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error deleting document:', error);
+        alert('Failed to delete document');
+      }
+    };
+
+    const handleUpdateDocument = async (doc: AdminDocument) => {
+      try {
+        await DataService.updateDocument(doc.id, { name: doc.name, category: doc.category });
+        await DataService.logAction({
+          adminId: 'current-admin',
+          action: 'DOCUMENT_UPDATE',
+          targetId: doc.id,
+          details: { name: doc.name }
+        });
+        setEditingDoc(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating document:', error);
+        alert('Failed to update document');
+      }
+    };
+
+    const folders = documents.filter(d => d.type === 'folder');
+    const files = documents.filter(d => d.type === 'file');
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -865,19 +1105,61 @@ const AdminConsole: React.FC = () => {
             <h2 className="text-3xl font-bold text-purple-900 mb-2">Document Management</h2>
             <p className="text-gray-600">Upload and manage resources for committee members</p>
           </div>
-          <Button variant="secondary">
-            <Upload size={18} />
-            Upload Document
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowFolderModal(true)}>
+              <FolderOpen size={18} />
+              New Folder
+            </Button>
+            <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
+              <Upload size={18} />
+              Upload Document
+            </Button>
+          </div>
         </div>
 
+        {/* Folders */}
+        {folders.length > 0 && (
+          <Card>
+            <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+              <FolderOpen size={20} />
+              Folders
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {folders.map(folder => (
+                <div key={folder.id} className="p-4 bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-400 transition cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <FolderOpen className="text-amber-600" size={24} />
+                    <span className="font-bold text-gray-800 truncate">{folder.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <Badge variant="amber">{folder.category}</Badge>
+                    <div className="flex gap-1">
+                      <button onClick={() => setEditingDoc(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
+                        <Edit size={14} />
+                      </button>
+                      <button onClick={() => handleDeleteDocument(folder.id, folder.name)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Files */}
         <Card>
+          <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <FileText size={20} />
+            Documents ({files.length})
+          </h3>
           <div className="space-y-3">
-            {documents.map(doc => (
-              <div key={doc.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+            {files.map(doc => (
+              <div key={doc.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between hover:border-purple-300 transition">
                 <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${doc.type === 'folder' ? 'bg-amber-100' : 'bg-blue-100'}`}>
-                    {doc.type === 'folder' ? <FolderOpen className="text-amber-600" /> : <FileText className="text-blue-600" />}
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100">
+                    <FileText className="text-blue-600" />
                   </div>
                   <div>
                     <p className="font-bold text-gray-800">{doc.name}</p>
@@ -890,20 +1172,149 @@ const AdminConsole: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700">
-                    <Eye size={16} />
+                  {doc.url && (
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700">
+                      <Eye size={16} />
+                    </a>
+                  )}
+                  <button onClick={() => setEditingDoc(doc)} className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700">
+                    <Edit size={16} />
                   </button>
-                  <button className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
+                  <button onClick={() => handleDeleteDocument(doc.id, doc.name)} className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
             ))}
-            {documents.length === 0 && (
+            {files.length === 0 && (
               <p className="text-gray-500 text-center py-8">No documents uploaded yet</p>
             )}
           </div>
         </Card>
+
+        {/* Upload Modal */}
+        {showUploadModal && (
+          <Modal isOpen={true} onClose={() => setShowUploadModal(false)} title="Upload Document" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Document Name"
+                placeholder="Enter document name"
+                value={newDoc.name || ''}
+                onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={newDoc.category}
+                  onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value as any })}
+                >
+                  <option value="general">General</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="policy">Policy</option>
+                  <option value="committee-only">Committee Only</option>
+                </select>
+              </div>
+              {folders.length > 0 && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Parent Folder</label>
+                  <select
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                    value={newDoc.parentId}
+                    onChange={(e) => setNewDoc({ ...newDoc, parentId: e.target.value })}
+                  >
+                    <option value="root">Root</option>
+                    {folders.map(folder => (
+                      <option key={folder.id} value={folder.id}>{folder.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">File</label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowUploadModal(false)}>Cancel</Button>
+                <Button onClick={handleUploadDocument}>
+                  <Upload size={18} />
+                  Upload
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Folder Modal */}
+        {showFolderModal && (
+          <Modal isOpen={true} onClose={() => setShowFolderModal(false)} title="Create Folder" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Folder Name"
+                placeholder="Enter folder name"
+                value={newDoc.name || ''}
+                onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={newDoc.category}
+                  onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value as any })}
+                >
+                  <option value="general">General</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="policy">Policy</option>
+                  <option value="committee-only">Committee Only</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowFolderModal(false)}>Cancel</Button>
+                <Button onClick={handleCreateFolder}>
+                  <FolderOpen size={18} />
+                  Create Folder
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Edit Document Modal */}
+        {editingDoc && (
+          <Modal isOpen={true} onClose={() => setEditingDoc(null)} title={`Edit ${editingDoc.type === 'folder' ? 'Folder' : 'Document'}`} size="md">
+            <div className="space-y-4">
+              <Input
+                label="Name"
+                value={editingDoc.name}
+                onChange={(e) => setEditingDoc({ ...editingDoc, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingDoc.category}
+                  onChange={(e) => setEditingDoc({ ...editingDoc, category: e.target.value as any })}
+                >
+                  <option value="general">General</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="policy">Policy</option>
+                  <option value="committee-only">Committee Only</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingDoc(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateDocument(editingDoc)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   };
