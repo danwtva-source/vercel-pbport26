@@ -83,6 +83,11 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
 
   const isActive = (path: string) => location.pathname === path ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white';
 
+  // Normalize role for comparison (handles 'admin' vs 'ADMIN' case differences)
+  const normalizedRole = (userRole || '').toString().toUpperCase();
+  const isAdmin = normalizedRole === UserRole.ADMIN || normalizedRole === 'ADMIN';
+  const isCommittee = normalizedRole === UserRole.COMMITTEE || normalizedRole === 'COMMITTEE';
+
   const NavLinks = () => (
     <>
       <Link to="/portal/dashboard" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/dashboard')}`}>
@@ -90,7 +95,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <span>My Dashboard</span>
       </Link>
 
-      {(userRole === UserRole.COMMITTEE || userRole === UserRole.ADMIN) && (
+      {(isCommittee || isAdmin) && (
         <Link to="/portal/scoring" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/scoring')}`}>
           <BarChart3 size={18} />
           <span>Matrix Evaluation</span>
@@ -102,7 +107,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <span>Project Entries</span>
       </Link>
 
-      {userRole === UserRole.ADMIN && (
+      {isAdmin && (
          <Link to="/portal/admin" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/admin')}`}>
           <Settings size={18} />
           <span>Master Console</span>

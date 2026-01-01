@@ -22,6 +22,11 @@ interface ProtectedRouteProps {
   requiredRole?: UserRole | UserRole[];
 }
 
+// Helper to normalize role strings for comparison (handles case differences)
+const normalizeRole = (role: string | undefined): string => {
+  return (role || '').toUpperCase();
+};
+
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,21 +41,25 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
       return;
     }
 
+    // Normalize the user's role for comparison (handles 'admin' vs 'ADMIN')
+    const userRoleNormalized = normalizeRole(currentUser.role);
+
     // Check role authorization
     if (requiredRole) {
       const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
 
       // Admin can access everything
-      if (currentUser.role === UserRole.ADMIN) {
+      if (userRoleNormalized === UserRole.ADMIN) {
         setUser(currentUser);
         setLoading(false);
         return;
       }
 
-      // Check if user's role is in allowed roles
-      if (!allowedRoles.includes(currentUser.role as UserRole)) {
+      // Check if user's role is in allowed roles (normalize for comparison)
+      const allowedRolesNormalized = allowedRoles.map(r => normalizeRole(r));
+      if (!allowedRolesNormalized.includes(userRoleNormalized)) {
         // Redirect to appropriate dashboard based on role
-        switch (currentUser.role) {
+        switch (userRoleNormalized) {
           case UserRole.COMMITTEE:
             navigate('/portal/dashboard', { replace: true });
             break;
