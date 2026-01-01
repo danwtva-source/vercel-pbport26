@@ -407,7 +407,21 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
       </div>
 
       {/* Area Filter */}
-      {currentUser.area && (
+      {/* Area Badge for Committee (read-only) or Area Selector for Admin */}
+      {currentUser.area && currentUser.role !== 'admin' && (
+        <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+          <div className="flex items-center gap-3">
+            <Target className="text-purple-600" size={24} />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Your Assigned Area</h3>
+              <p className="text-xl font-bold text-purple-900">{currentUser.area}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Area Filter for Admin only */}
+      {currentUser.role === 'admin' && currentUser.area && (
         <div className="bg-white rounded-xl shadow-md p-4">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
