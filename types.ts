@@ -111,6 +111,22 @@ export interface ScoreBreakdown {
   [criterionKey: string]: number; // 0–100
 }
 
+// --- VOTING (Stage 1) ---
+export interface Vote {
+    id: string;
+    appId: string;
+    voterId: string;
+    voterName?: string;
+    decision: 'yes' | 'no';
+    reason?: string;
+    createdAt: string;
+}
+
+// --- SCORING (Stage 2) ---
+export interface ScoreBreakdown {
+  [criterionKey: string]: number; // 0–100
+}
+
 export interface Score {
   id: string;
   appId: string;
@@ -288,7 +304,6 @@ export interface DocumentResource {
  * configure scoring criteria and thresholds per round.
  */
 export interface Round {
-  /** Unique identifier for the round (document ID) */
   id: string;
   /** Human‑readable name, e.g. "Communities' Choice 2026" */
   name: string;
@@ -298,7 +313,6 @@ export interface Round {
   status: 'planning' | 'open' | 'scoring' | 'voting' | 'closed';
   /** ISO date string when this round starts accepting applications */
   startDate: string;
-  /** ISO date string when this round closes to new applications */
   endDate: string;
   /** Areas this round applies to; if empty, applies to all areas */
   areas: Area[];
@@ -310,7 +324,6 @@ export interface Round {
   scoringOpen?: boolean;
   /** Optional list of scoring criteria specific to this round */
   scoringCriteria?: ScoreCriterion[];
-  /** Optional scoring threshold (0–100) for this round */
   scoringThreshold?: number;
   /** Timestamp when the round was created */
   createdAt?: number;
@@ -323,17 +336,11 @@ export interface Round {
  * Committee dashboard task list and allow per‑member progress tracking and due dates.
  */
 export interface Assignment {
-  /** Unique identifier for the assignment (document ID) */
   id: string;
-  /** ID of the application to be scored */
   applicationId: string;
-  /** ID of the committee member assigned to score the application */
   committeeId: string;
-  /** ISO date string when the assignment was made */
   assignedDate: string;
-  /** Optional ISO date string when the score is due */
   dueDate?: string;
-  /** Status of this assignment for the committee member */
   status: 'assigned' | 'draft' | 'submitted' | 'rescore';
 }
 
@@ -345,9 +352,7 @@ export interface Assignment {
  * applications should be logged here.
  */
 export interface AuditLog {
-  /** Unique identifier for the audit entry */
   id: string;
-  /** UID of the admin who performed the action */
   adminId: string;
   /** Human readable description of the action, e.g. 'APP_STATUS_CHANGE', 'ROUND_UPDATE' */
   action: string;

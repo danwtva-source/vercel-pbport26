@@ -258,7 +258,7 @@ class AuthService {
 
       await setDoc(ref, u, { merge: true });
       if (auth.currentUser && auth.currentUser.uid === uid) {
-          await updateProfile(auth.currentUser, {
+          await updateProfile(auth.currentUser, { 
               displayName: u.displayName || auth.currentUser.displayName,
               photoURL: u.photoUrl || auth.currentUser.photoURL
           });
