@@ -145,7 +145,7 @@ const AdminConsole: React.FC = () => {
           </div>
           <Button onClick={() => setIsScoringMode(true)} variant="secondary">
             <BarChart3 size={18} className="mr-2" />
-            Enter Scoring Mode
+            Enter Committee Tasks Overview
           </Button>
         </div>
 

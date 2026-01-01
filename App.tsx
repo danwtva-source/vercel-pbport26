@@ -124,7 +124,16 @@ const App: React.FC = () => {
         />
 
         <Route
-          path="/portal/application/:id"
+          path="/portal/applications/:id"
+          element={
+            <ProtectedRoute>
+              <ApplicationForm />
+            </ProtectedRoute>
+          }
+        />
+        
+        <Route
+          path="/portal/applications/new"
           element={
             <ProtectedRoute>
               <ApplicationForm />

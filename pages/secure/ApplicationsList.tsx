@@ -177,7 +177,7 @@ const ApplicationsList: React.FC = () => {
               </Button>
             )}
             {canCreate && (
-              <Button variant="primary" size="md" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" size="md" onClick={() => navigate('/portal/applications/new')}>
                 <Plus size={18} />
                 New Application
               </Button>
@@ -271,7 +271,7 @@ const ApplicationsList: React.FC = () => {
                 : 'No applications available yet'}
             </p>
             {canCreate && !searchTerm && filterStatus === 'All' && (
-              <Button variant="primary" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" onClick={() => navigate('/portal/applications/new')}>
                 <Plus size={18} />
                 Create Application
               </Button>
@@ -339,7 +339,7 @@ const ApplicationsList: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => navigate(`/portal/application/${app.id}`)}
+                            onClick={() => navigate(`/portal/applications/${app.id}`)}
                             className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
                             title="View"
                           >
@@ -347,7 +347,7 @@ const ApplicationsList: React.FC = () => {
                           </button>
                           {canEdit(app) && (
                             <button
-                              onClick={() => navigate(`/portal/application/${app.id}`)}
+                              onClick={() => navigate(`/portal/applications/${app.id}`)}
                               className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                               title="Edit"
                             >

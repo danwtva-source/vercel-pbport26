@@ -367,12 +367,12 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
       decision,
       createdAt: new Date().toISOString()
     });
-    window.location.reload(); // Refresh to show updated state
+    await loadData(currentUser); // Refresh to show updated state
   };
 
   const handleScoringComplete = () => {
     setScoringApp(null);
-    window.location.reload(); // Refresh to show updated state
+    loadData(currentUser); // Refresh to show updated state
   };
 
   return (
