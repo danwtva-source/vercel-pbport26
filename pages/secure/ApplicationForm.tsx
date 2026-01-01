@@ -5,6 +5,7 @@ import { Button, Card, Input, Badge } from '../../components/UI';
 import { api, api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
+import { formatCurrency } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -988,7 +989,7 @@ const ApplicationForm: React.FC = () => {
                 </div>
 
                 <div className="text-right font-bold text-xl mb-4">
-                  Total: £{application.totalCost?.toLocaleString() || 0}
+                  Total: {formatCurrency(application.totalCost || 0)}
                 </div>
 
                 <textarea

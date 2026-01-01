@@ -5,6 +5,7 @@ import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
 import { Application, Score, UserRole, User } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
+import { formatCurrency } from '../../utils';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -439,7 +440,7 @@ const ScoringMatrix: React.FC = () => {
                     <span className="text-purple-700 font-bold">Area:</span> {selectedApp.area}
                   </div>
                   <div>
-                    <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequest?.toLocaleString()}
+                    <span className="text-purple-700 font-bold">Funding:</span> {formatCurrency(selectedApp.amountRequest || 0)}
                   </div>
                 </div>
               </div>

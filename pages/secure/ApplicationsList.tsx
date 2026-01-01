@@ -5,6 +5,7 @@ import { Button, Card, Badge, Input } from '../../components/UI';
 import { api } from '../../services/firebase';
 import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
+import { formatCurrency } from '../../utils';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -333,8 +334,8 @@ const ApplicationsList: React.FC = () => {
                         <Badge>{app.status}</Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-bold text-gray-900">£{app.amountRequested.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">of £{app.totalCost.toLocaleString()}</div>
+                        <div className="font-bold text-gray-900">{formatCurrency(app.amountRequested)}</div>
+                        <div className="text-xs text-gray-500">of {formatCurrency(app.totalCost)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>

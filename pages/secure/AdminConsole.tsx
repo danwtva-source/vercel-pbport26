@@ -4,6 +4,7 @@ import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI
 import { DataService, exportToCSV } from '../../services/firebase';
 import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
+import { formatCurrency } from '../../utils';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
@@ -215,7 +216,7 @@ const AdminConsole: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500 font-bold">Total Requested</p>
-                <p className="text-2xl font-bold text-rose-900">£{totalFundingRequested.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-rose-900">{formatCurrency(totalFundingRequested)}</p>
               </div>
               <TrendingUp className="text-rose-500" size={40} />
             </div>
@@ -225,7 +226,7 @@ const AdminConsole: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500 font-bold">Total Funded</p>
-                <p className="text-2xl font-bold text-emerald-900">£{totalFunded.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-emerald-900">{formatCurrency(totalFunded)}</p>
               </div>
               <CheckCircle className="text-emerald-500" size={40} />
             </div>
@@ -447,7 +448,7 @@ const AdminConsole: React.FC = () => {
                       </td>
                       <td className="p-3 text-sm">{app.orgName || '-'}</td>
                       <td className="p-3 text-sm">{app.area || '-'}</td>
-                      <td className="p-3 text-sm font-bold">£{(app.amountRequested || 0).toLocaleString()}</td>
+                      <td className="p-3 text-sm font-bold">{formatCurrency(app.amountRequested || 0)}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 text-xs">
                           <span className="text-green-600 font-bold">{enrichedApp.voteCountYes || 0} Yes</span>
@@ -1230,7 +1231,7 @@ const AdminConsole: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-600">Amount Requested</p>
-                  <p className="text-lg font-bold text-green-700">£{selectedApp.amountRequested.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-green-700">{formatCurrency(selectedApp.amountRequested)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-600">Status</p>

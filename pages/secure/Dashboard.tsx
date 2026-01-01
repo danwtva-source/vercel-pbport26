@@ -4,6 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
+import { formatCurrency } from '../../utils';
 import {
   Plus,
   FileText,
@@ -227,7 +228,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
         <StatCard
           icon={<DollarSign className="text-teal-600" size={24} />}
           label="Total Requested"
-          value={`£${applications.reduce((sum, app) => sum + app.amountRequested, 0).toLocaleString()}`}
+          value={formatCurrency(applications.reduce((sum, app) => sum + app.amountRequested, 0))}
           bgColor="bg-teal-50"
         />
       </div>
@@ -280,7 +281,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right hidden sm:block">
-                    <p className="font-semibold text-gray-900">£{app.amountRequested.toLocaleString()}</p>
+                    <p className="font-semibold text-gray-900">{formatCurrency(app.amountRequested)}</p>
                     <p className="text-xs text-gray-500">{app.area}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(app.status)}`}>
@@ -675,9 +676,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
         <StatCard
           icon={<DollarSign className="text-green-600" size={24} />}
           label="Total Funding Requested"
-          value={`£${totalFunding.toLocaleString()}`}
+          value={formatCurrency(totalFunding)}
           bgColor="bg-green-50"
-          subtitle={`£${totalFunded.toLocaleString()} funded`}
+          subtitle={`${formatCurrency(totalFunded)} funded`}
         />
         <StatCard
           icon={<Users className="text-blue-600" size={24} />}
@@ -805,7 +806,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right hidden lg:block">
-                  <p className="font-semibold text-gray-900">£{app.amountRequested.toLocaleString()}</p>
+                  <p className="font-semibold text-gray-900">{formatCurrency(app.amountRequested)}</p>
                   <p className="text-xs text-gray-500">
                     {new Date(app.updatedAt).toLocaleDateString()}
                   </p>
