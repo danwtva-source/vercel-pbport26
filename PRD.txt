@@ -1,0 +1,213 @@
+Communities’ Choice Participatory ‎Budgeting Portal 
+Product Requirements Document ‎‎(PRD)‎
+Version: 1.0 (Production Merge) 
+Date: 2026-01-01 
+Owner: Torfaen Voluntary Alliance (TVA) – Communities’ Choice Team
+
+Document status	Draft for implementation (Claude/Copilot build guide)‎
+Target branch	final/production-merge-admin
+Primary stack	React + TypeScript + Tailwind CSS + Firebase (Auth, Firestore, ‎Storage) + Vercel
+Guiding principle	Preserve working functionality and existing design; integrate ‎changes without re-scaffolding
+
+‎1. Executive summary‎
+This PRD defines the final production-ready solution for the Communities’ Choice Participatory ‎Budgeting (PB) Portal in Torfaen. It consolidates the public-facing site, applicant submission ‎journey (Stage 1 EOI and Stage 2 full application), committee voting/scoring workflows, and a ‎comprehensive admin console for round management, task assignments, monitoring, ‎documents, audit and exports.‎
+The immediate production focus is to deliver a single stable portal build where all navigation ‎works, sessions persist reliably, role-based access is enforced correctly, and the full PB ‎operational cycle can be managed end-to-end without manual database edits.‎
+‎2. Background and context‎
+Communities’ Choice is Torfaen’s participatory budgeting initiative delivered with People’s ‎Committees across three areas: Blaenavon, Thornhill & Upper Cwmbran, and Trevethin-‎Penygarn-St Cadocs. The portal supports a two-stage application process (Stage 1 Expression ‎of Interest; Stage 2 full proposal) and committee-led decision-making (vote then score).‎
+The portal must remain user-friendly, branded, and operationally robust, supporting ‎applicants, committee members, and TVA administrators with clear dashboards, status ‎tracking, and auditability.‎
+‎3. Goals and success metrics‎
+‎3.1 Goals‎
+•	Single production-ready portal combining best design/public experience with ‎comprehensive admin tooling.‎
+•	End-to-end PB cycle support: applicant submissions (Stage 1 and Stage 2), committee ‎voting and scoring, admin oversight.‎
+•	Reliable authentication, role routing and session persistence (no forced logouts or broken ‎links).‎
+•	Admin can manage rounds, users, assignments, documents, settings, and exports without ‎direct Firestore editing.‎
+•	Secure by default: least-privilege access via Firestore/Storage rules and auditable changes.‎
+‎3.2 Success metrics (MVP)‎
+•	‎0 broken navigation links across all roles; 0 redirects-to-login caused by authorisation bugs.‎
+•	Refresh on any secure route maintains session and returns user to the correct dashboard.‎
+•	Admins can create/edit rounds and see stage toggles affect UI and write actions.‎
+•	Committee members see only assigned applications (plus permitted cross-area rules) and ‎can submit votes/scores.‎
+•	Applicants can submit Stage 1, track status, and submit Stage 2 only when eligible.‎
+•	No unauthorised reads/writes confirmed via security rules tests.‎
+‎4. Scope‎
+‎4.1 In scope (production MVP)‎
+•	Public site pages (Home, Priorities, Voting Zone placeholder or live as configured, ‎Resources, Secure Portal entry).‎
+•	Authentication (login/register) and profile (basic details and optional photo).‎
+•	Applicant portal: Stage 1 EOI create/edit/submit; status tracking; Stage 2 full application ‎create/edit/submit; document uploads where required.‎
+•	Committee portal: task dashboard; Stage 1 voting; Stage 2 scoring matrix; access to ‎committee documents; per-area/cross-area filtering.‎
+•	Admin console: dashboard KPIs; master application list with status management; rounds ‎management; assignments management; user management; document centre; scoring ‎monitor; audit logs; CSV export; portal settings (e.g., scoring threshold).‎
+•	Security rules for Firestore and Storage; environment configuration for Vercel; production ‎build passing.‎
+•	Navigation reliability and session stability improvements (see Section 11).‎
+‎4.2 Out of scope (post-MVP)‎
+•	Public voting implementation beyond a placeholder page, unless already in codebase and ‎required for launch.‎
+•	Payments, grants disbursement tracking, or post-award monitoring workflows.‎
+•	Full bilingual (Welsh/English) implementation unless already present (can be phased).‎
+•	Complex analytics dashboards beyond core admin KPIs and exports.‎
+•	Automated email/SMS notifications unless already connected (can be staged).‎
+‎5. Stakeholders and user roles‎
+‎5.1 Primary roles‎
+Role	Purpose
+Applicant	Community organisation/individual ‎submitting Stage 1 and (if shortlisted) Stage ‎‎2.‎
+Committee Member	People’s Committee member who votes and ‎scores applications, generally within an ‎assigned area.‎
+Admin	TVA staff managing rounds, users, ‎applications lifecycle, documents, settings, ‎monitoring and exports.‎
+
+‎5.2 Role permissions (high level)‎
+Applicants
+•	Create/edit own applications; submit within open stages.‎
+•	Read own status and any admin messages; upload required attachments.‎
+Committee Members
+•	Read assigned applications and supporting docs; vote (Stage 1) and score (Stage 2).‎
+•	Write votes/scores only for themselves; view own progress and tasks.‎
+Admins
+•	Full CRUD across rounds, users, assignments, applications (lifecycle), portal settings, ‎documents.‎
+•	Read monitoring dashboards and exports; view audit logs; impersonation (if implemented) ‎must be auditable.‎
+‎6. End-to-end journeys
+‎6.1 Applicant journey‎
+‎1.‎	Access public site; enter Secure Portal; register or sign in.‎
+‎2.‎	Create Stage 1 EOI draft; save; submit within Stage 1 window.‎
+‎3.‎	Track status updates (submitted -> under review -> shortlisted/rejected).‎
+‎4.‎	If shortlisted: access Stage 2 full application; complete plan and budget; submit within ‎Stage 2 window.‎
+‎5.‎	View final outcome (funded/rejected) once decisions are published.‎
+‎6.2 Committee journey‎
+‎6.‎	Sign in; routed to committee dashboard.‎
+‎7.‎	View assigned tasks (votes and scores) filtered by area and assignment.‎
+‎8.‎	Vote yes/no on Stage 1 applications during Stage 1 voting window.‎
+‎9.‎	Score Stage 2 applications using weighted matrix during scoring window.‎
+‎10.‎	Access committee documents and admin guidance; track completion progress.‎
+‎6.3 Admin journey‎
+‎11.‎	Sign in; routed to admin console.‎
+‎12.‎	Create/maintain rounds with dates, areas and stage toggles.‎
+‎13.‎	Manage users (create/update roles/areas, deactivate/delete as permitted).‎
+‎14.‎	Assign applications to committee members; monitor scoring progress.‎
+‎15.‎	Manage application statuses; upload committee documents; adjust portal settings (e.g., ‎scoring threshold).‎
+‎16.‎	Export CSV reports; review audit logs.‎
+‎7. Functional requirements‎
+‎7.1 Authentication and profile‎
+‎ ‎
+ID	Requirement	Acceptance criteria
+AUTH-01‎	Support email/password sign ‎in and registration.‎	Users can sign in/out; ‎registration creates a user ‎profile record.‎
+AUTH-02‎	Persist sessions across ‎refresh and internal ‎navigation.‎	Refreshing any secure route ‎keeps user logged in and ‎routes correctly.‎
+AUTH-03‎	Role-based routing and ‎access control.‎	Admin/committee/applicant ‎land on correct dashboards; ‎forbidden routes redirect ‎safely.‎
+AUTH-04‎	Optional profile image ‎upload for all roles.‎	User can upload/update ‎photo; displayed in ‎header/profile.‎
+
+‎7.2 Public site‎
+•	Public navigation: Home, Priorities, Voting Zone, Resources, Secure Portal.‎
+•	Branding: public logo for public pages; consistent typography; UK English.‎
+•	Resources page supports documents/links and signposting; voting zone may be ‎placeholder if not live.‎
+‎7.3 Applicant portal‎
+Stage 1 – Expression of Interest (EOI)‎
+•	Create/edit Stage 1 EOI drafts; autosave or manual save.‎
+•	Submit Stage 1 within Stage 1 open window (round.stage1Open).‎
+•	After submit: lock key fields or create submitted snapshot; show submitted timestamp.‎
+•	View status, messages, and eligibility outcomes.‎
+Stage 2 – Full application
+•	Stage 2 is accessible only when the application is shortlisted and round.stage2Open is true.‎
+•	Capture detailed plan and budget; allow attachments (e.g., budget template, supporting ‎docs) as configured.‎
+•	Submit Stage 2 within window; show status and timestamps.‎
+‎7.4 Committee portal‎
+•	Task dashboard lists assigned applications; clear empty state when none assigned.‎
+•	Stage 1 voting: yes/no vote stored per committee member per application; prevent ‎duplicate votes or allow update with audit.‎
+•	Stage 2 scoring: weighted scoring matrix; criteria/weights from constants or round config; ‎persist per member scores and totals.‎
+•	Committee documents: access to admin-uploaded docs by category; download/view in ‎portal.‎
+‎7.5 Admin console‎
+Admin console must support the following modules (as implemented in the integrated admin ‎build):‎
+•	Dashboard KPIs (applications, funding requested, active users, success rate).‎
+•	Application master list with status management and CSV export.‎
+•	Rounds management: full CRUD; stage visibility toggles (Stage 1, Stage 2, Scoring).‎
+•	Assignments management: full CRUD; assign applications to committee members; due ‎dates and status tracking.‎
+•	User management: create/update/delete/deactivate users; role and area assignment.‎
+•	Document centre: upload/manage committee documents (Storage-backed); ‎categorisation; deletion.‎
+•	Scoring monitor: real-time progress; per-area filters; completion percentages; average ‎scores.‎
+•	Audit logs: append-only log of admin actions; last N entries; sortable by time.‎
+•	Portal settings: scoring threshold and global configuration.‎
+‎7.6 Reporting and exports‎
+•	CSV export from admin master list including key fields: application ID, name, area, stage, ‎status, requested funding, scores summary.‎
+•	Optional exports for votes and scoring raw data (committee member breakdown).‎
+•	Exports must match what admin sees and respect role-based permissions.‎
+‎7.7 Audit logging‎
+•	Log admin actions that change state (status updates, threshold changes, round updates, ‎user changes, assignments changes, document changes).‎
+•	Audit log entries include actor, action description, target entity ID/type, timestamp, and ‎before/after payload where safe.‎
+•	Audit logs are append-only (no updates/deletes from client).‎
+‎8. Data model (Firestore)‎
+Collections (recommended canonical names; adapt to existing code but keep consistent across ‎UI, services and rules):‎
+•	users/{uid} – role, areaId, displayName, photoURL, isActive, createdAt
+•	rounds/{roundId} – name, year, startDate, endDate, areas[], stage1Open, stage2Open, ‎scoringOpen, scoringCriteria?, scoringThreshold?, createdAt
+•	applications/{appId} – applicantId, roundId, areaId, stage, status, requestedFunding, ‎createdAt, updatedAt
+•	assignments/{assignmentId} – applicationId, committeeId (or committeeUid), ‎assignedDate, dueDate?, status
+•	votes/{voteId} – applicationId, committeeId, roundId, value, timestamp
+•	scores/{scoreId} – applicationId, committeeId, roundId, criterionScores, weightedTotal, ‎timestamp
+•	documents/{docId} – title, category, filePath, uploadedBy, uploadedAt
+•	auditLogs/{logId} – actorId, action, targetType, targetId?, timestamp, details?‎
+Indexes: maintain firestore.indexes.json for any compound queries (e.g., assignments by ‎committeeId + roundId; applications by areaId + status).‎
+‎9. Security, privacy and compliance‎
+‎9.1 Firestore security rules‎
+•	Applicants: read/write only their own application documents and permitted attachments; ‎no access to rounds or assignments.‎
+•	Committee: read assigned applications and committee documents; write votes/scores only ‎for self; read assignments where committeeId == auth.uid.‎
+•	Admin: full access; all admin writes should log audit entries.‎
+‎9.2 Storage security rules‎
+•	Admin-only uploads/deletes for committee documents; read access controlled by category ‎‎(public/committee/admin).‎
+•	Applicant uploads restricted to their own application folder; read limited accordingly.‎
+‎9.3 Sensitive operations (user creation/deletion)‎
+Creating/deleting Firebase Auth users should be implemented via Firebase Admin SDK (Cloud ‎Functions) where required. If client-side admin user creation exists, it must be reviewed to ‎ensure it does not rely on insecure privileges.‎
+‎10. UI/UX and branding requirements‎
+•	UK British English across all UI strings.‎
+•	Public vs Secure branding: public logo for public pages; secure logo for committee/admin ‎portal.‎
+•	Typography: heading font DynaPuff (or existing configured heading font) and consistent ‎body font.‎
+•	Area colours: Blaenavon (yellow), Thornhill & Upper Cwmbran (green), Trevethin-‎Penygarn-St Cadocs (blue) where applicable.‎
+•	Accessible components: visible focus states, labelled inputs, readable contrast, clear error ‎states.‎
+‎11. Navigation reliability and session stability‎
+This section is critical for production: navigation must not cause apparent logouts, broken ‎links, or role mis-routing.‎
+‎11.1 Requirements‎
+•	All internal navigation must use React Router (Link/useNavigate). No internal <a href> or ‎window.location.‎
+•	Implement a canonical route registry (ROUTES) to eliminate hardcoded paths.‎
+•	Role guards must redirect authenticated users to the correct dashboard (not to login) ‎when unauthorised.‎
+•	Admins must be explicitly permitted to access intended admin/committee views (either via ‎shared-allowed roles or admin-tab mapping).‎
+•	Firebase Auth persistence must be browserLocalPersistence.‎
+‎11.2 Acceptance tests‎
+•	Admin clicking Matrix Evaluation or Master Console does not send user to login; user stays ‎authenticated.‎
+•	Refreshing on any secure route retains session and correct role landing.‎
+•	Search repo confirms signOut() only appears on the Sign Out action.‎
+‎12. Non-functional requirements
+•	Performance: first meaningful paint on typical mobile and desktop; avoid unnecessary re-‎fetch loops.‎
+•	Reliability: no blank screens; graceful empty states; resilient error handling for ‎Firestore/Storage.‎
+•	Maintainability: reduce monolithic files; prefer modular admin components.‎
+•	Accessibility: WCAG 2.1 AA baseline; keyboard navigation; ARIA labels where needed.‎
+•	Observability: console errors minimised; optional error reporting integration (future).‎
+‎13. Testing and quality assurance‎
+‎13.1 Smoke tests (must pass before release)‎
+•	Applicant: Stage 1 submit (within window), status visible, Stage 2 locked unless shortlisted.‎
+•	Committee: tasks list shows assigned apps; vote/save; score/save; progress updates.‎
+•	Admin: rounds CRUD; assignments CRUD; document upload; scoring monitor loads; CSV ‎export works.‎
+•	Routing: refresh on admin/committee/applicant routes preserves session and role-based ‎landing.‎
+‎13.2 UAT scripts‎
+Maintain a simple UAT checklist aligned to Sections 6 and 7. Record pass/fail and defects ‎before production deployment.‎
+‎14. Deployment and operations‎
+•	Vercel: configure environment variables; ensure build uses correct Firebase config; enable ‎preview deployments for PRs.‎
+•	Firebase: Auth enabled; Firestore and Storage enabled; deploy rules and indexes; verify ‎required indexes for production queries.‎
+•	Staging vs production: separate Firebase projects recommended; ensure no demo data ‎shipped to production unless explicitly intended.‎
+‎15. Migration and risks‎
+‎15.1 Migration‎
+•	If existing collections differ, provide one-time migration scripts or admin tooling to ‎normalise fields (e.g., committeeId naming).‎
+•	Backward compatibility: avoid renaming fields without migration; add fallbacks in service ‎layer where needed.‎
+‎15.2 Key risks and mitigations‎
+•	Role guard regressions: mitigate with route registry + tests.‎
+•	Security rule misalignment: mitigate with explicit rules tests and least-privilege design.‎
+•	Admin user creation security: mitigate by using Cloud Functions + Admin SDK where ‎needed.‎
+•	Monolithic Secure.tsx changes: mitigate by modularising admin sections to reduce ‎conflicts.‎
+‎16. Delivery milestones (recommended)‎
+Milestone	Definition
+M1‎	Merge complete, build green, no conflicts, ‎repo hygiene (no zip artefacts).‎
+M2‎	Navigation/session stability patch, route ‎registry, role guard fixes; verified with smoke ‎tests.‎
+M3‎	Admin rounds + assignments end-to-end ‎validated; committee tasks validated.‎
+M4‎	Security rules deployed and verified; ‎production deployment on Vercel.‎
+
+Appendix A. Status and stage reference
+Example application statuses (align to existing implementation):‎
+•	draft
+•	submitted
+•	under_review
+•	shortlisted
+•	rejected
+•	funded
+
+End of document.‎
