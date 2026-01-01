@@ -7,6 +7,22 @@ import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 
+// Helper to convert lowercase role string to UserRole enum
+const roleToUserRole = (role: string | undefined): UserRole => {
+  const normalized = (role || '').toUpperCase();
+  switch (normalized) {
+    case 'ADMIN': return UserRole.ADMIN;
+    case 'COMMITTEE': return UserRole.COMMITTEE;
+    case 'APPLICANT': return UserRole.APPLICANT;
+    default: return UserRole.PUBLIC;
+  }
+};
+
+// Helper to check role (case-insensitive)
+const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
+  return roleToUserRole(role) === targetRole;
+};
+
 const ApplicationsList: React.FC = () => {
   const navigate = useNavigate();
   const currentUser = AuthService.getCurrentUser();
@@ -31,17 +47,17 @@ const ApplicationsList: React.FC = () => {
       }
 
       // Load applications based on user role
-      if (currentUser.role === UserRole.ADMIN) {
+      if (isRole(currentUser.role, UserRole.ADMIN)) {
         // ADMIN: Get all applications
         apps = await api.getApplications('All');
-      } else if (currentUser.role === UserRole.COMMITTEE) {
+      } else if (isRole(currentUser.role, UserRole.COMMITTEE)) {
         // COMMITTEE: Get applications for their area
         if (currentUser.area) {
           apps = await api.getApplications(currentUser.area);
         } else {
           apps = await api.getApplications('All');
         }
-      } else if (currentUser.role === UserRole.APPLICANT) {
+      } else if (isRole(currentUser.role, UserRole.APPLICANT)) {
         // APPLICANT: Get only their own applications
         const allApps = await api.getApplications('All');
         apps = allApps.filter(app => app.userId === currentUser.uid);
@@ -116,18 +132,18 @@ const ApplicationsList: React.FC = () => {
   });
 
   // Determine permissions
-  const canCreate = currentUser?.role === UserRole.APPLICANT || currentUser?.role === UserRole.ADMIN;
+  const canCreate = isRole(currentUser?.role, UserRole.APPLICANT) || isRole(currentUser?.role, UserRole.ADMIN);
   const canEdit = (app: Application) => {
-    if (currentUser?.role === UserRole.ADMIN) return true;
-    if (currentUser?.role === UserRole.APPLICANT && app.userId === currentUser.uid) {
+    if (isRole(currentUser?.role, UserRole.ADMIN)) return true;
+    if (isRole(currentUser?.role, UserRole.APPLICANT) && app.userId === currentUser?.uid) {
       // Applicants can only edit their own drafts or invited-stage2 applications
       return app.status === 'Draft' || app.status === 'Invited-Stage2';
     }
     return false;
   };
   const canDelete = (app: Application) => {
-    if (currentUser?.role === UserRole.ADMIN) return true;
-    if (currentUser?.role === UserRole.APPLICANT && app.userId === currentUser.uid) {
+    if (isRole(currentUser?.role, UserRole.ADMIN)) return true;
+    if (isRole(currentUser?.role, UserRole.APPLICANT) && app.userId === currentUser?.uid) {
       return app.status === 'Draft';
     }
     return false;
@@ -138,19 +154,19 @@ const ApplicationsList: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={currentUser.role as UserRole}>
+    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-purple-900 font-display flex items-center gap-3">
               <FileText size={32} className="text-purple-600" />
-              {currentUser.role === UserRole.APPLICANT ? 'My Applications' : 'Applications'}
+              {isRole(currentUser.role, UserRole.APPLICANT) ? 'My Applications' : 'Applications'}
             </h1>
             <p className="text-gray-600 mt-1">
-              {currentUser.role === UserRole.APPLICANT && 'Manage your funding applications'}
-              {currentUser.role === UserRole.COMMITTEE && `Reviewing applications for ${currentUser.area}`}
-              {currentUser.role === UserRole.ADMIN && 'All applications across all areas'}
+              {isRole(currentUser.role, UserRole.APPLICANT) && 'Manage your funding applications'}
+              {isRole(currentUser.role, UserRole.COMMITTEE) && `Reviewing applications for ${currentUser.area}`}
+              {isRole(currentUser.role, UserRole.ADMIN) && 'All applications across all areas'}
             </p>
           </div>
           <div className="flex gap-3">

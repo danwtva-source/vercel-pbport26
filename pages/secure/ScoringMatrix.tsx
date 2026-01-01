@@ -7,6 +7,17 @@ import { Application, Score, UserRole, User } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
 
+// Helper to convert lowercase role string to UserRole enum
+const roleToUserRole = (role: string | undefined): UserRole => {
+  const normalized = (role || '').toUpperCase();
+  switch (normalized) {
+    case 'ADMIN': return UserRole.ADMIN;
+    case 'COMMITTEE': return UserRole.COMMITTEE;
+    case 'APPLICANT': return UserRole.APPLICANT;
+    default: return UserRole.PUBLIC;
+  }
+};
+
 interface CriterionScore {
   score: number;
   notes: string;
@@ -55,7 +66,7 @@ const ScoringMatrix: React.FC = () => {
 
   if (!isCommittee) {
     return (
-      <SecureLayout userRole={currentUser.role as UserRole}>
+      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <Card className="max-w-md text-center">
             <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
@@ -209,7 +220,7 @@ const ScoringMatrix: React.FC = () => {
 
   if (loading) {
     return (
-      <SecureLayout userRole={currentUser.role}>
+      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
@@ -221,7 +232,7 @@ const ScoringMatrix: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={currentUser.role}>
+    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
