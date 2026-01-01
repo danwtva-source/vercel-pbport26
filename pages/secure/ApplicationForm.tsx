@@ -5,7 +5,7 @@ import { Button, Card, Input, Badge } from '../../components/UI';
 import { api, api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, ROUTES } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -47,7 +47,7 @@ const ApplicationForm: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser) {
-      navigate('/login');
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
 
@@ -77,14 +77,14 @@ const ApplicationForm: React.FC = () => {
 
       if (!app) {
         setError('Application not found');
-        setTimeout(() => navigate('/portal/applications'), 2000);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
       }
 
       // Check permissions
       if (currentUser?.role === UserRole.APPLICANT && app.userId !== currentUser.uid) {
         setError('You do not have permission to view this application');
-        setTimeout(() => navigate('/portal/applications'), 2000);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
       }
 
@@ -239,7 +239,7 @@ const ApplicationForm: React.FC = () => {
       if (isNew) {
         await api.createApplication(appData);
         setSuccess('Draft saved successfully!');
-        setTimeout(() => navigate('/portal/applications'), 1500);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 1500);
       } else {
         await api.updateApplication(appData.id, appData);
         setSuccess('Draft updated successfully!');
@@ -286,7 +286,7 @@ const ApplicationForm: React.FC = () => {
         setSuccess(`${formStage === 'eoi' ? 'Expression of Interest' : 'Full Application'} submitted successfully!`);
       }
 
-      setTimeout(() => navigate('/portal/applications'), 2000);
+      setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
     } catch (err) {
       console.error('Error submitting application:', err);
       setError('Failed to submit application. Please try again.');
@@ -330,7 +330,7 @@ const ApplicationForm: React.FC = () => {
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => navigate('/portal/applications')}>
+          <Button variant="outline" size="sm" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}>
             <ArrowLeft size={18} />
             Back to Applications
           </Button>

@@ -4,7 +4,7 @@ import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI
 import { DataService, exportToCSV } from '../../services/firebase';
 import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, ROUTES } from '../../utils';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,

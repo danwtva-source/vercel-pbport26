@@ -5,7 +5,7 @@ import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
 import { Application, Score, UserRole, User } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, ROUTES } from '../../utils';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
@@ -49,7 +49,7 @@ const ScoringMatrix: React.FC = () => {
   useEffect(() => {
     const user = DataService.getCurrentUser();
     if (!user) {
-      navigate('/login');
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
     setCurrentUser(user);

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api as AuthService, USE_DEMO_MODE } from '../services/firebase';
 import { LogOut, LayoutDashboard, FileText, BarChart3, Settings, Menu, X, Home, Vote, FileQuestion, BookOpen, Briefcase } from 'lucide-react';
 import { UserRole } from '../types';
+import { ROUTES } from '../utils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,18 +28,18 @@ export const PublicLayout: React.FC<LayoutProps> = ({ children }) => {
       <DemoBanner />
       <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-50 border-b border-purple-100">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <Link to="/" className="flex items-center space-x-3 group">
+          <Link to={ROUTES.PUBLIC.HOME} className="flex items-center space-x-3 group">
             {/* PUBLIC LOGO: Puzzle Piece PB App Logo */}
             <img src="/logo-public.png" alt="Communities' Choice Logo" className="h-10 w-10 group-hover:rotate-6 transition-transform" />
             <span className="text-xl font-bold text-purple-800 font-display hidden sm:block">Communities' Choice</span>
           </Link>
 
           <nav className="hidden md:flex space-x-1 items-center">
-            <Link to="/" className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive('/')}`}>Home</Link>
-            <Link to="/priorities" className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive('/priorities')}`}>Priorities</Link>
-            <Link to="/vote" className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive('/vote')}`}>Voting Zone</Link>
-            <Link to="/documents" className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive('/documents')}`}>Resources</Link>
-            <Link to="/login" className="ml-4 bg-purple-600 hover:bg-purple-800 text-white px-6 py-2 rounded-xl font-bold font-display transition shadow-lg">Secure Portal</Link>
+            <Link to={ROUTES.PUBLIC.HOME} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.HOME)}`}>Home</Link>
+            <Link to={ROUTES.PUBLIC.PRIORITIES} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.PRIORITIES)}`}>Priorities</Link>
+            <Link to={ROUTES.PUBLIC.VOTING_ZONE} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.VOTING_ZONE)}`}>Voting Zone</Link>
+            <Link to={ROUTES.PUBLIC.RESOURCES} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.RESOURCES)}`}>Resources</Link>
+            <Link to={ROUTES.PUBLIC.LOGIN} className="ml-4 bg-purple-600 hover:bg-purple-800 text-white px-6 py-2 rounded-xl font-bold font-display transition shadow-lg">Secure Portal</Link>
           </nav>
 
           <button className="md:hidden text-purple-800 p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -48,11 +49,11 @@ export const PublicLayout: React.FC<LayoutProps> = ({ children }) => {
 
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-purple-100 shadow-xl absolute w-full left-0 top-full flex flex-col p-6 space-y-3 animate-fade-in z-50">
-            <Link to="/" className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Home size={18} className="mr-3"/> Home</Link>
-            <Link to="/priorities" className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><FileQuestion size={18} className="mr-3"/> Community Priorities</Link>
-            <Link to="/vote" className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Vote size={18} className="mr-3"/> Voting Zone</Link>
-            <Link to="/documents" className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><BookOpen size={18} className="mr-3"/> Documents</Link>
-            <Link to="/login" className="mt-4 p-4 rounded-xl bg-purple-600 text-white font-bold text-center shadow-lg font-display">Secure Portal Access</Link>
+            <Link to={ROUTES.PUBLIC.HOME} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Home size={18} className="mr-3"/> Home</Link>
+            <Link to={ROUTES.PUBLIC.PRIORITIES} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><FileQuestion size={18} className="mr-3"/> Community Priorities</Link>
+            <Link to={ROUTES.PUBLIC.VOTING_ZONE} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Vote size={18} className="mr-3"/> Voting Zone</Link>
+            <Link to={ROUTES.PUBLIC.RESOURCES} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><BookOpen size={18} className="mr-3"/> Documents</Link>
+            <Link to={ROUTES.PUBLIC.LOGIN} className="mt-4 p-4 rounded-xl bg-purple-600 text-white font-bold text-center shadow-lg font-display">Secure Portal Access</Link>
           </div>
         )}
       </header>
@@ -78,7 +79,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
 
   const handleLogout = async () => {
     await AuthService.logout();
-    navigate('/login');
+    navigate(ROUTES.PUBLIC.LOGIN);
   };
 
   const isActive = (path: string) => location.pathname === path ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white';
@@ -90,25 +91,25 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
 
   const NavLinks = () => (
     <>
-      <Link to="/portal/dashboard" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/dashboard')}`}>
+      <Link to={ROUTES.PORTAL.DASHBOARD} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DASHBOARD)}`}>
         <LayoutDashboard size={18} />
         <span>My Dashboard</span>
       </Link>
 
       {(isCommittee || isAdmin) && (
-        <Link to="/portal/scoring" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/scoring')}`}>
+        <Link to={ROUTES.PORTAL.SCORING} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.SCORING)}`}>
           <BarChart3 size={18} />
           <span>Matrix Evaluation</span>
         </Link>
       )}
 
-      <Link to="/portal/applications" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/applications')}`}>
+      <Link to={ROUTES.PORTAL.APPLICATIONS} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.APPLICATIONS)}`}>
         <Briefcase size={18} />
         <span>Project Entries</span>
       </Link>
 
       {isAdmin && (
-         <Link to="/portal/admin" onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive('/portal/admin')}`}>
+         <Link to={ROUTES.PORTAL.ADMIN} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.ADMIN)}`}>
           <Settings size={18} />
           <span>Master Console</span>
         </Link>
