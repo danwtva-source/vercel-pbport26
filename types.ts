@@ -1,9 +1,20 @@
-// types.ts
+// types.ts - Comprehensive Type Definitions for Participatory Budgeting Portal
 
-// --- STRICT ROLE-BASED ACCESS CONTROL ---
+// --- ROLE-BASED ACCESS CONTROL ---
+
+// Enum-based roles (from v8) for stricter type checking
+export enum UserRole {
+  PUBLIC = 'PUBLIC',
+  APPLICANT = 'APPLICANT',
+  COMMITTEE = 'COMMITTEE',
+  ADMIN = 'ADMIN'
+}
+
+// String union type for backwards compatibility and flexibility
 export type Role = 'applicant' | 'committee' | 'admin';
 
 // --- GEOGRAPHIC AREAS ---
+
 export type Area = 'Blaenavon' | 'Thornhill & Upper Cwmbran' | 'Trevethin, Penygarn & St. Cadocs' | 'Cross-Area';
 
 export const AREAS: Area[] = [
@@ -13,6 +24,7 @@ export const AREAS: Area[] = [
 ];
 
 // --- APPLICATION STATUS (Two-Stage Lifecycle) ---
+
 export type ApplicationStatus =
   | 'Draft'
   | 'Submitted-Stage1'
@@ -23,6 +35,7 @@ export type ApplicationStatus =
   | 'Not-Funded';
 
 // --- USER INTERFACE ---
+
 export interface User {
   uid: string;
   email: string;
@@ -43,6 +56,7 @@ export interface User {
 }
 
 // --- PORTAL SETTINGS ---
+
 export interface PortalSettings {
     stage1Visible: boolean;
     stage2Visible: boolean;
@@ -50,7 +64,17 @@ export interface PortalSettings {
     scoringThreshold: number;
 }
 
+// System Settings (from v8) - Alternative/extended settings interface
+export interface SystemSettings {
+  scoringThreshold: number;
+  activeRoundId: string;
+  isEOIOpen: boolean;
+  isPart2Open: boolean;
+  isVotingOpen: boolean;
+}
+
 // --- BUDGET LINE ---
+
 export interface BudgetLine {
     item: string;
     note: string;
@@ -58,12 +82,33 @@ export interface BudgetLine {
 }
 
 // --- SCORING CRITERION ---
+
 export interface ScoreCriterion {
   id: string;
   name: string;
   guidance: string;
   weight: number;
   details: string;
+  score?: number; // Optional score value (from v8)
+  notes?: string; // Optional notes (from v8)
+}
+
+// --- VOTING (Stage 1) ---
+
+export interface Vote {
+    id: string;
+    appId: string;
+    voterId: string;
+    voterName?: string;
+    decision: 'yes' | 'no';
+    reason?: string;
+    createdAt: string;
+}
+
+// --- SCORING (Stage 2) ---
+
+export interface ScoreBreakdown {
+  [criterionKey: string]: number; // 0–100
 }
 
 // --- VOTING (Stage 1) ---
@@ -94,7 +139,18 @@ export interface Score {
   createdAt: string;
 }
 
+// Scoring State (from v8) - Alternative scoring representation
+export interface ScoringState {
+  ref: string;
+  criteria: ScoreCriterion[];
+  isFinal: boolean;
+  scorer: string;
+  scorerUid?: string;
+  updatedAt: string;
+}
+
 // --- APPLICATION ---
+
 export interface Application {
   id: string;
   userId: string;
@@ -218,6 +274,7 @@ export interface Application {
 }
 
 // --- ADMIN DOCUMENTS ---
+
 export interface AdminDocument {
     id: string;
     name: string;
@@ -229,24 +286,55 @@ export interface AdminDocument {
     createdAt: number;
 }
 
+// Document Resource (from v8) - Alternative document representation
+export interface DocumentResource {
+  id: string;
+  title: string;
+  category: 'Guidance' | 'Policy' | 'Template';
+  url: string;
+  size: string;
+  uploadedAt: string;
+}
+
 // --- FUNDING ROUNDS ---
+
+/**
+ * Represents a funding round in the participatory budgeting process. A round may apply to one
+ * or more geographic areas and has its own open/close windows for each stage. Admins can
+ * configure scoring criteria and thresholds per round.
+ */
 export interface Round {
   id: string;
+  /** Human‑readable name, e.g. "Communities' Choice 2026" */
   name: string;
+  /** Year of the funding round */
   year: number;
+  /** Status of the round */
   status: 'planning' | 'open' | 'scoring' | 'voting' | 'closed';
+  /** ISO date string when this round starts accepting applications */
   startDate: string;
   endDate: string;
-  areas: Area[]; // Areas covered by this round
+  /** Areas this round applies to; if empty, applies to all areas */
+  areas: Area[];
+  /** Whether Stage 1 (EOI) is open for this round */
   stage1Open?: boolean;
+  /** Whether Stage 2 (Full Application) is open for this round */
   stage2Open?: boolean;
+  /** Whether scoring is open for this round */
   scoringOpen?: boolean;
+  /** Optional list of scoring criteria specific to this round */
   scoringCriteria?: ScoreCriterion[];
   scoringThreshold?: number;
+  /** Timestamp when the round was created */
   createdAt?: number;
 }
 
 // --- ASSIGNMENTS ---
+
+/**
+ * An assignment links an application to a committee member. Assignments drive the
+ * Committee dashboard task list and allow per‑member progress tracking and due dates.
+ */
 export interface Assignment {
   id: string;
   applicationId: string;
@@ -257,11 +345,54 @@ export interface Assignment {
 }
 
 // --- AUDIT LOGGING ---
+
+/**
+ * Captures an administrative action in the system, providing an audit trail. Important
+ * actions such as toggling stage windows, adjusting scoring thresholds or deleting
+ * applications should be logged here.
+ */
 export interface AuditLog {
   id: string;
   adminId: string;
-  action: string;    // e.g. 'APP_STATUS_CHANGE', 'ROUND_UPDATE'
-  targetId: string;  // e.g. application or round id
+  /** Human readable description of the action, e.g. 'APP_STATUS_CHANGE', 'ROUND_UPDATE' */
+  action: string;
+  /** Target ID (e.g. application or round id) */
+  targetId: string;
+  /** Timestamp when the action occurred */
   timestamp: number;
+  /** Additional details about the action */
   details?: Record<string, unknown>;
+}
+
+// --- AREA DATA (from v8) ---
+
+export interface AreaData {
+  name: string;
+  formUrl: string;
+  postcodes: string[];
+}
+
+// --- PRIORITY DATA (from v8) ---
+
+export interface PriorityEntry {
+  name: string;
+  score: number;
+  description: string;
+}
+
+export interface PriorityData {
+  totalResponses: number;
+  priorities: PriorityEntry[];
+}
+
+// --- MASTER TASKS (from v8) ---
+
+export interface MasterTask {
+  id: string;
+  type: 'review_eoi' | 'score_app' | 'approve_final' | 'system_check';
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+  description: string;
+  area?: string;
+  targetRef?: string;
 }
