@@ -245,12 +245,24 @@ const ApplicationForm: React.FC = () => {
       setSuccess('');
 
       const now = Date.now();
+
+      // Determine the correct status for draft save:
+      // - For new applications, status is 'Draft'
+      // - For existing applications that are 'Invited-Stage2', preserve that status
+      //   (they are editing their Stage 2 submission)
+      // - For existing applications in 'Draft' status, keep as 'Draft'
+      let statusToSave: ApplicationStatus = 'Draft';
+      if (!isNew && application.status === 'Invited-Stage2') {
+        // Preserve Invited-Stage2 status when editing Stage 2 application
+        statusToSave = 'Invited-Stage2';
+      }
+
       const appData: Application = {
         ...application,
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
         userId: currentUser?.uid || '',
-        status: 'Draft',
+        status: statusToSave,
         createdAt: application.createdAt || now,
         updatedAt: now
       } as Application;

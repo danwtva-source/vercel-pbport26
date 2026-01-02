@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Card, Button, Input, Badge } from '../../components/UI';
-import { DataService } from '../../services/firebase';
+import { DataService, uploadProfileImage, deleteProfileImage } from '../../services/firebase';
 import { User, UserRole } from '../../types';
 import {
   User as UserIcon,
@@ -102,7 +102,7 @@ const UserSettings: React.FC = () => {
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentUser) return;
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
@@ -116,14 +116,36 @@ const UserSettings: React.FC = () => {
       return;
     }
 
+    setSaving(true);
+    setMessage(null);
+
     try {
-      // For demo, create a local URL. In production, upload to Firebase Storage
-      const imageUrl = URL.createObjectURL(file);
+      // Delete old profile image if exists
+      if (profile.photoUrl && profile.photoUrl.includes('firebasestorage')) {
+        await deleteProfileImage(profile.photoUrl);
+      }
+
+      // Upload new image to Firebase Storage
+      const imageUrl = await uploadProfileImage(currentUser.uid, file);
+
+      // Update local profile state
       setProfile({ ...profile, photoUrl: imageUrl });
-      setMessage({ type: 'success', text: 'Image uploaded! Click Save to apply changes.' });
+
+      // Save to Firestore immediately
+      await DataService.updateUser({
+        ...currentUser,
+        photoUrl: imageUrl
+      });
+
+      // Update local user state
+      setCurrentUser({ ...currentUser, photoUrl: imageUrl });
+
+      setMessage({ type: 'success', text: 'Profile photo updated successfully!' });
     } catch (error) {
       console.error('Error uploading image:', error);
-      setMessage({ type: 'error', text: 'Failed to upload image.' });
+      setMessage({ type: 'error', text: 'Failed to upload image. Please try again.' });
+    } finally {
+      setSaving(false);
     }
   };
 

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
-import { UserRole, Application, Vote, Score, Assignment, User, Area } from '../../types';
+import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
 import {
   Plus,
@@ -25,7 +25,8 @@ import {
   Calendar,
   ChevronRight,
   Briefcase,
-  Vote as VoteIcon
+  Vote as VoteIcon,
+  Lock
 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -38,6 +39,7 @@ const Dashboard: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
   useEffect(() => {
     const user = DataService.getCurrentUser();
@@ -52,12 +54,13 @@ const Dashboard: React.FC = () => {
   const loadData = async (user: User) => {
     setLoading(true);
     try {
-      const [appsData, votesData, scoresData, assignmentsData, usersData] = await Promise.all([
+      const [appsData, votesData, scoresData, assignmentsData, usersData, settings] = await Promise.all([
         DataService.getApplications(),
         DataService.getVotes(),
         DataService.getScores(),
         user.role === 'committee' ? DataService.getAssignments(user.uid) : Promise.resolve([]),
-        user.role === 'admin' ? DataService.getUsers() : Promise.resolve([])
+        user.role === 'admin' ? DataService.getUsers() : Promise.resolve([]),
+        DataService.getPortalSettings()
       ]);
 
       setAllApplications(appsData);
@@ -65,6 +68,7 @@ const Dashboard: React.FC = () => {
       setScores(scoresData);
       setAssignments(assignmentsData);
       setUsers(usersData);
+      setPortalSettings(settings);
 
       // Filter applications based on role
       if (user.role === 'applicant') {
@@ -150,6 +154,8 @@ const Dashboard: React.FC = () => {
             assignments={assignments}
             currentUser={currentUser}
             navigate={navigate}
+            onRefresh={() => loadData(currentUser)}
+            portalSettings={portalSettings}
           />
         )}
 
@@ -326,6 +332,8 @@ interface CommitteeDashboardProps {
   assignments: Assignment[];
   currentUser: User;
   navigate: any;
+  onRefresh: () => Promise<void>;
+  portalSettings: PortalSettings | null;
 }
 
 const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
@@ -334,7 +342,9 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   scores,
   assignments,
   currentUser,
-  navigate
+  navigate,
+  onRefresh,
+  portalSettings
 }) => {
   const [scoringApp, setScoringApp] = useState<Application | null>(null);
   const myVotes = votes.filter(v => v.voterId === currentUser.uid);
@@ -351,7 +361,14 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
     ? applications.filter(app => app.area === currentUser.area || app.area === 'Cross-Area')
     : applications;
 
+  // Check if voting is allowed based on portal settings
+  const isVotingAllowed = portalSettings?.votingOpen !== false;
+
   const handleVote = async (appId: string, decision: 'yes' | 'no') => {
+    if (!isVotingAllowed) {
+      alert('Voting is currently closed.');
+      return;
+    }
     await DataService.saveVote({
       id: `${appId}_${currentUser.uid}`,
       appId,
@@ -359,12 +376,12 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
       decision,
       createdAt: new Date().toISOString()
     });
-    window.location.reload(); // Refresh to show updated state
+    await onRefresh(); // Refresh data without full page reload
   };
 
-  const handleScoringComplete = () => {
+  const handleScoringComplete = async () => {
     setScoringApp(null);
-    window.location.reload(); // Refresh to show updated state
+    await onRefresh(); // Refresh data without full page reload
   };
 
   return (

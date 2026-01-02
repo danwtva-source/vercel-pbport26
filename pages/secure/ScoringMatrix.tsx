@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
-import { Application, Score, UserRole, User } from '../../types';
+import { Application, Score, UserRole, User, Round, PortalSettings } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
-import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
+import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock } from 'lucide-react';
 
 // Helper to convert lowercase role string to UserRole enum
 const roleToUserRole = (role: string | undefined): UserRole => {
@@ -39,10 +39,25 @@ const ScoringMatrix: React.FC = () => {
   const [scoringData, setScoringData] = useState<Record<string, CriterionScore>>({});
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
+  const [activeRound, setActiveRound] = useState<Round | null>(null);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
   // Determine role flags (safe to compute even with null user)
   const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
   const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
+
+  // Check if scoring is allowed based on round/portal settings
+  const isScoringAllowed = (): { allowed: boolean; reason?: string } => {
+    // Admins can always score
+    if (isAdmin) return { allowed: true };
+
+    // Check if there's an active round with scoring enabled
+    if (activeRound && activeRound.scoringOpen === false) {
+      return { allowed: false, reason: 'Scoring is currently closed for this funding round.' };
+    }
+
+    return { allowed: true };
+  };
 
   // Get current user on mount - MUST be before any conditional returns
   useEffect(() => {
@@ -65,6 +80,17 @@ const ScoringMatrix: React.FC = () => {
     if (!currentUser) return;
     setLoading(true);
     try {
+      // Fetch portal settings and rounds
+      const [settings, rounds] = await Promise.all([
+        DataService.getPortalSettings(),
+        DataService.getRounds()
+      ]);
+      setPortalSettings(settings);
+
+      // Find the active round (status 'scoring' or 'open')
+      const active = rounds.find(r => r.status === 'scoring' || r.status === 'open');
+      setActiveRound(active || null);
+
       // Fetch applications - filter by area for committee members
       const area = isAdmin ? undefined : currentUser.area;
       const apps = await DataService.getApplications(area);
@@ -126,7 +152,15 @@ const ScoringMatrix: React.FC = () => {
     );
   }
 
+  const scoringStatus = isScoringAllowed();
+
   const openScoringModal = (app: ApplicationWithScores) => {
+    // Check if scoring is allowed (admins bypass this check)
+    if (!scoringStatus.allowed) {
+      alert(scoringStatus.reason || 'Scoring is currently not available.');
+      return;
+    }
+
     setSelectedApp(app);
 
     // Initialize scoring data from existing score or defaults
@@ -253,6 +287,18 @@ const ScoringMatrix: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Scoring Closed Banner */}
+        {!scoringStatus.allowed && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <Lock className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-bold text-amber-800">Scoring Currently Closed</p>
+              <p className="text-sm text-amber-700">{scoringStatus.reason}</p>
+              <p className="text-xs text-amber-600 mt-1">You can view applications but cannot submit new scores at this time.</p>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

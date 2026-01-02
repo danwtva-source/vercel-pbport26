@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { api as AuthService } from './services/firebase';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { User, UserRole } from './types';
 import { ROUTES } from './utils';
 
@@ -30,56 +30,10 @@ const normalizeRole = (role: string | undefined): string => {
 };
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { userProfile, loading, error } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const currentUser = AuthService.getCurrentUser();
-
-    if (!currentUser) {
-      navigate(ROUTES.PUBLIC.LOGIN, { replace: true });
-      setLoading(false);
-      return;
-    }
-
-    // Normalize the user's role for comparison (handles 'admin' vs 'ADMIN')
-    const userRoleNormalized = normalizeRole(currentUser.role);
-
-    // Check role authorization
-    if (requiredRole) {
-      const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-
-      // Admin can access everything
-      if (userRoleNormalized === UserRole.ADMIN) {
-        setUser(currentUser);
-        setLoading(false);
-        return;
-      }
-
-      // Check if user's role is in allowed roles (normalize for comparison)
-      const allowedRolesNormalized = allowedRoles.map(r => normalizeRole(r));
-      if (!allowedRolesNormalized.includes(userRoleNormalized)) {
-        // Redirect to appropriate dashboard based on role
-        switch (userRoleNormalized) {
-          case UserRole.COMMITTEE:
-            navigate(ROUTES.PORTAL.DASHBOARD, { replace: true });
-            break;
-          case UserRole.APPLICANT:
-            navigate(ROUTES.PORTAL.DASHBOARD, { replace: true });
-            break;
-          default:
-            navigate(ROUTES.PUBLIC.LOGIN, { replace: true });
-        }
-        setLoading(false);
-        return;
-      }
-    }
-
-    setUser(currentUser);
-    setLoading(false);
-  }, [requiredRole, navigate]);
-
+  // Show loading spinner while auth state is being resolved
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -91,91 +45,146 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
     );
   }
 
-  return user ? children : null;
+  // If there's an auth error (e.g., profile not found), show error
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <p className="font-bold">Authentication Error</p>
+            <p>{error}</p>
+          </div>
+          <button
+            onClick={() => navigate(ROUTES.PUBLIC.LOGIN, { replace: true })}
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+          >
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No user - redirect to login
+  if (!userProfile) {
+    // Use Navigate component for proper redirect during render
+    return <Navigate to={ROUTES.PUBLIC.LOGIN} replace />;
+  }
+
+  // Normalize the user's role for comparison (handles 'admin' vs 'ADMIN')
+  const userRoleNormalized = normalizeRole(userProfile.role);
+
+  // Check role authorization if required
+  if (requiredRole) {
+    const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+
+    // Admin can access everything
+    if (userRoleNormalized === UserRole.ADMIN) {
+      return children;
+    }
+
+    // Check if user's role is in allowed roles (normalize for comparison)
+    const allowedRolesNormalized = allowedRoles.map(r => normalizeRole(r));
+    if (!allowedRolesNormalized.includes(userRoleNormalized)) {
+      // Redirect to dashboard - user doesn't have required role
+      return <Navigate to={ROUTES.PORTAL.DASHBOARD} replace />;
+    }
+  }
+
+  return children;
+};
+
+// Main routes component (must be inside Router)
+const AppRoutes: React.FC = () => {
+  return (
+    <Routes>
+      {/* Public Routes */}
+      <Route path={ROUTES.PUBLIC.HOME} element={<LandingPage />} />
+      <Route path={ROUTES.PUBLIC.VOTING_ZONE} element={<PostcodeCheckPage />} />
+      <Route path={ROUTES.PUBLIC.PRIORITIES} element={<PrioritiesPage />} />
+      <Route path={ROUTES.PUBLIC.RESOURCES} element={<DocumentsPage />} />
+      <Route path={ROUTES.PUBLIC.TIMELINE} element={<TimelinePage />} />
+      <Route path={ROUTES.PUBLIC.LOGIN} element={<LoginPage />} />
+
+      {/* Protected Routes - All authenticated users */}
+      <Route
+        path={ROUTES.PORTAL.DASHBOARD}
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path={ROUTES.PORTAL.APPLICATIONS}
+        element={
+          <ProtectedRoute>
+            <ApplicationsList />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path={ROUTES.PORTAL.APPLICATIONS_NEW}
+        element={
+          <ProtectedRoute>
+            <ApplicationForm />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path={`${ROUTES.PORTAL.APPLICATIONS}/:id`}
+        element={
+          <ProtectedRoute>
+            <ApplicationForm />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* User Settings - All authenticated users */}
+      <Route
+        path="/portal/settings"
+        element={
+          <ProtectedRoute>
+            <UserSettings />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Committee & Admin Only */}
+      <Route
+        path={ROUTES.PORTAL.SCORING}
+        element={
+          <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
+            <ScoringMatrix />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin Only */}
+      <Route
+        path={ROUTES.PORTAL.ADMIN}
+        element={
+          <ProtectedRoute requiredRole={UserRole.ADMIN}>
+            <AdminConsole />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Fallback - Redirect to home */}
+      <Route path="*" element={<Navigate to={ROUTES.PUBLIC.HOME} replace />} />
+    </Routes>
+  );
 };
 
 const App: React.FC = () => {
   return (
     <HashRouter>
-      <Routes>
-        {/* Public Routes */}
-        <Route path={ROUTES.PUBLIC.HOME} element={<LandingPage />} />
-        <Route path={ROUTES.PUBLIC.VOTING_ZONE} element={<PostcodeCheckPage />} />
-        <Route path={ROUTES.PUBLIC.PRIORITIES} element={<PrioritiesPage />} />
-        <Route path={ROUTES.PUBLIC.RESOURCES} element={<DocumentsPage />} />
-        <Route path={ROUTES.PUBLIC.TIMELINE} element={<TimelinePage />} />
-        <Route path={ROUTES.PUBLIC.LOGIN} element={<LoginPage />} />
-
-        {/* Protected Routes - All authenticated users */}
-        <Route
-          path={ROUTES.PORTAL.DASHBOARD}
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path={ROUTES.PORTAL.APPLICATIONS}
-          element={
-            <ProtectedRoute>
-              <ApplicationsList />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path={ROUTES.PORTAL.APPLICATIONS_NEW}
-          element={
-            <ProtectedRoute>
-              <ApplicationForm />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path={`${ROUTES.PORTAL.APPLICATIONS}/:id`}
-          element={
-            <ProtectedRoute>
-              <ApplicationForm />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* User Settings - All authenticated users */}
-        <Route
-          path="/portal/settings"
-          element={
-            <ProtectedRoute>
-              <UserSettings />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Committee & Admin Only */}
-        <Route
-          path={ROUTES.PORTAL.SCORING}
-          element={
-            <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
-              <ScoringMatrix />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Admin Only */}
-        <Route
-          path={ROUTES.PORTAL.ADMIN}
-          element={
-            <ProtectedRoute requiredRole={UserRole.ADMIN}>
-              <AdminConsole />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Fallback - Redirect to home */}
-        <Route path="*" element={<Navigate to={ROUTES.PUBLIC.HOME} replace />} />
-      </Routes>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </HashRouter>
   );
 };
