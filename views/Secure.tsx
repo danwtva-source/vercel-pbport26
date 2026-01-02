@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Application, User, Score, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round } from '../types';
+import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus, AuditLog } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
 import { AdminRounds } from './AdminRounds';
-import { api, exportToCSV, seedDatabase } from '../services/firebase';
-import { Button, Card, Input, Modal, Badge, BarChart, FileCard } from '../components/UI';
+import { api, exportToCSV, seedDatabase, auth, uploadProfileImage, deleteProfileImage, uploadFile } from '../services/firebase';
+import { Button, Card, Input, Modal, Badge, BarChart, FileCard, RichTextArea, FileUpload } from '../components/UI';
 
 // --- SHARED COMPONENTS ---
 
@@ -19,437 +19,89 @@ const PDFViewer: React.FC<{ url: string; onClose: () => void }> = ({ url, onClos
     </div>
 );
 
+const printApplication = (app: Application) => {
+    const w = window.open('', '_blank');
+    if(!w) return;
+    w.document.write(`<html><head><title>${app.projectTitle}</title><style>body{font-family:sans-serif;padding:40px} .s{margin-bottom:20px;border-bottom:1px solid #eee;padding-bottom:10px} .l{font-weight:bold;color:#666}</style></head><body><h1>${app.projectTitle}</h1>${Object.entries(app.formData).map(([k,v])=>`<div class="s"><div class="l">${k}</div><div>${typeof v==='object'?JSON.stringify(v):v}</div></div>`).join('')}<script>window.print();</script></body></html>`);
+    w.document.close();
+};
+
 const ProfileModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User; onSave: (u: User) => void; }> = ({ isOpen, onClose, user, onSave }) => {
-    const [data, setData] = useState({ displayName: user.displayName || '', bio: user.bio || '', phone: user.phone || '', address: user.address || '', roleDescription: user.roleDescription || '', photoUrl: user.photoUrl || '' });
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) { const reader = new FileReader(); reader.onloadend = () => setData(prev => ({ ...prev, photoUrl: reader.result as string })); reader.readAsDataURL(file); }
-    };
-    const handleSubmit = async (e: React.FormEvent) => { 
-        e.preventDefault(); 
+    const [data, setData] = useState({ ...user });
+    const [uploading, setUploading] = useState(false);
+
+    const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.[0]) return;
+        setUploading(true);
         try {
-            const updated = await api.updateUserProfile(user.uid, data); 
-            onSave(updated); 
-            onClose(); 
-        } catch(e) {
-            alert("Error saving profile: " + e);
-        }
+            if (data.photoUrl) await deleteProfileImage(data.photoUrl);
+            const url = await uploadProfileImage(user.uid, e.target.files[0]);
+            setData(p => ({ ...p, photoUrl: url }));
+        } catch (err) { alert(err); } finally { setUploading(false); }
     };
-    
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Edit Profile">
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-32 h-32 rounded-full bg-gray-100 overflow-hidden border-4 border-purple-100 relative group shadow-inner">
-                        <img src={data.photoUrl || `https://ui-avatars.com/api/?name=${data.displayName}&background=random`} alt="Profile" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity"><span className="text-white text-xs font-bold uppercase tracking-widest">Change</span></div>
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <form onSubmit={e => { e.preventDefault(); api.updateUserProfile(user.uid, data).then(onSave).then(onClose); }} className="space-y-4">
+                <div className="flex justify-center mb-4">
+                    <div className="relative w-24 h-24 rounded-full bg-gray-200 overflow-hidden group">
+                        <img src={data.photoUrl || `https://ui-avatars.com/api/?name=${data.displayName}`} className="w-full h-full object-cover" />
+                        <label className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100 cursor-pointer">{uploading ? '...' : 'Change'}<input type="file" onChange={handleImage} className="hidden" /></label>
                     </div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                    <Input label="Display Name" value={data.displayName} onChange={e => setData({...data, displayName: e.target.value})} required />
-                    <Input label="Role / Title" value={data.roleDescription} onChange={e => setData({...data, roleDescription: e.target.value})} placeholder="e.g. Treasurer" />
-                </div>
-                <Input label="Phone Number" value={data.phone} onChange={e => setData({...data, phone: e.target.value})} />
+                <Input label="Name" value={data.displayName} onChange={e => setData({...data, displayName: e.target.value})} />
+                <Input label="Phone" value={data.phone} onChange={e => setData({...data, phone: e.target.value})} />
                 <Input label="Address" value={data.address} onChange={e => setData({...data, address: e.target.value})} />
-                <div className="bg-gray-50 p-3 rounded text-sm text-gray-500">
-                    <label className="block font-bold mb-1">Bio</label>
-                    <textarea className="w-full p-2 border rounded" value={data.bio} onChange={e => setData({...data, bio: e.target.value})} rows={3} />
-                </div>
-                <Button type="submit" className="w-full shadow-lg">Save Profile Changes</Button>
+                <RichTextArea label="Bio" value={data.bio} onChange={e => setData({...data, bio: e.target.value})} />
+                <Button type="submit" className="w-full">Save Changes</Button>
             </form>
         </Modal>
     );
 };
 
-// --- STAGE 1 FORM (Matches PB 1.1 PDF) ---
-export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (e: React.FormEvent) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
-    const fd = data.formData || {};
-    const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
-    
-    // Org Type Checkbox Logic
-    const toggleOrgType = (type: string) => {
-        const current = fd.orgTypes || [];
-        const updated = current.includes(type) ? current.filter(t => t !== type) : [...current, type];
-        up('orgTypes', updated);
-    };
-
-    return (
-        <form onSubmit={onSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-5xl mx-auto border border-gray-100">
-            <div className="border-b pb-6 mb-6">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-4xl font-dynapuff text-brand-purple">Expression of Interest (Part 1)</h2>
-                    {readOnly && <span className="bg-gray-100 text-gray-500 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Read Only</span>}
-                </div>
-                <p className="text-gray-500 mt-2">PB 1.1 - Please complete all sections to be considered for the next stage.</p>
-            </div>
-            
-            {/* 1. Area & Applicant */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">1. Area & Applicant Information</h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                    {AREAS.map(a => (
-                        <label key={a} className={`border-2 p-4 rounded-xl flex items-center gap-3 cursor-pointer transition-all ${data.area === a ? 'bg-purple-50 border-brand-purple shadow-md' : 'border-gray-100 hover:border-purple-200'}`}>
-                            <input type="radio" name="area" checked={data.area === a} onChange={() => onChange({...data, area: a})} disabled={readOnly} className="accent-brand-purple w-5 h-5" /> 
-                            <span className="font-bold text-gray-700">{a}</span>
-                        </label>
-                    ))}
-                </div>
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-center gap-3">
-                    <input type="checkbox" checked={fd.applyMultiArea || false} onChange={e => up('applyMultiArea', e.target.checked)} disabled={readOnly} className="w-5 h-5 accent-brand-purple" />
-                    <span className="font-bold text-blue-800">Applying for funding in more than one area?</span>
-                </div>
-                {fd.applyMultiArea && <textarea placeholder="Describe logistics/cost breakdown for each area..." className="w-full p-4 border rounded-xl h-24" value={fd.crossAreaBreakdown || ''} onChange={e => up('crossAreaBreakdown', e.target.value)} disabled={readOnly} />}
-                
-                <div className="grid md:grid-cols-2 gap-6">
-                    <Input label="Organisation Name" value={data.orgName} onChange={e => onChange({...data, orgName: e.target.value})} disabled={readOnly} />
-                    <Input label="Position / Job Title" value={fd.contactPosition || ''} onChange={e => up('contactPosition', e.target.value)} disabled={readOnly} />
-                    <Input label="Contact Name" value={data.applicantName} onChange={e => onChange({...data, applicantName: e.target.value})} disabled={readOnly} />
-                    <Input label="Email Address" type="email" value={fd.contactEmail || ''} onChange={e => up('contactEmail', e.target.value)} disabled={readOnly} />
-                    <Input label="Phone Number" value={fd.contactPhone || ''} onChange={e => up('contactPhone', e.target.value)} disabled={readOnly} />
-                </div>
-                <div className="grid md:grid-cols-3 gap-4">
-                    <Input label="Street" value={fd.addressStreet || ''} onChange={e => up('addressStreet', e.target.value)} disabled={readOnly} />
-                    <Input label="Town/City" value={fd.addressTown || ''} onChange={e => up('addressTown', e.target.value)} disabled={readOnly} />
-                    <Input label="Postcode" value={fd.addressPostcode || ''} onChange={e => up('addressPostcode', e.target.value)} disabled={readOnly} />
-                </div>
-            </section>
-
-            {/* 2. Organisation Type */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">2. Organisation Type</h3>
-                <div className="grid md:grid-cols-2 gap-3">
-                    {ORG_TYPES.map(type => (
-                        <label key={type} className="flex gap-3 text-sm items-center cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
-                            <input type="checkbox" checked={fd.orgTypes?.includes(type)} onChange={() => toggleOrgType(type)} disabled={readOnly} className="accent-brand-purple" />
-                            <span>{type}</span>
-                        </label>
-                    ))}
-                </div>
-                <Input label="Other (please describe)" value={fd.orgTypeOther || ''} onChange={e => up('orgTypeOther', e.target.value)} disabled={readOnly} />
-            </section>
-
-            {/* 3. Priorities */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">3. Priorities & Timeline</h3>
-                <Input label="Main Project Theme (see Priorities Report)" value={fd.projectTheme || ''} onChange={e => up('projectTheme', e.target.value)} disabled={readOnly} />
-                <div className="grid md:grid-cols-3 gap-6">
-                    <Input label="Start Date" type="date" value={fd.startDate || ''} onChange={e => up('startDate', e.target.value)} disabled={readOnly} />
-                    <Input label="End Date" type="date" value={fd.endDate || ''} onChange={e => up('endDate', e.target.value)} disabled={readOnly} />
-                    <Input label="Duration" placeholder="e.g. 6 months" value={fd.duration || ''} onChange={e => up('duration', e.target.value)} disabled={readOnly} />
-                </div>
-            </section>
-
-            {/* 4. Project Details */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">4. Project Details</h3>
-                <Input label="Project Title" value={data.projectTitle} onChange={e => onChange({...data, projectTitle: e.target.value})} disabled={readOnly} />
-                <div>
-                    <label className="block font-bold text-sm mb-2 font-dynapuff text-gray-700">Project Summary (Max 250 words)</label>
-                    <textarea className="w-full p-4 border border-gray-200 rounded-xl h-40 focus:ring-4 focus:ring-purple-100 outline-none transition-all" value={data.summary} onChange={e => onChange({...data, summary: e.target.value})} disabled={readOnly} />
-                </div>
-                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                    <label className="block font-bold text-lg mb-4 font-dynapuff text-gray-800">Positive Outcomes</label>
-                    <div className="space-y-4">
-                        <Input placeholder="Outcome 1: What will change?" value={fd.outcome1 || ''} onChange={e => up('outcome1', e.target.value)} disabled={readOnly} />
-                        <Input placeholder="Outcome 2: Who will benefit?" value={fd.outcome2 || ''} onChange={e => up('outcome2', e.target.value)} disabled={readOnly} />
-                        <Input placeholder="Outcome 3: Long term impact?" value={fd.outcome3 || ''} onChange={e => up('outcome3', e.target.value)} disabled={readOnly} />
-                    </div>
-                </div>
-            </section>
-
-            {/* 5. Budget */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">5. Budget</h3>
-                <div className="grid md:grid-cols-2 gap-6">
-                    <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
-                        <Input label="Total Project Cost (£)" type="number" value={data.totalCost} onChange={e => onChange({...data, totalCost: Number(e.target.value)})} disabled={readOnly} className="text-xl font-bold" />
-                    </div>
-                    <div className="bg-teal-50 p-6 rounded-xl border border-teal-100">
-                        <Input label="Amount Requested (£)" type="number" value={data.amountRequested} onChange={e => onChange({...data, amountRequested: Number(e.target.value)})} disabled={readOnly} className="text-xl font-bold" />
-                    </div>
-                </div>
-                <Input label="Other Funding Sources" placeholder="e.g. £500 from Town Council" value={fd.otherFundingSources || ''} onChange={e => up('otherFundingSources', e.target.value)} disabled={readOnly} />
-            </section>
-
-            {/* 6. Alignment */}
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">6. Alignment</h3>
-                <p className="text-sm text-gray-500">Tick all that apply. You will be asked to justify these in Part 2.</p>
-                <div className="grid md:grid-cols-2 gap-8">
-                    <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
-                        <h4 className="font-bold text-brand-purple text-lg mb-4">Marmot Principles</h4>
-                        <div className="space-y-3">
-                            {MARMOT_PRINCIPLES.map(p => (
-                                <label key={p} className="flex gap-3 text-sm items-start cursor-pointer hover:bg-purple-100 p-2 rounded transition-colors">
-                                    <input type="checkbox" checked={fd.marmotPrinciples?.includes(p)} onChange={e => { if(readOnly)return; const old = fd.marmotPrinciples||[]; up('marmotPrinciples', e.target.checked ? [...old,p] : old.filter(x=>x!==p)); }} className="mt-1 accent-brand-purple" />
-                                    <span>{p}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="bg-teal-50 p-6 rounded-xl border border-teal-100">
-                        <h4 className="font-bold text-brand-teal text-lg mb-4">WFG Goals</h4>
-                        <div className="space-y-3">
-                            {WFG_GOALS.map(g => (
-                                <label key={g} className="flex gap-3 text-sm items-start cursor-pointer hover:bg-teal-100 p-2 rounded transition-colors">
-                                    <input type="checkbox" checked={fd.wfgGoals?.includes(g)} onChange={e => { if(readOnly)return; const old = fd.wfgGoals||[]; up('wfgGoals', e.target.checked ? [...old,g] : old.filter(x=>x!==g)); }} className="mt-1 accent-brand-teal" />
-                                    <span>{g}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* 7. Declarations */}
-            <section className="space-y-6 border-t pt-6">
-                <h3 className="font-bold text-xl text-gray-800">7. Declarations</h3>
-                <label className="flex gap-3 items-center">
-                    <input type="checkbox" checked={fd.gdprConsent} onChange={e => up('gdprConsent', e.target.checked)} disabled={readOnly} />
-                    <span>I confirm that I have read, understood and consent to the GDPR Policy.</span>
-                </label>
-                <label className="flex gap-3 items-center">
-                    <input type="checkbox" checked={fd.declarationTrue} onChange={e => up('declarationTrue', e.target.checked)} disabled={readOnly} />
-                    <span>I declare that the information provided is true and correct.</span>
-                </label>
-                <div className="grid md:grid-cols-3 gap-4 mt-4">
-                    <Input label="Name" value={fd.declarationName || ''} onChange={e => up('declarationName', e.target.value)} disabled={readOnly} />
-                    <Input label="Typed Signature" value={fd.declarationSignature || ''} onChange={e => up('declarationSignature', e.target.value)} disabled={readOnly} />
-                    <Input label="Date" type="date" value={fd.declarationDate || ''} onChange={e => up('declarationDate', e.target.value)} disabled={readOnly} />
-                </div>
-            </section>
-            
-            {!readOnly && (
-                <div className="flex gap-4 pt-8 border-t border-gray-100 sticky bottom-0 bg-white p-4 -mx-4 shadow-inner-top">
-                    <Button type="submit" className="flex-1 text-lg py-4 shadow-xl">Submit Expression of Interest</Button>
-                    <Button type="button" variant="ghost" onClick={onCancel} className="px-8">Cancel</Button>
-                </div>
-            )}
-        </form>
-    );
-};
-
-// --- STAGE 2 FORM (Matches PB 2.1 PDF) ---
-export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (e: React.FormEvent) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
-    const fd = data.formData || {};
-    const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
-    const budget = fd.budgetBreakdown || [];
-
-    // Helper for Justification Updates
-    const updateJustification = (type: 'marmot' | 'wfg', key: string, val: string) => {
-        const field = type === 'marmot' ? 'marmotJustifications' : 'wfgJustifications';
-        const current = fd[field] || {};
-        up(field, { ...current, [key]: val });
-    };
-
-    return (
-        <form onSubmit={onSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-6xl mx-auto border border-gray-100">
-            <div className="border-b pb-6 mb-6 bg-brand-darkTeal -m-10 mb-8 p-10 rounded-t-[2rem] text-white shadow-lg">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h2 className="text-4xl font-dynapuff mb-2">Full Application (Part 2)</h2>
-                        <p className="opacity-80 text-lg">Detailed Delivery Plan & Justified Budget</p>
-                    </div>
-                    <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm">
-                        <div className="text-xs uppercase font-bold opacity-70">Project Ref</div>
-                        <div className="font-mono text-xl">{data.ref || 'NEW'}</div>
-                    </div>
-                </div>
-            </div>
-
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">1. Organisation & Bank Details</h3>
-                <div className="grid md:grid-cols-2 gap-6">
-                    <Input label="Charity Number (if applicable)" value={fd.charityNumber || ''} onChange={e => up('charityNumber', e.target.value)} disabled={readOnly} />
-                    <Input label="Company Number (if applicable)" value={fd.companyNumber || ''} onChange={e => up('companyNumber', e.target.value)} disabled={readOnly} />
-                </div>
-                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                    <h4 className="font-bold mb-4 flex items-center gap-2">🏦 Bank Account Details</h4>
-                    <div className="grid md:grid-cols-3 gap-6">
-                        <Input label="Account Name" value={fd.bankAccountName || ''} onChange={e => up('bankAccountName', e.target.value)} disabled={readOnly} />
-                        <Input label="Sort Code" value={fd.bankSortCode || ''} onChange={e => up('bankSortCode', e.target.value)} disabled={readOnly} />
-                        <Input label="Account Number" value={fd.bankAccountNumber || ''} onChange={e => up('bankAccountNumber', e.target.value)} disabled={readOnly} />
-                    </div>
-                </div>
-            </section>
-
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">2. Detailed Project</h3>
-                {[
-                    { k: 'smartObjectives', l: 'SMART Objectives', h: 'Specific, Measurable, Achievable, Relevant, Time-bound.' },
-                    { k: 'activities', l: 'Activities & Delivery Plan', h: 'What exactly will you do?' },
-                    { k: 'communityBenefit', l: 'Community Benefit', h: 'How does it help?' },
-                    { k: 'collaborations', l: 'Collaborations', h: 'Who are you working with?' },
-                    { k: 'riskManagement', l: 'Risk Management', h: 'What could go wrong and how will you fix it?' }
-                ].map(f => (
-                    <div key={f.k}>
-                        <label className="block font-bold text-lg mb-1">{f.l}</label>
-                        <p className="text-sm text-gray-500 mb-2">{f.h}</p>
-                        <textarea className="w-full p-4 border rounded-xl h-32" value={(fd as any)[f.k] || ''} onChange={e => up(f.k, e.target.value)} disabled={readOnly} />
-                    </div>
-                ))}
-            </section>
-
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">3. Alignment (Justification)</h3>
-                <p className="text-gray-500 mb-4">Please explain how your project contributes to the priorities you selected in Part 1.</p>
-                
-                {fd.marmotPrinciples?.map(p => (
-                    <div key={p} className="bg-purple-50 p-4 rounded-xl mb-4 border border-purple-100">
-                        <h4 className="font-bold text-purple-900 mb-2">{p}</h4>
-                        <textarea className="w-full p-3 border rounded-lg bg-white" placeholder="Explanation..." value={fd.marmotJustifications?.[p] || ''} onChange={e => updateJustification('marmot', p, e.target.value)} disabled={readOnly} />
-                    </div>
-                ))}
-                {fd.wfgGoals?.map(g => (
-                    <div key={g} className="bg-teal-50 p-4 rounded-xl mb-4 border border-teal-100">
-                        <h4 className="font-bold text-teal-900 mb-2">{g}</h4>
-                        <textarea className="w-full p-3 border rounded-lg bg-white" placeholder="Explanation..." value={fd.wfgJustifications?.[g] || ''} onChange={e => updateJustification('wfg', g, e.target.value)} disabled={readOnly} />
-                    </div>
-                ))}
-            </section>
-
-            <section className="space-y-6">
-                <h3 className="font-bold text-xl border-b pb-2 text-gray-800">4. Detailed Budget</h3>
-                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-3">
-                    {budget.map((l, i) => (
-                        <div key={i} className="grid grid-cols-12 gap-4 items-center">
-                            <div className="col-span-5"><input className="w-full p-3 border rounded-lg" placeholder="Item Name" value={l.item} onChange={e => { const n = [...budget]; n[i].item = e.target.value; up('budgetBreakdown', n); }} disabled={readOnly} /></div>
-                            <div className="col-span-4"><input className="w-full p-3 border rounded-lg" placeholder="Justification" value={l.note} onChange={e => { const n = [...budget]; n[i].note = e.target.value; up('budgetBreakdown', n); }} disabled={readOnly} /></div>
-                            <div className="col-span-2"><input className="w-full p-3 border rounded-lg font-bold" type="number" placeholder="0.00" value={l.cost} onChange={e => { const n = [...budget]; n[i].cost = Number(e.target.value); up('budgetBreakdown', n); const total = n.reduce((a,b) => a+b.cost, 0); onChange({...data, totalCost: total, amountRequested: total}); }} disabled={readOnly} /></div>
-                            <div className="col-span-1">{!readOnly && <button type="button" onClick={() => up('budgetBreakdown', budget.filter((_,j) => j!==i))} className="text-red-400 p-2">✕</button>}</div>
-                        </div>
-                    ))}
-                    {!readOnly && <Button type="button" variant="secondary" size="sm" onClick={() => up('budgetBreakdown', [...budget, { item: '', note: '', cost: 0 }])}>+ Add Line</Button>}
-                </div>
-                <div className="text-right font-bold text-xl">Total: £{data.totalCost}</div>
-                <textarea className="w-full p-4 border rounded-xl" placeholder="Additional Budget Info..." value={fd.additionalBudgetInfo || ''} onChange={e => up('additionalBudgetInfo', e.target.value)} disabled={readOnly} />
-            </section>
-
-            <section className="space-y-6 pt-6 border-t">
-                <h3 className="font-bold text-xl">5. Declarations</h3>
-                <label className="flex gap-3"><input type="checkbox" checked={fd.consentWithdraw} onChange={e => up('consentWithdraw', e.target.checked)} disabled={readOnly} /> <span>I consent to withdrawal at discretion if necessary.</span></label>
-                <label className="flex gap-3"><input type="checkbox" checked={fd.agreeGdprScrutiny} onChange={e => up('agreeGdprScrutiny', e.target.checked)} disabled={readOnly} /> <span>I agree to GDPR policy and scrutiny.</span></label>
-                <div className="grid md:grid-cols-3 gap-4 mt-4">
-                    <Input label="Name" value={fd.declarationName2 || ''} onChange={e => up('declarationName2', e.target.value)} disabled={readOnly} />
-                    <Input label="Typed Signature" value={fd.declarationSignature2 || ''} onChange={e => up('declarationSignature2', e.target.value)} disabled={readOnly} />
-                    <Input label="Date" type="date" value={fd.declarationDate2 || ''} onChange={e => up('declarationDate2', e.target.value)} disabled={readOnly} />
-                </div>
-            </section>
-
-            {!readOnly && (
-                <div className="flex gap-4 pt-8 border-t border-gray-100 sticky bottom-0 bg-white p-4 -mx-4 shadow-inner-top">
-                    <Button type="submit" className="flex-1 bg-brand-darkTeal hover:bg-teal-800 text-lg py-4 shadow-xl">Submit Full Application</Button>
-                    <Button type="button" variant="ghost" onClick={onCancel} className="px-8">Cancel</Button>
-                </div>
-            )}
-        </form>
-    );
-};
-
-// --- SCORE MODAL (With PDF Viewer) ---
-const ScoreModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; currentUser: User; existingScore?: Score; onSubmit: (s: Score) => void; threshold?: number }> = ({ isOpen, onClose, app, currentUser, existingScore, onSubmit, threshold = 50 }) => {
-    const [scores, setScores] = useState<Record<string, number>>(existingScore?.scores || {});
-    const [notes, setNotes] = useState<Record<string, string>>(existingScore?.notes || {});
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-
-    const { rawTotal, weightedTotalPercent } = useMemo(() => {
-        let rTotal = 0;
-        let wTotal = 0;
-        SCORING_CRITERIA.forEach(c => {
-            const val = scores[c.id] || 0;
-            rTotal += val;
-            wTotal += (val / 3) * c.weight;
-        });
-        return { rawTotal: rTotal, weightedTotalPercent: Math.round(wTotal) };
-    }, [scores]);
-
-    const handleSubmit = () => { 
-        onSubmit({ 
-            appId: app.id, 
-            scorerId: currentUser.uid, 
-            scorerName: currentUser.displayName || 'Member', 
-            scores, 
-            notes, 
-            isFinal: true, 
-            total: rawTotal, 
-            weightedTotal: weightedTotalPercent, 
-            timestamp: Date.now() 
-        }); 
-        onClose(); 
-    };
-    
-    return (
-        <>
-            <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="xl">
-                <div className="mb-6 flex gap-2 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div className="flex-1">
-                        <h4 className="font-bold text-gray-700">{app.orgName}</h4>
-                        <p className="text-sm text-gray-500">Ref: {app.ref || 'N/A'}</p>
-                    </div>
-                    {app.pdfUrl && <Button variant="outline" size="sm" onClick={() => setPdfUrl(app.pdfUrl!)}>📄 View Stage 1 PDF</Button>}
-                    {app.stage2PdfUrl && <Button variant="outline" size="sm" onClick={() => setPdfUrl(app.stage2PdfUrl!)}>📄 View Stage 2 PDF</Button>}
-                </div>
-                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
-                    {SCORING_CRITERIA.map(c => (
-                        <div key={c.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                            <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-bold text-gray-800">{c.name} <span className="text-gray-400 text-sm font-normal">({c.weight}%)</span></h4>
-                                <div className="flex gap-2">
-                                    {[0,1,2,3].map(v => <button key={v} onClick={() => setScores(p => ({...p, [c.id]: v}))} className={`w-10 h-10 rounded-lg font-bold transition-all ${scores[c.id]===v ? 'bg-brand-purple text-white shadow-lg scale-110' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{v}</button>)}
-                                </div>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-3 italic">{c.guidance}</p>
-                            <input className="w-full p-3 border rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors" placeholder="Justification notes..." value={notes[c.id]||''} onChange={e=>setNotes(p=>({...p, [c.id]:e.target.value}))} />
-                        </div>
-                    ))}
-                </div>
-                <div className="mt-6 pt-6 border-t flex justify-between items-center">
-                    <div className="flex gap-4 items-center">
-                        <div className="font-bold text-xl text-gray-700">Raw: {rawTotal}/30</div>
-                        <div className={`px-4 py-2 rounded-lg font-bold text-white shadow-md ${weightedTotalPercent >= threshold ? 'bg-green-500' : 'bg-red-500'}`}>
-                            {weightedTotalPercent}% ({weightedTotalPercent >= threshold ? 'Pass' : 'Fail'})
-                        </div>
-                    </div>
-                    <Button onClick={handleSubmit} size="lg" className="shadow-xl">Submit Final Score</Button>
-                </div>
-            </Modal>
-            {pdfUrl && <PDFViewer url={pdfUrl} onClose={() => setPdfUrl(null)} />}
-        </>
-    );
-};
-
-// --- USER FORM MODAL ---
 const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onSave: () => void; }> = ({ isOpen, onClose, user, onSave }) => {
     const [formData, setFormData] = useState<Partial<User>>({ email: '', username: '', displayName: '', role: 'applicant' });
     const [password, setPassword] = useState('');
-    useEffect(() => { if (user) setFormData(user); else setFormData({ email: '', username: '', displayName: '', role: 'applicant' }); setPassword(''); }, [user, isOpen]);
+
+    useEffect(() => {
+      if (user) setFormData(user);
+      else setFormData({ email: '', username: '', displayName: '', role: 'applicant' });
+      setPassword('');
+    }, [user, isOpen]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (user) await api.updateUser({ ...user, ...formData } as User);
-        else await api.adminCreateUser(formData as User, password);
-        onSave(); onClose();
+        try {
+          if (user) await api.updateUser({ ...user, ...formData } as User);
+          else await api.adminCreateUser(formData as User, password);
+          onSave();
+          onClose();
+        } catch (error) { alert('Failed to save user.'); }
     };
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={user ? 'Edit User' : 'Create User'}>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <Input label="Display Name" value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} required />
-                {/* Username is required for username‑based logins. Allow editing only when creating a new user. */}
                 <Input label="Username" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} disabled={!!user} required />
                 <Input label="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} disabled={!!user} required />
                 {!user && <Input label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-bold mb-2">Role</label>
-                        <select className="w-full p-3 border rounded-xl" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as any})}>
-                            <option value="applicant">Applicant</option><option value="committee">Committee</option><option value="admin">Admin</option>
+                        <select className="w-full p-3 border rounded-xl" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}>
+                            <option value="applicant">Applicant</option>
+                            <option value="committee">Committee</option>
+                            <option value="admin">Admin</option>
                         </select>
                     </div>
                     {formData.role === 'committee' && (
                         <div>
                             <label className="block text-sm font-bold mb-2">Area</label>
-                            <select className="w-full p-3 border rounded-xl" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value as any})}>
-                                <option>Select Area...</option>{AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select>
+                            <select className="w-full p-3 border rounded-xl" value={formData.area || ''} onChange={e => setFormData({...formData, area: e.target.value as Area})}>
+                                <option value="">Select Area...</option>
+                                {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
                         </div>
                     )}
                 </div>
@@ -459,52 +111,510 @@ const UserFormModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User
     );
 };
 
-// --- ADMIN DOCUMENT CENTRE ---
-const AdminDocCentre: React.FC = () => {
-    const [docs, setDocs] = useState<AdminDocument[]>([]);
-    const [viewId, setViewId] = useState<string>('root');
+const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Application; user: User; onSave: () => void; }> = ({ isOpen, onClose, app, user, onSave }) => {
+    const [breakdown, setBreakdown] = useState<Record<string, number>>({});
+    const [notes, setNotes] = useState<Record<string, string>>({});
 
-    useEffect(() => { api.getDocuments().then(setDocs); }, []);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        let total = 0;
+        let maxTotal = 0;
+        
+        SCORING_CRITERIA.forEach(c => {
+            const score = breakdown[c.id] || 0;
+            total += score * c.weight;
+            maxTotal += 100 * c.weight;
+        });
+        
+        const weightedTotal = Math.round((total / maxTotal) * 100);
 
-    const currentDocs = docs.filter(d => d.parentId === viewId);
-    const parent = viewId !== 'root' ? docs.find(d => d.id === viewId) : null;
+        const newScore: Score = {
+            id: `${app.id}_${user.uid}`,
+            appId: app.id,
+            scorerId: user.uid,
+            scorerName: user.displayName,
+            weightedTotal,
+            breakdown,
+            notes,
+            isFinal: true,
+            createdAt: new Date().toISOString()
+        };
 
-    const handleCreateFolder = async () => {
-        const name = prompt("Folder Name:");
-        if (!name) return;
-        const newDoc: AdminDocument = { id: 'doc_' + Date.now(), name, type: 'folder', parentId: viewId, category: 'general', uploadedBy: 'Admin', createdAt: Date.now() };
-        await api.createDocument(newDoc);
-        setDocs(prev => [...prev, newDoc]);
-    };
-
-    const handleUpload = async () => {
-        const name = prompt("Upload File (Simulator): Enter filename");
-        if (!name) return;
-        const newDoc: AdminDocument = { id: 'file_' + Date.now(), name, type: 'file', parentId: viewId, url: '#', category: 'general', uploadedBy: 'Admin', createdAt: Date.now() };
-        await api.createDocument(newDoc);
-        setDocs(prev => [...prev, newDoc]);
-        alert("File record created! (No actual storage bucket connected yet)");
+        await api.saveScore(newScore);
+        onSave();
+        onClose();
     };
 
     return (
-        <Card>
-            <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                    {viewId !== 'root' && <button onClick={() => setViewId(parent?.parentId || 'root')} className="text-2xl hover:bg-gray-100 p-1 rounded">🔙</button>}
-                    <h3 className="font-bold text-xl">{viewId === 'root' ? 'Document Centre' : parent?.name}</h3>
+        <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="lg">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm">
+                    Please score each criterion from 0-100. The system will automatically calculate the weighted total based on committee priorities.
                 </div>
-                <div className="flex gap-2"><Button size="sm" variant="outline" onClick={handleCreateFolder}>+ Folder</Button><Button size="sm" onClick={handleUpload}>+ Upload File</Button></div>
+                
+                {SCORING_CRITERIA.map(criterion => (
+                    <div key={criterion.id} className="border-b pb-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <div>
+                                <h4 className="font-bold text-gray-800">{criterion.name}</h4>
+                                <p className="text-xs text-gray-500">{criterion.details}</p>
+                            </div>
+                            <Badge>Weight: {criterion.weight}x</Badge>
+                        </div>
+                        <div className="flex gap-4 items-center">
+                            <input 
+                                type="range" min="0" max="100" step="5" 
+                                value={breakdown[criterion.id] || 0}
+                                onChange={e => setBreakdown({ ...breakdown, [criterion.id]: Number(e.target.value) })}
+                                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-purple"
+                            />
+                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}</div>
+                        </div>
+                        <textarea 
+                            placeholder="Optional comments..."
+                            className="w-full mt-2 p-2 text-sm border rounded-lg"
+                            value={notes[criterion.id] || ''}
+                            onChange={e => setNotes({ ...notes, [criterion.id]: e.target.value })}
+                        />
+                    </div>
+                ))}
+                
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="ghost" onClick={onClose} type="button">Cancel</Button>
+                    <Button type="submit">Submit Score</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
+const AdminDocCentre: React.FC = () => {
+    const [docs, setDocs] = useState<AdminDocument[]>([]);
+    const [uploading, setUploading] = useState(false);
+
+    useEffect(() => { api.getDocuments().then(setDocs); }, []);
+
+    const handleUpload = async (file: File) => {
+        setUploading(true);
+        try {
+            const url = await uploadFile(`admin-docs/${Date.now()}_${file.name}`, file);
+            const newDoc: AdminDocument = {
+                id: 'doc_' + Date.now(),
+                name: file.name,
+                type: 'file',
+                parentId: 'root',
+                url,
+                category: 'committee-only', 
+                uploadedBy: auth.currentUser?.uid || 'admin',
+                createdAt: Date.now()
+            };
+            await api.createDocument(newDoc);
+            setDocs([...docs, newDoc]);
+        } catch (e) { alert("Upload failed"); }
+        setUploading(false);
+    };
+
+    const handleDelete = async (id: string) => {
+        if(!confirm("Delete?")) return;
+        await api.deleteDocument(id);
+        setDocs(docs.filter(d => d.id !== id));
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center bg-blue-50 p-6 rounded-2xl border border-blue-100">
+                <div>
+                    <h3 className="font-bold text-xl text-blue-900">Document Centre</h3>
+                    <p className="text-sm text-blue-700">Manage guidance and policy documents for committee members.</p>
+                </div>
+                <div className="w-64">
+                    <FileUpload label="Upload Document" onUpload={handleUpload} disabled={uploading} />
+                </div>
             </div>
-            <div className="grid md:grid-cols-3 gap-4">
-                {currentDocs.map(d => (
-                    <FileCard 
-                        key={d.id} title={d.name} type={d.type} date={new Date(d.createdAt).toLocaleDateString()}
-                        onClick={() => d.type === 'folder' ? setViewId(d.id) : alert("Downloading " + d.name)}
-                        onDelete={async () => { if(confirm("Delete?")) { await api.deleteDocument(d.id); setDocs(docs.filter(x => x.id !== d.id)); }}}
-                    />
+            <div className="grid md:grid-cols-4 gap-4">
+                {docs.length === 0 && <p className="col-span-4 text-center text-gray-400 italic py-8">No documents uploaded yet.</p>}
+                {docs.map(d => (
+                    <FileCard key={d.id} title={d.name} type={d.type} date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d.id)} onClick={() => window.open(d.url, '_blank')} />
                 ))}
             </div>
-        </Card>
+        </div>
+    );
+};
+
+const ScoringMonitor: React.FC<{ onExit: () => void }> = ({ onExit }) => {
+    const [apps, setApps] = useState<Application[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
+    const [filterArea, setFilterArea] = useState<string>('All');
+    const [expandedApp, setExpandedApp] = useState<string | null>(null);
+
+    useEffect(() => {
+        Promise.all([api.getApplications(), api.getUsers(), api.getScores()]).then(([a, u, s]) => {
+            setApps(a); setUsers(u); setScores(s);
+        });
+    }, []);
+
+    const filteredApps = filterArea === 'All' ? apps : apps.filter(a => a.area === filterArea || a.area === 'Cross-Area');
+    const committee = users.filter(u => u.role === 'committee');
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex justify-between items-center bg-gray-900 p-6 rounded-2xl text-white shadow-xl">
+                <div>
+                     <h2 className="text-2xl font-dynapuff mb-1">Scoring Monitor</h2>
+                     <p className="text-gray-400 text-sm">Real-time tracking of committee scoring progress</p>
+                </div>
+                <div className="flex gap-4 items-center">
+                     <select className="p-2 border border-gray-700 bg-gray-800 rounded-lg text-white" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+                        <option value="All">All Areas</option>
+                        {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <Button onClick={onExit} className="bg-white text-black hover:bg-gray-200">Exit Scoring Mode</Button>
+                </div>
+            </div>
+            
+            <div className="grid gap-4">
+                {filteredApps.map(app => {
+                    const relevantCommittee = committee.filter(u => u.area === app.area || app.area === 'Cross-Area');
+                    const appScores = scores.filter(s => s.appId === app.id);
+                    const percentComplete = relevantCommittee.length > 0 ? Math.round((appScores.length / relevantCommittee.length) * 100) : 0;
+                    
+                    return (
+                        <Card key={app.id} className="transition-all hover:shadow-md border-l-4 border-l-brand-purple">
+                            <div className="flex justify-between items-center cursor-pointer p-2" onClick={() => setExpandedApp(expandedApp === app.id ? null : app.id)}>
+                                <div className="flex gap-6 items-center flex-1">
+                                    <Badge className="font-mono">{app.ref}</Badge>
+                                    <div>
+                                        <h3 className="font-bold text-lg">{app.projectTitle}</h3>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                                            <span>{app.orgName}</span>
+                                            <span>•</span>
+                                            <span className="font-bold text-gray-700">{app.area}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-12 items-center">
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-bold text-gray-400 tracking-wider">PROGRESS</div>
+                                        <div className="font-bold text-xl flex items-center justify-end gap-2">
+                                            {appScores.length} <span className="text-gray-400 text-sm">/ {relevantCommittee.length}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right w-24">
+                                        <div className="text-[10px] font-bold text-gray-400 tracking-wider">AVG SCORE</div>
+                                        <div className={`font-bold text-xl ${app.averageScore && app.averageScore >= 50 ? 'text-green-600' : 'text-red-500'}`}>
+                                            {app.averageScore || 0}%
+                                        </div>
+                                    </div>
+                                    <div className={`text-2xl text-gray-300 transition-transform duration-300 ${expandedApp === app.id ? 'rotate-180' : ''}`}>▼</div>
+                                </div>
+                            </div>
+                            
+                            {expandedApp === app.id && (
+                                <div className="mt-6 border-t pt-6 animate-fade-in">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="font-bold text-sm text-gray-500 uppercase tracking-wider">Committee Breakdown</h4>
+                                        <div className="h-2 w-48 bg-gray-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-brand-purple transition-all duration-500" style={{ width: `${percentComplete}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div className="grid md:grid-cols-4 gap-3">
+                                        {relevantCommittee.map(u => {
+                                            const score = appScores.find(s => s.scorerId === u.uid);
+                                            return (
+                                                <div key={u.uid} className={`p-3 rounded-lg border flex justify-between items-center ${score ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-2 h-2 rounded-full ${score ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                                        <span className="text-sm font-bold text-gray-700">{u.displayName}</span>
+                                                    </div>
+                                                    {score ? <span className="font-bold text-green-700">{score.weightedTotal}%</span> : <span className="text-xs text-gray-400 italic">Pending</span>}
+                                                </div>
+                                            );
+                                        })}
+                                        {relevantCommittee.length === 0 && <p className="text-sm text-gray-500 italic col-span-4 text-center py-2">No committee members assigned to this area.</p>}
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+// --- DIGITAL FORMS ---
+
+const FormHeader: React.FC<{ title: string; subtitle: string; readOnly?: boolean }> = ({ title, subtitle, readOnly }) => (
+    <div className="border-b pb-6 mb-6">
+        <div className="flex justify-between items-center">
+            <h2 className="text-4xl font-dynapuff text-brand-purple">{title}</h2>
+            {readOnly && <Badge>Read Only</Badge>}
+        </div>
+        <p className="text-gray-500 mt-2">{subtitle}</p>
+    </div>
+);
+
+// VALIDATION HELPERS
+const validateStage2 = (app: Application): string[] => {
+    const errors: string[] = [];
+    const fd = app.formData;
+    if (!fd.bankAccountNumber || !/^\d{8}$/.test(fd.bankAccountNumber)) errors.push("Bank Account Number must be 8 digits.");
+    if (!fd.bankSortCode || !/^\d{6}$/.test(fd.bankSortCode.replace(/-/g, ''))) errors.push("Sort Code must be 6 digits.");
+    if (!fd.budgetBreakdown || fd.budgetBreakdown.length === 0) errors.push("At least one budget line item is required.");
+    if ((app.summary?.split(' ').length || 0) > 300) errors.push("Summary exceeds 300 words.");
+    return errors;
+};
+
+export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (status: ApplicationStatus) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
+    const fd = data.formData || {};
+    const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSubmit('Submitted-Stage1');
+    };
+
+    const toggleArray = (arr: string[] | undefined, val: string) => {
+        const safe = arr || [];
+        return safe.includes(val) ? safe.filter(x => x !== val) : [...safe, val];
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-5xl mx-auto border border-gray-100">
+            <FormHeader title="Expression of Interest" subtitle="Part 1 - Initial Proposal" readOnly={readOnly} />
+            
+            {/* 1. Basic Info */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">1. Area & Applicant</h3>
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={fd.applyMultiArea} 
+                            onChange={e => up('applyMultiArea', e.target.checked)} 
+                            disabled={readOnly} 
+                            className="w-5 h-5 accent-blue-600" 
+                        />
+                        <span className="font-bold text-blue-900">I am applying for a Cross-Area Project (covers multiple areas)</span>
+                    </label>
+                    {fd.applyMultiArea && (
+                        <p className="text-sm text-blue-700 mt-2 ml-8">
+                            Please select your <strong>primary</strong> area below, but note in your summary which other areas this benefits.
+                        </p>
+                    )}
+                </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                    {AREAS.map(a => (
+                        <label key={a} className={`border-2 p-4 rounded-xl flex items-center gap-3 cursor-pointer ${data.area === a ? 'bg-purple-50 border-brand-purple' : ''}`}>
+                            <input type="radio" name="area" checked={data.area === a} onChange={() => onChange({...data, area: a})} disabled={readOnly} className="accent-brand-purple w-5 h-5" />
+                            <span className="font-bold text-gray-700">{a}</span>
+                        </label>
+                    ))}
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                    <Input label="Organisation Name" value={data.orgName} onChange={e => onChange({...data, orgName: e.target.value})} disabled={readOnly} required />
+                    <Input label="Contact Name" value={data.applicantName} onChange={e => onChange({...data, applicantName: e.target.value})} disabled={readOnly} required />
+                    <Input label="Email" type="email" value={fd.contactEmail} onChange={e => up('contactEmail', e.target.value)} disabled={readOnly} required />
+                    <Input label="Phone" value={fd.contactPhone} onChange={e => up('contactPhone', e.target.value)} disabled={readOnly} />
+                </div>
+            </section>
+
+            {/* 2. Project Details */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">2. Project Details</h3>
+                <Input label="Project Title" value={data.projectTitle} onChange={e => onChange({...data, projectTitle: e.target.value})} disabled={readOnly} required />
+                <RichTextArea label="Project Summary (Max 250 words)" maxWords={250} value={data.summary} onChange={e => onChange({...data, summary: e.target.value})} disabled={readOnly} required />
+                
+                <div className="grid md:grid-cols-2 gap-6">
+                    <div className="bg-purple-50 p-6 rounded-xl">
+                        <Input label="Total Cost (£)" type="number" value={data.totalCost} onChange={e => onChange({...data, totalCost: Number(e.target.value)})} disabled={readOnly} required />
+                    </div>
+                    <div className="bg-teal-50 p-6 rounded-xl">
+                        <Input label="Amount Requested (£)" type="number" value={data.amountRequested} onChange={e => onChange({...data, amountRequested: Number(e.target.value)})} disabled={readOnly} required />
+                    </div>
+                </div>
+            </section>
+
+            {/* 3. Timeline & Specifics */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">3. Timeline & Theme</h3>
+                <Input label="Project Theme / Priority (optional)" value={fd.projectTheme} onChange={e => up('projectTheme', e.target.value)} disabled={readOnly} />
+                <div className="grid grid-cols-2 gap-6">
+                    <Input label="Start Date" type="date" value={fd.startDate} onChange={e => up('startDate', e.target.value)} disabled={readOnly} required />
+                    <Input label="End Date" type="date" value={fd.endDate} onChange={e => up('endDate', e.target.value)} disabled={readOnly} required />
+                </div>
+            </section>
+
+            {/* 4. Outcomes */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">4. Intended Outcomes</h3>
+                <p className="text-gray-500 text-sm">List up to 3 specific things your project will achieve.</p>
+                <Input label="Outcome 1" value={fd.outcome1} onChange={e => up('outcome1', e.target.value)} disabled={readOnly} required />
+                <Input label="Outcome 2" value={fd.outcome2} onChange={e => up('outcome2', e.target.value)} disabled={readOnly} />
+                <Input label="Outcome 3" value={fd.outcome3} onChange={e => up('outcome3', e.target.value)} disabled={readOnly} />
+            </section>
+
+            {/* 5. Strategic Alignment */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">5. Strategic Alignment</h3>
+                
+                <div className="bg-purple-50 p-6 rounded-xl">
+                    <h4 className="font-bold text-purple-900 mb-4">Marmot Principles (Select all that apply)</h4>
+                    <div className="space-y-2">
+                        {MARMOT_PRINCIPLES.map(p => (
+                            <label key={p} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.marmotPrinciples || []).includes(p)} onChange={() => up('marmotPrinciples', toggleArray(fd.marmotPrinciples, p))} disabled={readOnly} className="w-5 h-5 accent-brand-purple" />
+                                <span className="text-sm">{p}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-teal-50 p-6 rounded-xl">
+                    <h4 className="font-bold text-teal-900 mb-4">Well-being of Future Generations Goals</h4>
+                    <div className="space-y-2">
+                        {WFG_GOALS.map(g => (
+                            <label key={g} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.wfgGoals || []).includes(g)} onChange={() => up('wfgGoals', toggleArray(fd.wfgGoals, g))} disabled={readOnly} className="w-5 h-5 accent-brand-teal" />
+                                <span className="text-sm">{g}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* 6. Declaration */}
+            <section className="space-y-6 border-t pt-6">
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.gdprConsent} onChange={e => up('gdprConsent', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-purple" />
+                    <p className="text-sm text-gray-600">I confirm that the information provided is true and accurate. I understand that this Expression of Interest will be reviewed by the community committee.</p>
+                </div>
+            </section>
+
+            {!readOnly && (
+                <div className="flex gap-4 pt-8 border-t border-gray-100 sticky bottom-0 bg-white p-4 -mx-4 shadow-top z-10">
+                    <Button type="button" variant="outline" onClick={() => onSubmit('Draft')}>Save as Draft</Button>
+                    <Button type="submit" className="flex-1 text-lg py-4 shadow-xl">Submit Expression of Interest</Button>
+                    <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+                </div>
+            )}
+        </form>
+    );
+};
+
+export const DigitalStage2Form: React.FC<{ data: Partial<Application>; onChange: (d: Partial<Application>) => void; onSubmit: (status: ApplicationStatus) => void; onCancel: () => void; readOnly?: boolean; }> = ({ data, onChange, onSubmit, onCancel, readOnly }) => {
+    const fd = data.formData || {};
+    const up = (k: string, v: any) => onChange({ ...data, formData: { ...fd, [k]: v } });
+    const budget = fd.budgetBreakdown || [];
+
+    const handleUpload = async (field: string, file: File) => {
+        try {
+            const url = await uploadFile(`applications/${data.id}/${field}_${Date.now()}_${file.name}`, file);
+            up('attachments', { ...fd.attachments, [`${field}Url`]: url, [field]: true });
+        } catch (e) { alert("Upload error"); }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const errors = validateStage2(data as Application);
+        if (errors.length > 0) {
+            alert("Please fix the following:\n" + errors.join('\n'));
+            return;
+        }
+        if (confirm("Are you sure you want to submit? This is final.")) {
+            onSubmit('Submitted-Stage2');
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-8 bg-white p-10 rounded-[2rem] shadow-2xl max-w-6xl mx-auto border border-gray-100">
+            <FormHeader title="Full Application (Part 2)" subtitle="Detailed Delivery Plan & Budget" readOnly={readOnly} />
+
+            {/* Bank Details */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">1. Organisation & Bank</h3>
+                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 grid md:grid-cols-3 gap-6">
+                    <Input label="Account Name" value={fd.bankAccountName} onChange={e => up('bankAccountName', e.target.value)} disabled={readOnly} required />
+                    <Input label="Sort Code (12-34-56)" value={fd.bankSortCode} onChange={e => up('bankSortCode', e.target.value)} disabled={readOnly} placeholder="000000" maxLength={8} required />
+                    <Input label="Account Number" value={fd.bankAccountNumber} onChange={e => up('bankAccountNumber', e.target.value)} disabled={readOnly} placeholder="8 digits" maxLength={8} required />
+                </div>
+            </section>
+
+            {/* Detailed Project */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">2. Detailed Delivery</h3>
+                <RichTextArea label="SMART Objectives (Specific, Measurable, Achievable, Relevant, Time-bound)" value={fd.smartObjectives} onChange={e => up('smartObjectives', e.target.value)} disabled={readOnly} required />
+                <RichTextArea label="Activities & Delivery Plan" value={fd.activities} onChange={e => up('activities', e.target.value)} disabled={readOnly} required />
+                <RichTextArea label="Risk Management" value={fd.riskManagement} onChange={e => up('riskManagement', e.target.value)} disabled={readOnly} required />
+            </section>
+
+            {/* Impact */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">3. Impact & Collaboration</h3>
+                <RichTextArea label="Community Benefit (Who benefits and how?)" value={fd.communityBenefit} onChange={e => up('communityBenefit', e.target.value)} disabled={readOnly} required />
+                <RichTextArea label="Collaborations / Partners (if any)" value={fd.collaborations} onChange={e => up('collaborations', e.target.value)} disabled={readOnly} />
+            </section>
+
+            {/* Justifications */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">4. Alignment Justification</h3>
+                <p className="text-gray-500 mb-4">Based on your selections in Part 1, please explain how you meet these goals.</p>
+                {fd.marmotPrinciples?.map(p => (
+                    <div key={p} className="bg-purple-50 p-4 rounded-xl mb-4">
+                        <h4 className="font-bold text-purple-900 mb-2">{p}</h4>
+                        <RichTextArea value={fd.marmotJustifications?.[p] || ''} onChange={e => up('marmotJustifications', { ...fd.marmotJustifications, [p]: e.target.value })} disabled={readOnly} placeholder="Explain how your project supports this principle..." />
+                    </div>
+                ))}
+            </section>
+
+            {/* Budget */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">5. Detailed Budget</h3>
+                <div className="bg-gray-50 p-6 rounded-xl space-y-3">
+                    {budget.map((l, i) => (
+                        <div key={i} className="grid grid-cols-12 gap-4 items-center">
+                            <div className="col-span-5"><Input placeholder="Item" value={l.item} onChange={e => { const n = [...budget]; n[i].item = e.target.value; up('budgetBreakdown', n); }} disabled={readOnly} /></div>
+                            <div className="col-span-4"><Input placeholder="Note" value={l.note} onChange={e => { const n = [...budget]; n[i].note = e.target.value; up('budgetBreakdown', n); }} disabled={readOnly} /></div>
+                            <div className="col-span-2"><Input type="number" placeholder="0.00" value={l.cost} onChange={e => { const n = [...budget]; n[i].cost = Number(e.target.value); up('budgetBreakdown', n); }} disabled={readOnly} /></div>
+                            <div className="col-span-1">{!readOnly && <button type="button" onClick={() => up('budgetBreakdown', budget.filter((_,j) => j!==i))} className="text-red-500 font-bold">✕</button>}</div>
+                        </div>
+                    ))}
+                    {!readOnly && <Button type="button" variant="secondary" size="sm" onClick={() => up('budgetBreakdown', [...budget, { item: '', note: '', cost: 0 }])}>+ Add Item</Button>}
+                </div>
+                <div className="text-right font-bold text-xl">Total: £{budget.reduce((a,b)=>a+b.cost, 0)}</div>
+            </section>
+
+            {/* Documents */}
+            <section className="space-y-6">
+                <h3 className="font-bold text-xl border-b pb-2">6. Required Documents</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                    <FileUpload label="Constitution / Governing Doc" currentUrl={fd.attachments?.constitutionUrl} onUpload={f => handleUpload('constitution', f)} disabled={readOnly} />
+                    <FileUpload label="Recent Bank Statement" currentUrl={fd.attachments?.bankStatementUrl} onUpload={f => handleUpload('bankStatement', f)} disabled={readOnly} />
+                    <FileUpload label="Safeguarding Policy (Optional)" currentUrl={fd.attachments?.otherUrl} onUpload={f => handleUpload('other', f)} disabled={readOnly} />
+                </div>
+            </section>
+
+            {/* Declaration */}
+            <section className="space-y-6 border-t pt-6">
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.confirmOtherFunding} onChange={e => up('confirmOtherFunding', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-teal" />
+                    <p className="text-sm text-gray-600">I confirm that all funding from other sources has been secured or applied for.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                    <input type="checkbox" required checked={fd.agreeGdprScrutiny} onChange={e => up('agreeGdprScrutiny', e.target.checked)} disabled={readOnly} className="mt-1 w-5 h-5 accent-brand-teal" />
+                    <p className="text-sm text-gray-600">I agree to the data processing terms and understand this application will be subject to public scrutiny.</p>
+                </div>
+            </section>
+
+            {!readOnly && (
+                <div className="flex gap-4 pt-8 border-t border-gray-100 sticky bottom-0 bg-white p-4 -mx-4 shadow-top z-10">
+                    <Button type="button" variant="outline" onClick={() => onSubmit('Draft')}>Save as Draft</Button>
+                    <Button type="submit" className="flex-1 bg-brand-darkTeal text-lg py-4 shadow-xl">Submit Full Application</Button>
+                    <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+                </div>
+            )}
+        </form>
     );
 };
 
@@ -514,184 +624,467 @@ export const ApplicantDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [apps, setApps] = useState<Application[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'stage1' | 'stage2'>('list');
     const [activeApp, setActiveApp] = useState<Partial<Application>>({});
+    const [openRound, setOpenRound] = useState<Round | null>(null);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [currUser, setCurrUser] = useState(user);
+    const [currentUser, setCurrentUser] = useState(user);
 
-    useEffect(() => { api.getApplications().then(all => setApps(all.filter(a => a.userId === user.uid))); }, [user.uid, viewMode]);
+    useEffect(() => {
+        api.getApplications().then(all => setApps(all.filter(a => a.userId === user.uid)));
+        api.getRounds().then(rs => {
+            const now = new Date().toISOString().split('T')[0];
+            setOpenRound(rs.find(r => r.status === 'open' && (r.areas.includes(user.area!) || r.areas.length === 0) && r.startDate <= now && r.endDate >= now) || null);
+        });
+    }, [user.uid]);
 
-    const handleSubmit = async (e: React.FormEvent, stage: string) => {
-        e.preventDefault();
-        const status = stage === '1' ? 'Submitted-Stage1' : 'Submitted-Stage2';
-        const finalApp = { ...activeApp, status, userId: user.uid };
-        if (activeApp.id) await api.updateApplication(activeApp.id, finalApp as any);
-        else await api.createApplication(finalApp as any);
+    const handleSave = async (status: ApplicationStatus) => {
+        const toSave = { ...activeApp, status, userId: user.uid, submissionMethod: 'digital' } as Application;
+        if (toSave.id) await api.updateApplication(toSave.id, toSave);
+        else await api.createApplication(toSave);
+        const myApps = await api.getApplications();
+        setApps(myApps.filter(a => a.userId === user.uid));
         setViewMode('list');
     };
 
-    if (viewMode !== 'list') {
-        return viewMode === 'stage1' 
-            ? <DigitalStage1Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSubmit(e,'1')} onCancel={() => setViewMode('list')} />
-            : <DigitalStage2Form data={activeApp} onChange={setActiveApp} onSubmit={e => handleSubmit(e,'2')} onCancel={() => setViewMode('list')} />;
-    }
-
     return (
         <div className="container mx-auto px-4 py-8">
-            <div className="flex justify-between items-center mb-8"><h1 className="text-3xl font-bold font-dynapuff">Welcome, {currUser.displayName}</h1><Button onClick={() => setIsProfileOpen(true)} variant="outline">My Profile</Button></div>
-            <Card>
-                <div className="flex justify-between mb-4"><h2 className="font-bold text-xl">My Applications</h2><Button onClick={() => { setActiveApp({ userId: user.uid, status: 'Draft' }); setViewMode('stage1'); }}>Start New EOI</Button></div>
-                {apps.length === 0 ? <p className="text-gray-500 py-8 text-center">No applications yet.</p> : apps.map(app => <div key={app.id} className="border p-4 rounded-xl mb-4 flex justify-between items-center"><div><div className="font-bold text-lg">{app.projectTitle}</div><Badge>{app.status}</Badge></div><div className="flex gap-2">{app.status === 'Draft' && <Button size="sm" onClick={() => { setActiveApp(app); setViewMode('stage1'); }}>Edit</Button>}{app.status === 'Invited-Stage2' && <Button size="sm" variant="secondary" onClick={() => { setActiveApp(app); setViewMode('stage2'); }}>Start Stage 2</Button>}</div></div>)}
-            </Card>
-            <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currUser} onSave={setCurrUser} />
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold font-dynapuff">My Applications</h1>
+                    <p className="text-gray-500">Welcome, {currentUser.displayName}</p>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setIsProfileOpen(true)}>Edit Profile</Button>
+                    <Button disabled={!openRound} onClick={() => { setActiveApp({ userId: user.uid, area: user.area || undefined, roundId: openRound?.id, formData: {} }); setViewMode('stage1'); }}>
+                        {openRound ? '+ New Application' : 'Rounds Closed'}
+                    </Button>
+                </div>
+            </div>
+
+            {viewMode === 'list' ? (
+                <div className="grid gap-4">
+                    {apps.map(app => (
+                        <Card key={app.id}>
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-xl">{app.projectTitle || 'Untitled Draft'}</h3>
+                                    <div className="flex gap-2 mt-1">
+                                        <Badge>{app.status}</Badge>
+                                        <span className="text-gray-400 text-sm">Ref: {app.ref || 'Pending'}</span>
+                                    </div>
+                                    {app.feedback && <div className="mt-2 text-sm bg-blue-50 text-blue-800 p-2 rounded"><strong>Feedback:</strong> {app.feedback}</div>}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => printApplication(app)}>Print</Button>
+                                    {(app.status === 'Draft' || app.status.includes('Returned')) && <Button size="sm" onClick={() => { setActiveApp(app); setViewMode('stage1'); }}>Edit</Button>}
+                                    {app.status === 'Invited-Stage2' && <Button size="sm" variant="secondary" onClick={() => { setActiveApp(app); setViewMode('stage2'); }}>Start Stage 2</Button>}
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                    {apps.length === 0 && <p className="text-center text-gray-500">No applications found.</p>}
+                </div>
+            ) : viewMode === 'stage1' ? (
+                <DigitalStage1Form data={activeApp} onChange={setActiveApp} onSubmit={handleSave} onCancel={() => setViewMode('list')} />
+            ) : (
+                <DigitalStage2Form data={activeApp} onChange={setActiveApp} onSubmit={handleSave} onCancel={() => setViewMode('list')} />
+            )}
+            
+            <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currentUser} onSave={setCurrentUser} />
         </div>
     );
 };
 
 export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>void, isAdmin?: boolean, onReturnToAdmin?: ()=>void }> = ({ user, onUpdateUser, isAdmin, onReturnToAdmin }) => {
     const [apps, setApps] = useState<Application[]>([]);
+    const [votes, setVotes] = useState<Vote[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
     const [assignments, setAssignments] = useState<Assignment[]>([]);
-    const [team, setTeam] = useState<User[]>([]);
-    const [activeTab, setActiveTab] = useState('tasks');
-    const [selectedApp, setSelectedApp] = useState<Application | null>(null);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [settings, setSettings] = useState<PortalSettings>({ stage1Visible: true, stage2Visible: false, votingOpen: false, scoringThreshold: 50 });
+    const [settings, setSettings] = useState<PortalSettings | null>(null);
+    const [scoringApp, setScoringApp] = useState<Application | null>(null);
 
-    useEffect(() => {
-        const load = async () => {
-             // Load applications and assignments in parallel
-             const [allApps, asgs] = await Promise.all([
-                 api.getApplications(isAdmin ? 'All' : user.area),
-                 api.getAssignments(isAdmin ? undefined : user.uid)
-             ]);
-             // Filter applications to only relevant statuses
-             const relevantApps = allApps.filter(a => ['Submitted-Stage1', 'Invited-Stage2', 'Submitted-Stage2'].includes(a.status));
-             setApps(relevantApps);
-             setAssignments(asgs);
-             // Load team members for the same area (if not admin view)
-             if(user.area) {
-                 const allUsers = await api.getUsers();
-                 setTeam(allUsers.filter(u => u.role === 'committee' && u.area === user.area));
-             }
-             const s = await api.getPortalSettings();
-             setSettings(s);
-        };
-        load();
-    }, [user.area]);
+    const refresh = () => {
+        Promise.all([
+            api.getApplications(), 
+            api.getVotes(),
+            api.getScores(),
+            api.getAssignments(user.uid),
+            api.getPortalSettings()
+        ]).then(([allApps, allVotes, allScores, myAssigns, portalSettings]) => {
+            const assignIds = myAssigns.map(a => a.applicationId);
+            const filtered = isAdmin ? allApps : allApps.filter(a => 
+                a.area === user.area || 
+                a.area === 'Cross-Area' || 
+                assignIds.includes(a.id)
+            );
+            // Sort: Action required first
+            const sorted = filtered.sort((a, b) => {
+                const aNeedsAction = (a.status === 'Submitted-Stage1' && !allVotes.some(v => v.appId === a.id && v.voterId === user.uid)) || (a.status === 'Submitted-Stage2' && !allScores.some(s => s.appId === a.id && s.scorerId === user.uid));
+                const bNeedsAction = (b.status === 'Submitted-Stage1' && !allVotes.some(v => v.appId === b.id && v.voterId === user.uid)) || (b.status === 'Submitted-Stage2' && !allScores.some(s => s.appId === b.id && s.scorerId === user.uid));
+                return aNeedsAction === bNeedsAction ? 0 : aNeedsAction ? -1 : 1;
+            });
+            
+            setApps(sorted);
+            setVotes(allVotes);
+            setScores(allScores);
+            setAssignments(myAssigns);
+            setSettings(portalSettings);
+        });
+    };
+
+    useEffect(() => { refresh(); }, [user.uid, user.area, isAdmin]);
+
+    const handleVote = async (appId: string, decision: 'yes'|'no') => {
+        await api.saveVote({ id: `${appId}_${user.uid}`, appId, voterId: user.uid, decision, createdAt: new Date().toISOString() });
+        refresh();
+    };
 
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-8">
-                 <div><h1 className="text-3xl font-bold font-dynapuff">{user.area || 'All Areas'} Committee {isAdmin && '(Admin View)'}</h1></div>
-                 <div className="flex gap-2">{isAdmin && <Button onClick={onReturnToAdmin}>Back</Button>}<Button onClick={() => setIsProfileOpen(true)} variant="outline">Profile</Button></div>
+                <div>
+                    <h1 className="text-3xl font-bold font-dynapuff">{user.area || 'Committee'} Dashboard</h1>
+                    <p className="text-gray-500 text-sm">Your assigned tasks and applications.</p>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setIsProfileOpen(true)}>Profile</Button>
+                    {isAdmin && <Button onClick={onReturnToAdmin}>Exit Admin View</Button>}
+                </div>
             </div>
-            <div className="flex gap-4 mb-6 border-b">{['tasks', 'team', 'documents'].map(t => <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold border-b-2 transition-colors capitalize ${activeTab === t ? 'border-brand-purple text-brand-purple' : 'border-transparent text-gray-400'}`}>{t}</button>)}</div>
-            {activeTab === 'tasks' && (
-                <div className="grid gap-4">
-                    {(isAdmin ? apps : apps.filter(a => assignments.some(asg => asg.applicationId === a.id))).map(app => (
-                        <Card key={app.id}>
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold text-lg">{app.projectTitle}</h3>
-                                    <Badge>{app.status}</Badge>
-                                </div>
-                                <Button size="sm" onClick={() => setSelectedApp(app)}>Evaluate</Button>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {apps.length === 0 && <p className="text-gray-500 col-span-3 text-center py-12">No tasks assigned yet.</p>}
+                
+                {apps.map(app => {
+                    const hasVoted = votes.some(v => v.appId === app.id && v.voterId === user.uid);
+                    const hasScored = scores.some(s => s.appId === app.id && s.scorerId === user.uid);
+                    
+                    let actionRequired = false;
+                    let statusBadge = <Badge variant="default">Pending</Badge>;
+                    let cardBorder = "border-l-gray-300";
+
+                    if (app.status === 'Submitted-Stage1') {
+                        if (hasVoted) {
+                             statusBadge = <Badge variant="success">Voted</Badge>;
+                             cardBorder = "border-l-green-500";
+                        } else {
+                             statusBadge = <Badge variant="warning">Vote Needed</Badge>;
+                             actionRequired = true;
+                             cardBorder = "border-l-orange-500";
+                        }
+                    } else if (app.status === 'Submitted-Stage2') {
+                        if (hasScored) {
+                             statusBadge = <Badge variant="success">Scored</Badge>;
+                             cardBorder = "border-l-green-500";
+                        } else {
+                             statusBadge = <Badge variant="warning">Score Needed</Badge>;
+                             actionRequired = true;
+                             cardBorder = "border-l-purple-500";
+                        }
+                    } else {
+                        statusBadge = <Badge>Info Only</Badge>;
+                    }
+
+                    return (
+                        <Card key={app.id} className={`flex flex-col h-full border-l-4 ${cardBorder} shadow-sm hover:shadow-md transition-shadow`}>
+                            <div className="flex justify-between items-start mb-4">
+                                <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">{app.ref}</span>
+                                {statusBadge}
+                            </div>
+                            
+                            <h3 className="font-bold text-lg mb-1 leading-tight line-clamp-2">{app.projectTitle}</h3>
+                            <p className="text-sm text-gray-500 mb-4">{app.orgName}</p>
+
+                            <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center gap-2">
+                                <Button size="sm" variant="outline" className="flex-1" onClick={() => printApplication(app)}>View PDF</Button>
+                                
+                                {actionRequired && app.status === 'Submitted-Stage1' && (
+                                    <>
+                                        <button onClick={() => handleVote(app.id, 'yes')} className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-2 rounded-lg text-sm font-bold transition-colors">Yes</button>
+                                        <button onClick={() => handleVote(app.id, 'no')} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-2 rounded-lg text-sm font-bold transition-colors">No</button>
+                                    </>
+                                )}
+                                
+                                {actionRequired && app.status === 'Submitted-Stage2' && (
+                                    <Button size="sm" className="bg-brand-purple text-white hover:bg-purple-800" onClick={() => setScoringApp(app)}>Score App</Button>
+                                )}
                             </div>
                         </Card>
-                    ))}
-                    {(!isAdmin && apps.filter(a => assignments.some(asg => asg.applicationId === a.id)).length === 0) && (
-                        <p className="text-gray-500">No assignments yet.</p>
-                    )}
-                </div>
-            )}
-            {activeTab === 'team' && <div className="grid md:grid-cols-2 gap-4">{team.map(m => <div key={m.uid} className="bg-white p-4 rounded-xl shadow flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-brand-purple text-white flex items-center justify-center font-bold">{m.displayName?.charAt(0)}</div><div><div className="font-bold">{m.displayName}</div><div className="text-xs text-gray-500">{m.email}</div></div></div>)}</div>}
-            {activeTab === 'documents' && <Card><h3 className="font-bold mb-4">Resources</h3><p className="text-gray-500">No documents yet.</p></Card>}
-            {selectedApp && <ScoreModal isOpen={!!selectedApp} onClose={() => setSelectedApp(null)} app={selectedApp} currentUser={user} onSubmit={async (s) => { await api.saveScore(s); setSelectedApp(null); }} threshold={settings.scoringThreshold} />}
+                    );
+                })}
+            </div>
+
             <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onSave={onUpdateUser} />
+            {scoringApp && <ScoringModal isOpen={!!scoringApp} onClose={() => setScoringApp(null)} app={scoringApp} user={user} onSave={refresh} />}
         </div>
     );
 };
 
 export const AdminDashboard: React.FC<{ onNavigatePublic: (v:string)=>void, onNavigateScoring: ()=>void }> = ({ onNavigatePublic, onNavigateScoring }) => {
-    const [activeTab, setActiveTab] = useState('overview');
-    const [users, setUsers] = useState<User[]>([]);
+    const [tab, setTab] = useState('overview');
     const [apps, setApps] = useState<Application[]>([]);
-    const [settings, setSettings] = useState<PortalSettings>({ stage1Visible: true, stage2Visible: false, votingOpen: false, scoringThreshold: 50 });
+    const [logs, setLogs] = useState<AuditLog[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [scores, setScores] = useState<Score[]>([]);
+    const [votes, setVotes] = useState<Vote[]>([]);
+    const [settings, setSettings] = useState<PortalSettings | null>(null);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [previewMode, setPreviewMode] = useState<'stage1' | 'stage2' | null>(null);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [thresholdInput, setThresholdInput] = useState(50);
+    const [isScoringMode, setIsScoringMode] = useState(false);
 
-    useEffect(() => {
-        api.getUsers()
-            .then(u => { 
-                setUsers(u); 
-                const me = u.find(x => x.role === 'admin'); 
-                if(me) setCurrentUser(me); 
-            })
-            .catch(e => console.error("Error loading users:", e));
+    const refresh = async () => {
+        const [a, l, u, s, v, set] = await Promise.all([
+            api.getApplications(),
+            api.getAuditLogs(),
+            api.getUsers(),
+            api.getScores(),
+            api.getVotes(),
+            api.getPortalSettings()
+        ]);
         
-        api.getApplications('All')
-            .then(setApps)
-            .catch(e => console.error("Error loading applications:", e));
-        
-        api.getPortalSettings()
-            .then(setSettings)
-            .catch(e => console.error("Error loading settings:", e));
-    }, []);
+        // Enrich apps with computed scores for the dashboard
+        const enriched = a.map(app => {
+            const appScores = s.filter(x => x.appId === app.id);
+            const appVotes = v.filter(x => x.appId === app.id);
+            const avg = appScores.length > 0 ? Math.round(appScores.reduce((sum, curr) => sum + curr.weightedTotal, 0) / appScores.length) : 0;
+            const yes = appVotes.filter(x => x.decision === 'yes').length;
+            const no = appVotes.filter(x => x.decision === 'no').length;
+            return { 
+                ...app, 
+                averageScore: avg, 
+                scoreCount: appScores.length,
+                voteCountYes: yes,
+                voteCountNo: no
+            };
+        });
 
-    const toggleSetting = async (key: keyof PortalSettings) => { const newS = { ...settings, [key]: !settings[key] }; await api.updatePortalSettings(newS); setSettings(newS); };
-    const updateThreshold = async (val: number) => { const newS = { ...settings, scoringThreshold: val }; await api.updatePortalSettings(newS); setSettings(newS); };
-    const refresh = () => api.getUsers().then(setUsers);
+        setApps(enriched);
+        setLogs(l);
+        setUsers(u);
+        setScores(s);
+        setVotes(v);
+        setSettings(set);
+        if (set) setThresholdInput(set.scoringThreshold);
+    };
+
+    useEffect(() => { refresh(); }, []);
+
+    const updateThreshold = async () => {
+        if (settings) {
+            await api.updatePortalSettings({ ...settings, scoringThreshold: thresholdInput });
+            await api.logAction({ adminId: auth.currentUser!.uid, action: 'UPDATE_THRESHOLD', targetId: 'global', details: { from: settings.scoringThreshold, to: thresholdInput } });
+            alert("Threshold updated globally.");
+            refresh();
+        }
+    };
+
+    const changeStatus = async (app: Application, status: ApplicationStatus) => {
+        if (!confirm(`Change status to ${status}?`)) return;
+        await api.updateApplication(app.id, { status });
+        await api.logAction({ adminId: auth.currentUser!.uid, action: 'STATUS_CHANGE', targetId: app.id, details: { from: app.status, to: status } });
+        refresh();
+    };
+
+    if (isScoringMode) {
+        return <ScoringMonitor onExit={() => setIsScoringMode(false)} />;
+    }
+
+    // Analytics Helpers
+    const committeeUsers = users.filter(u => u.role === 'committee');
+    const pendingReviews = apps.filter(a => a.status === 'Submitted-Stage1' || a.status === 'Submitted-Stage2').length;
+    const passedApps = apps.filter(a => (a.averageScore || 0) >= (settings?.scoringThreshold || 50)).length;
 
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-bold font-dynapuff text-brand-purple">Admin Console</h1>
-                <div className="flex gap-2"><Button variant="outline" onClick={() => onNavigatePublic('home')}>Public Site</Button><Button onClick={onNavigateScoring}>Score Mode</Button><Button onClick={() => setIsProfileOpen(true)}>My Profile</Button></div>
+                <h1 className="text-3xl font-bold font-dynapuff text-brand-purple">Admin Control</h1>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => onNavigatePublic('home')}>Public View</Button>
+                    <Button onClick={() => setIsScoringMode(true)}>Enter Scoring Mode</Button>
+                </div>
             </div>
-            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex overflow-x-auto max-w-full">
-                {['overview', 'rounds', 'applications', 'users', 'committees', 'documents', 'settings'].map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setActiveTab(t)}
-                        className={`px-6 py-2 rounded-lg font-bold transition-all capitalize ${activeTab === t ? 'bg-brand-purple text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}
-                    >
-                        {t}
-                    </button>
+
+            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm inline-flex overflow-x-auto">
+                {['overview', 'master', 'rounds', 'users', 'docs', 'logs'].map(t => (
+                  <button key={t} onClick={() => setTab(t)} className={`px-6 py-2 rounded-lg font-bold capitalize ${tab === t ? 'bg-brand-purple text-white' : 'text-gray-500 hover:bg-gray-50'}`}>{t}</button>
                 ))}
             </div>
-            {activeTab === 'overview' && <div className="grid gap-6"><div className="grid md:grid-cols-4 gap-4"><Card className="bg-purple-50 border-purple-100"><h3 className="text-purple-800 text-sm font-bold uppercase">Total Apps</h3><p className="text-3xl font-dynapuff">{apps.length}</p></Card><Card className="bg-blue-50 border-blue-100"><h3 className="text-blue-800 text-sm font-bold uppercase">Users</h3><p className="text-3xl font-dynapuff">{users.length}</p></Card></div><Card><h3 className="font-bold mb-4">Quick Actions</h3><Button className="w-full justify-start" onClick={() => exportToCSV(apps, 'apps')}>📥 Export CSV</Button><Button className="w-full justify-start bg-red-100 text-red-600 mt-2" onClick={() => seedDatabase().then(() => alert("Seeded!"))}>↻ Seed Database</Button></Card></div>}
-            {activeTab === 'rounds' && <AdminRounds />}
-            {activeTab === 'users' && <Card><div className="flex justify-between mb-4"><h3 className="font-bold text-xl">Users</h3><Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ User</Button></div><table className="w-full text-left"><thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Actions</th></tr></thead><tbody>{users.map(u => <tr key={u.uid} className="border-b"><td className="p-3">{u.displayName}</td><td className="p-3"><Badge>{u.role}</Badge></td><td className="p-3"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 mr-2">Edit</button><button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); }}} className="text-red-600">Delete</button></td></tr>)}</tbody></table></Card>}
-            {activeTab === 'committees' && <Card><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-2xl font-dynapuff">Committee Members</h3><Button size="sm" onClick={() => { setEditingUser({ role: 'committee' } as User); setIsUserModalOpen(true); }}>+ Add Member</Button></div><div className="grid md:grid-cols-2 gap-4">{users.filter(u => u.role === 'committee').map(u => <div key={u.uid} className="flex items-center gap-4 p-4 border rounded-xl hover:shadow-md transition-shadow bg-white relative group"><div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-xl">{u.displayName?.charAt(0)}</div><div><div className="font-bold">{u.displayName}</div><div className="text-xs text-gray-500">{u.area}</div></div><div className="ml-auto flex gap-2"><button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-500 font-bold text-sm hover:underline">Edit</button></div></div>)}</div></Card>}
-            {activeTab === 'documents' && <AdminDocCentre />}
-            {activeTab === 'applications' && (
+
+            {tab === 'overview' && (
+                <div className="space-y-6">
+                    {/* KPI Cards */}
+                    <div className="grid md:grid-cols-4 gap-4">
+                        <Card className="bg-purple-50 border-purple-200">
+                            <div className="text-3xl font-bold text-brand-purple">{apps.length}</div>
+                            <div className="text-xs text-purple-700 font-bold uppercase">Total Applications</div>
+                        </Card>
+                        <Card className="bg-orange-50 border-orange-200">
+                            <div className="text-3xl font-bold text-orange-600">{pendingReviews}</div>
+                            <div className="text-xs text-orange-700 font-bold uppercase">Pending Review</div>
+                        </Card>
+                        <Card className="bg-green-50 border-green-200">
+                            <div className="text-3xl font-bold text-green-600">{passedApps}</div>
+                            <div className="text-xs text-green-700 font-bold uppercase">Passed Threshold</div>
+                        </Card>
+                        <Card className="bg-blue-50 border-blue-200">
+                            <div className="text-3xl font-bold text-blue-600">{scores.length}</div>
+                            <div className="text-xs text-blue-700 font-bold uppercase">Total Scores Submitted</div>
+                        </Card>
+                    </div>
+
+                    {/* Charts & Settings Row */}
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <Card>
+                            <h3 className="font-bold mb-4">Application Status</h3>
+                            <BarChart data={[
+                                { label: 'Draft', value: apps.filter(a => a.status === 'Draft').length },
+                                { label: 'Submitted Stage 1', value: apps.filter(a => a.status === 'Submitted-Stage1').length },
+                                { label: 'Stage 2 Invited', value: apps.filter(a => a.status === 'Invited-Stage2').length },
+                                { label: 'Submitted Stage 2', value: apps.filter(a => a.status === 'Submitted-Stage2').length },
+                                { label: 'Funded', value: apps.filter(a => a.status === 'Funded').length }
+                            ]} />
+                        </Card>
+                        
+                        <Card>
+                            <h3 className="font-bold mb-4">Global Scoring Controls</h3>
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Pass Threshold (%)</label>
+                                <p className="text-xs text-gray-500 mb-3">Applications scoring below this will be flagged red in committee dashboards.</p>
+                                <div className="flex gap-2">
+                                    <Input type="number" value={thresholdInput} onChange={e => setThresholdInput(Number(e.target.value))} className="w-24" />
+                                    <Button onClick={updateThreshold}>Update Threshold</Button>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Committee Activity */}
+                    <Card>
+                        <h3 className="font-bold mb-4">Committee Activity</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50"><tr><th className="p-2">Member</th><th className="p-2">Area</th><th className="p-2">Scores Submitted</th></tr></thead>
+                                <tbody>
+                                    {committeeUsers.map(u => {
+                                        const count = scores.filter(s => s.scorerId === u.uid).length;
+                                        return (
+                                            <tr key={u.uid} className="border-b">
+                                                <td className="p-2 font-bold">{u.displayName}</td>
+                                                <td className="p-2">{u.area}</td>
+                                                <td className="p-2"><Badge variant={count > 0 ? 'success' : 'default'}>{count} Scores</Badge></td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {tab === 'master' && (
                 <Card>
                     <div className="flex justify-between mb-4">
-                        <h3 className="font-bold text-xl">All Applications</h3>
-                        <Button size="sm" onClick={() => exportToCSV(apps, 'all_apps')}>Export CSV</Button>
+                        <h3 className="font-bold text-xl">Master List</h3>
+                        <Button size="sm" onClick={() => exportToCSV(apps, 'master_export')}>Export CSV</Button>
                     </div>
-                    <div className="space-y-2">
-                        {apps.length === 0 ? (
-                            <p className="text-gray-500 py-8 text-center">No applications yet.</p>
-                        ) : (
-                            apps.map(a => (
-                                <div key={a.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-gray-50">
-                                    <div>
-                                        <div className="font-bold">{a.projectTitle}</div>
-                                        <div className="text-xs text-gray-500">{a.orgName} • {a.area}</div>
-                                    </div>
-                                    <Badge>{a.status}</Badge>
-                                </div>
-                            ))
-                        )}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4">Ref</th>
+                                    <th className="p-4">Project Title</th>
+                                    <th className="p-4">Area</th>
+                                    <th className="p-4">Stage 1 (Votes)</th>
+                                    <th className="p-4">Stage 2 (Score)</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {apps.map(app => (
+                                    <tr key={app.id} className="border-b hover:bg-gray-50 transition-colors">
+                                        <td className="p-4 font-mono text-gray-600 font-bold">{app.ref}</td>
+                                        <td className="p-4 font-bold text-gray-800">{app.projectTitle}</td>
+                                        <td className="p-4">{app.area}</td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="text-green-600 font-bold">{app.voteCountYes || 0} Yes</span>
+                                                <span className="text-gray-300">|</span>
+                                                <span className="text-red-500 font-bold">{app.voteCountNo || 0} No</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            {app.averageScore ? (
+                                                <Badge className={app.averageScore >= (settings?.scoringThreshold || 50) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                                    {app.averageScore}% ({app.scoreCount})
+                                                </Badge>
+                                            ) : '-'}
+                                        </td>
+                                        <td className="p-4"><Badge>{app.status}</Badge></td>
+                                        <td className="p-4">
+                                            <select className="border rounded p-1 text-xs" onChange={e => { if(e.target.value) changeStatus(app, e.target.value as ApplicationStatus) }}>
+                                                <option value="">Change Status...</option>
+                                                <option value="Invited-Stage2">Invite Stage 2</option>
+                                                <option value="Funded">Mark Funded</option>
+                                                <option value="Rejected-Stage1">Reject</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </Card>
             )}
-            {activeTab === 'settings' && <div className="grid md:grid-cols-2 gap-6"><Card><h3 className="font-bold text-xl mb-4">Lifecycle</h3><div className="space-y-4"><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 1 Open</span><input type="checkbox" checked={settings.stage1Visible} onChange={() => toggleSetting('stage1Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Stage 2 Open</span><input type="checkbox" checked={settings.stage2Visible} onChange={() => toggleSetting('stage2Visible')} /></label><label className="flex items-center justify-between p-4 bg-gray-50 rounded border"><span className="font-bold">Voting Open</span><input type="checkbox" checked={settings.votingOpen} onChange={() => toggleSetting('votingOpen')} /></label></div></Card><Card><h3 className="font-bold text-xl mb-4">Previews</h3><div className="space-y-4"><Button className="w-full" onClick={() => setPreviewMode('stage1')}>Preview Stage 1</Button><Button className="w-full" onClick={() => setPreviewMode('stage2')}>Preview Stage 2</Button></div></Card></div>}
-            {previewMode && <Modal isOpen={!!previewMode} onClose={() => setPreviewMode(null)} title="Preview"><div className="p-4 text-center bg-yellow-50 text-yellow-800 font-bold mb-4">Preview Mode</div>{previewMode === 'stage1' ? <DigitalStage1Form data={{}} onChange={()=>{}} onSubmit={e=>{e.preventDefault();}} onCancel={()=>setPreviewMode(null)} /> : <DigitalStage2Form data={{}} onChange={()=>{}} onSubmit={e=>{e.preventDefault();}} onCancel={()=>setPreviewMode(null)} />}</Modal>}
+
+            {tab === 'rounds' && <AdminRounds />}
+            
+            {tab === 'users' && (
+                <Card>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-xl">User Management</h3>
+                        <Button size="sm" onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}>+ New User</Button>
+                    </div>
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b"><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3">Area</th><th className="p-3">Action</th></tr></thead>
+                        <tbody>
+                            {users.map(u => (
+                                <tr key={u.uid} className="border-b">
+                                    <td className="p-3">{u.displayName || u.email}</td>
+                                    <td className="p-3"><Badge>{u.role}</Badge></td>
+                                    <td className="p-3">{u.area || '-'}</td>
+                                    <td className="p-3">
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 hover:underline mr-2">Edit</button>
+                                        <button onClick={async () => { if(confirm("Delete?")) { await api.deleteUser(u.uid); refresh(); } }} className="text-red-600 hover:underline">Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </Card>
+            )}
+
+            {tab === 'docs' && <AdminDocCentre />}
+
+            {tab === 'logs' && (
+                <Card>
+                    <h3 className="font-bold mb-4">Audit Logs</h3>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {logs.map(l => (
+                            <div key={l.id} className="text-xs p-2 border-b font-mono">
+                                <span className="text-gray-400">{new Date(l.timestamp).toLocaleString()}</span> 
+                                <span className="font-bold text-blue-600 mx-2">{l.action}</span>
+                                <span>{l.targetId}</span>
+                                {l.details && <span className="text-gray-500 ml-2">{JSON.stringify(l.details)}</span>}
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+            
             {isUserModalOpen && <UserFormModal isOpen={isUserModalOpen} onClose={() => setIsUserModalOpen(false)} user={editingUser} onSave={refresh} />}
-            {currentUser && <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={currentUser} onSave={setCurrentUser} />}
         </div>
     );
 };
