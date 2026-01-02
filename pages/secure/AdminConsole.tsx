@@ -347,7 +347,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateApplication(appId, { status: newStatus as any });
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'APP_STATUS_CHANGE',
           targetId: appId,
           details: { newStatus }
@@ -529,7 +529,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.adminCreateUser(newUser as User, newPassword);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_CREATE',
           targetId: newUser.email,
           details: { role: newUser.role }
@@ -548,7 +548,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateUser(user);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_UPDATE',
           targetId: user.uid,
           details: { role: user.role }
@@ -566,7 +566,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.deleteUser(uid);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_DELETE',
           targetId: uid
         });
@@ -772,7 +772,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.createRound({ ...newRound, id } as Round);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_CREATE',
           targetId: id,
           details: { name: newRound.name }
@@ -790,7 +790,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.deleteRound(id);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_DELETE',
           targetId: id
         });
@@ -805,7 +805,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateRound(round.id, round);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_UPDATE',
           targetId: round.id,
           details: { name: round.name, status: round.status }
@@ -823,7 +823,7 @@ const AdminConsole: React.FC = () => {
         const updated = { ...round, [field]: !round[field] };
         await DataService.updateRound(round.id, { [field]: !round[field] });
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_TOGGLE',
           targetId: round.id,
           details: { field, newValue: !round[field] }
@@ -1091,7 +1091,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.deleteDocument(id);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'DOCUMENT_DELETE',
           targetId: id,
           details: { name }
@@ -1107,7 +1107,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateDocument(doc.id, { name: doc.name, category: doc.category });
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'DOCUMENT_UPDATE',
           targetId: doc.id,
           details: { name: doc.name }
@@ -1404,7 +1404,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updatePortalSettings(localSettings);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'SETTINGS_UPDATE',
           targetId: 'global',
           details: localSettings
