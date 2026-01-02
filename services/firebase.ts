@@ -448,7 +448,19 @@ class AuthService {
   async getDocuments(): Promise<AdminDocument[]> {
       if (USE_DEMO_MODE) return this.mockGetDocs();
       const snap = await getDocs(collection(db, 'adminDocuments'));
-      return snap.docs.map(d => d.data() as AdminDocument);
+      return snap.docs.map(d => {
+        const data = d.data() as AdminDocument;
+        return { ...data, id: data.id || d.id };
+      });
+  }
+
+  async getPublicDocuments(): Promise<AdminDocument[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocs().then(docs => docs.filter(doc => doc.category !== 'committee-only'));
+      const snap = await getDocs(query(collection(db, 'adminDocuments'), where('category', 'in', ['general', 'minutes', 'policy'])));
+      return snap.docs.map(d => {
+        const data = d.data() as AdminDocument;
+        return { ...data, id: data.id || d.id };
+      });
   }
 
   async createDocument(docData: AdminDocument): Promise<void> {

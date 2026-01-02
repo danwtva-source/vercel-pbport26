@@ -1,22 +1,59 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PublicLayout } from '../../components/Layout';
-import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
-import { PUBLIC_DOCS } from '../../constants';
-
-type CategoryFilter = 'All' | 'Part 1' | 'Part 2';
+import { Badge, Card } from '../../components/UI';
+import { FileText, BookOpen, Info, FolderOpen, Download } from 'lucide-react';
+import { DataService } from '../../services/firebase';
+import { AdminDocument } from '../../types';
 
 const DocumentsPage: React.FC = () => {
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
+  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState('root');
+  const [loading, setLoading] = useState(true);
 
-  const filteredDocs = selectedCategory === 'All'
-    ? PUBLIC_DOCS
-    : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory);
+  useEffect(() => {
+    let isMounted = true;
+    const loadDocuments = async () => {
+      try {
+        const docs = await DataService.getPublicDocuments();
+        if (isMounted) {
+          setDocuments(docs);
+        }
+      } catch (error) {
+        console.error('Failed to load documents', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    loadDocuments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
+  const folders = useMemo(() => documents.filter(doc => doc.type === 'folder'), [documents]);
+  const files = useMemo(() => documents.filter(doc => doc.type === 'file'), [documents]);
+  const folderMap = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
 
-  const getCategoryCount = (category: CategoryFilter) => {
-    if (category === 'All') return PUBLIC_DOCS.length;
-    return PUBLIC_DOCS.filter(doc => doc.category === category).length;
+  const visibleFolders = folders.filter(folder => folder.parentId === currentFolderId);
+  const visibleFiles = files.filter(file => file.parentId === currentFolderId);
+
+  const folderPath: AdminDocument[] = [];
+  let cursor = currentFolderId;
+  while (cursor !== 'root') {
+    const folder = folderMap.get(cursor);
+    if (!folder) break;
+    folderPath.unshift(folder);
+    cursor = folder.parentId as string;
+  }
+
+  const handleDownload = (doc: AdminDocument) => {
+    if (!doc.url) {
+      alert('No file is attached to this document yet.');
+      return;
+    }
+    window.open(doc.url, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -69,95 +106,99 @@ const DocumentsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Filter */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <Filter size={20} className="text-purple-600" />
-            <h2 className="text-lg font-bold text-purple-900">Filter by Stage</h2>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {categories.map((category) => {
-              const isSelected = selectedCategory === category;
-              const count = getCategoryCount(category);
-
-              return (
+        {/* Documents */}
+        <div className="space-y-6 mb-12">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+            <button
+              onClick={() => setCurrentFolderId('root')}
+              className={`font-semibold ${currentFolderId === 'root' ? 'text-purple-700' : 'text-gray-600 hover:text-purple-700'}`}
+            >
+              All Documents
+            </button>
+            {folderPath.map((folder) => (
+              <React.Fragment key={folder.id}>
+                <span className="text-gray-400">/</span>
                 <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                    isSelected
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
-                  }`}
+                  onClick={() => setCurrentFolderId(folder.id)}
+                  className="font-semibold text-gray-600 hover:text-purple-700"
                 >
-                  {category}
-                  <span className={`ml-2 text-sm ${isSelected ? 'text-purple-200' : 'text-purple-500'}`}>
-                    ({count})
-                  </span>
+                  {folder.name}
                 </button>
-              );
-            })}
+              </React.Fragment>
+            ))}
           </div>
-        </div>
 
-        {/* Documents Grid */}
-        <div className="space-y-4 mb-12">
-          {filteredDocs.length === 0 ? (
+          {loading ? (
             <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
               <FileText size={48} className="text-purple-300 mx-auto mb-4" />
-              <p className="text-purple-600 font-semibold">No documents found in this category</p>
+              <p className="text-purple-600 font-semibold">Loading documents...</p>
             </div>
           ) : (
-            filteredDocs.map((doc, index) => (
-              <div
-                key={index}
-                className="bg-white border-2 border-purple-200 hover:border-purple-400 rounded-xl p-6 transition-all hover:shadow-lg group"
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`flex-shrink-0 w-14 h-14 rounded-lg flex items-center justify-center ${
-                    doc.category === 'Part 1'
-                      ? 'bg-purple-100 text-purple-600'
-                      : 'bg-teal-100 text-teal-600'
-                  }`}>
-                    <FileText size={28} />
+            <>
+              {visibleFolders.length > 0 && (
+                <Card>
+                  <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+                    <FolderOpen size={20} />
+                    Folders
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {visibleFolders.map(folder => (
+                      <button
+                        key={folder.id}
+                        className="p-4 text-left bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-400 transition"
+                        onClick={() => setCurrentFolderId(folder.id)}
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <FolderOpen className="text-amber-600" size={24} />
+                          <span className="font-bold text-gray-800 truncate">{folder.name}</span>
+                        </div>
+                        <Badge variant="amber">{folder.category}</Badge>
+                      </button>
+                    ))}
                   </div>
+                </Card>
+              )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div>
-                        <h3 className="text-lg font-bold text-purple-900 mb-1 font-display group-hover:text-purple-700 transition-colors">
-                          {doc.title}
-                        </h3>
-                        <p className="text-purple-700 text-sm leading-relaxed mb-3">
-                          {doc.desc}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${
-                            doc.category === 'Part 1'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-teal-100 text-teal-700'
-                          }`}>
-                            {doc.category}
-                          </span>
+              <Card>
+                <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+                  <FileText size={20} />
+                  Documents ({visibleFiles.length})
+                </h3>
+                <div className="space-y-3">
+                  {visibleFiles.map(doc => (
+                    <div
+                      key={doc.id}
+                      className="p-4 bg-white rounded-lg border border-gray-200 flex items-center justify-between hover:border-purple-300 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100">
+                          <FileText className="text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-800">{doc.name}</p>
+                          <div className="flex gap-2 mt-1">
+                            <Badge variant="gray">{doc.category}</Badge>
+                            <span className="text-xs text-gray-500">
+                              {new Date(doc.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
                         </div>
                       </div>
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 transition"
+                      >
+                        <Download size={16} />
+                        Download
+                      </button>
                     </div>
-                  </div>
-
-                  <a
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 group"
-                  >
-                    <Download size={18} />
-                    <span className="hidden sm:inline">Download</span>
-                    <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </a>
+                  ))}
+                  {visibleFiles.length === 0 && (
+                    <p className="text-gray-500 text-center py-8">No documents in this folder</p>
+                  )}
                 </div>
-              </div>
-            ))
+              </Card>
+            </>
           )}
         </div>
 

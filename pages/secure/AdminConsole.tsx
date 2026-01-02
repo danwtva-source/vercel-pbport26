@@ -1148,6 +1148,7 @@ const AdminConsole: React.FC = () => {
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [showFolderModal, setShowFolderModal] = useState(false);
     const [editingDoc, setEditingDoc] = useState<AdminDocument | null>(null);
+    const [currentFolderId, setCurrentFolderId] = useState<string>('root');
     const [newDoc, setNewDoc] = useState<Partial<AdminDocument>>({
       name: '',
       type: 'file',
@@ -1266,8 +1267,27 @@ const AdminConsole: React.FC = () => {
       }
     };
 
+    const handleOpenDocument = (doc: AdminDocument) => {
+      if (!doc.url) {
+        alert('No file is attached to this document yet.');
+        return;
+      }
+      window.open(doc.url, '_blank', 'noopener,noreferrer');
+    };
+
     const folders = documents.filter(d => d.type === 'folder');
     const files = documents.filter(d => d.type === 'file');
+    const folderMap = new Map(folders.map(folder => [folder.id, folder]));
+    const visibleFolders = folders.filter(folder => folder.parentId === currentFolderId);
+    const visibleFiles = files.filter(file => file.parentId === currentFolderId);
+    const folderPath: AdminDocument[] = [];
+    let cursor = currentFolderId;
+    while (cursor !== 'root') {
+      const folder = folderMap.get(cursor);
+      if (!folder) break;
+      folderPath.unshift(folder);
+      cursor = folder.parentId as string;
+    }
 
     return (
       <div className="space-y-6">
@@ -1277,27 +1297,64 @@ const AdminConsole: React.FC = () => {
             <p className="text-gray-600">Upload and manage resources for committee members</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowFolderModal(true)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setNewDoc((prev) => ({ ...prev, parentId: currentFolderId }));
+                setShowFolderModal(true);
+              }}
+            >
               <FolderOpen size={18} />
               New Folder
             </Button>
-            <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setNewDoc((prev) => ({ ...prev, parentId: currentFolderId }));
+                setShowUploadModal(true);
+              }}
+            >
               <Upload size={18} />
               Upload Document
             </Button>
           </div>
         </div>
 
+        {/* Breadcrumbs */}
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+          <button
+            onClick={() => setCurrentFolderId('root')}
+            className={`font-semibold ${currentFolderId === 'root' ? 'text-purple-700' : 'text-gray-600 hover:text-purple-700'}`}
+          >
+            All Documents
+          </button>
+          {folderPath.map((folder) => (
+            <React.Fragment key={folder.id}>
+              <span className="text-gray-400">/</span>
+              <button
+                onClick={() => setCurrentFolderId(folder.id)}
+                className="font-semibold text-gray-600 hover:text-purple-700"
+              >
+                {folder.name}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+
         {/* Folders */}
-        {folders.length > 0 && (
+        {visibleFolders.length > 0 && (
           <Card>
             <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
               <FolderOpen size={20} />
               Folders
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {folders.map(folder => (
-                <div key={folder.id} className="p-4 bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-400 transition cursor-pointer">
+              {visibleFolders.map(folder => (
+                <div
+                  key={folder.id}
+                  className="p-4 bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-400 transition cursor-pointer"
+                  onClick={() => setCurrentFolderId(folder.id)}
+                >
                   <div className="flex items-center gap-3 mb-2">
                     <FolderOpen className="text-amber-600" size={24} />
                     <span className="font-bold text-gray-800 truncate">{folder.name}</span>
@@ -1305,10 +1362,22 @@ const AdminConsole: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <Badge variant="amber">{folder.category}</Badge>
                     <div className="flex gap-1">
-                      <button onClick={() => setEditingDoc(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditingDoc(folder);
+                        }}
+                        className="p-1 hover:bg-amber-100 rounded transition text-amber-700"
+                      >
                         <Edit size={14} />
                       </button>
-                      <button onClick={() => handleDeleteDocument(folder.id, folder.name)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteDocument(folder.id, folder.name);
+                        }}
+                        className="p-1 hover:bg-red-100 rounded transition text-red-700"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -1323,10 +1392,10 @@ const AdminConsole: React.FC = () => {
         <Card>
           <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
             <FileText size={20} />
-            Documents ({files.length})
+            Documents ({visibleFiles.length})
           </h3>
           <div className="space-y-3">
-            {files.map(doc => (
+            {visibleFiles.map(doc => (
               <div key={doc.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between hover:border-purple-300 transition">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100">
@@ -1343,11 +1412,12 @@ const AdminConsole: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {doc.url && (
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700">
-                      <Eye size={16} />
-                    </a>
-                  )}
+                  <button
+                    onClick={() => handleOpenDocument(doc)}
+                    className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700"
+                  >
+                    <Eye size={16} />
+                  </button>
                   <button onClick={() => setEditingDoc(doc)} className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700">
                     <Edit size={16} />
                   </button>
@@ -1357,7 +1427,7 @@ const AdminConsole: React.FC = () => {
                 </div>
               </div>
             ))}
-            {files.length === 0 && (
+            {visibleFiles.length === 0 && (
               <p className="text-gray-500 text-center py-8">No documents uploaded yet</p>
             )}
           </div>

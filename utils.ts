@@ -46,6 +46,7 @@ export const ROUTES = {
     
     // Committee routes
     SCORING: '/portal/scoring',
+    DOCUMENTS: '/portal/documents',
     
     // Admin routes
     ADMIN: '/portal/admin',
