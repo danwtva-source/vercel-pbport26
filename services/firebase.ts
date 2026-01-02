@@ -1,8 +1,8 @@
 // services/firebase.ts
 import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
-import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
+import { initializeApp, getApp, getApps } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -35,16 +35,19 @@ let db: any;
 let storage: any;
 let secondaryApp: any;
 let secondaryAuth: any;
+const secondaryAppName = 'secondary';
 
 try {
   if (hasFirebaseConfig) {
-    app = initializeApp(firebaseConfig);
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
 
     // Create secondary app for admin user creation (prevents session switch)
-    secondaryApp = initializeApp(firebaseConfig, 'secondary');
+    secondaryApp = getApps().some(existing => existing.name === secondaryAppName)
+      ? getApp(secondaryAppName)
+      : initializeApp(firebaseConfig, secondaryAppName);
     secondaryAuth = getAuth(secondaryApp);
   } else if (!USE_DEMO_MODE) {
     console.error('❌ Cannot initialize Firebase: Missing configuration');
@@ -117,6 +120,28 @@ export const deleteProfileImage = async (imageUrl: string): Promise<void> => {
 };
 
 class AuthService {
+  private async resolveUserDocRef(uid?: string, email?: string) {
+    if (!db) return null;
+
+    if (uid) {
+      const directRef = doc(db, 'users', uid);
+      const directSnap = await getDoc(directRef);
+      if (directSnap.exists()) return directRef;
+
+      const uidQuery = query(collection(db, 'users'), where('uid', '==', uid));
+      const uidSnap = await getDocs(uidQuery);
+      if (!uidSnap.empty) return doc(db, 'users', uidSnap.docs[0].id);
+    }
+
+    if (email) {
+      const emailQuery = query(collection(db, 'users'), where('email', '==', email));
+      const emailSnap = await getDocs(emailQuery);
+      if (!emailSnap.empty) return doc(db, 'users', emailSnap.docs[0].id);
+    }
+
+    return null;
+  }
+
   // --- AUTH ---
   async login(id: string, pass: string): Promise<User> {
     if (USE_DEMO_MODE) return this.mockLogin(id, pass);
@@ -261,15 +286,8 @@ class AuthService {
 
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
       if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
-      // Logic to find user by UID field if doc ID differs
-      let ref = doc(db, 'users', uid);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-          const q = query(collection(db, 'users'), where('uid', '==', uid));
-          const qSnap = await getDocs(q);
-          if (qSnap.empty) throw new Error("User not found");
-          ref = doc(db, 'users', qSnap.docs[0].id);
-      }
+      const ref = await this.resolveUserDocRef(uid);
+      if (!ref) throw new Error("User not found");
 
       await setDoc(ref, u, { merge: true });
       if (auth.currentUser && auth.currentUser.uid === uid) {
@@ -342,6 +360,87 @@ class AuthService {
           throw new Error('Password is too weak (minimum 6 characters)');
         }
         throw new Error(`Failed to create user: ${error.message}`);
+      }
+  }
+
+  async normalizeUsers(): Promise<{ updated: number }> {
+      if (USE_DEMO_MODE) return { updated: 0 };
+      if (!db) throw new Error('Firebase not initialized');
+
+      const snap = await getDocs(collection(db, 'users'));
+      const batch = writeBatch(db);
+      let updated = 0;
+
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data() as User;
+        const normalizedRole = (data.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
+        const normalizedUid = data.uid || docSnap.id;
+        const updates: Partial<User> = {};
+
+        if (data.role !== normalizedRole) updates.role = normalizedRole;
+        if (data.uid !== normalizedUid) updates.uid = normalizedUid;
+
+        if (Object.keys(updates).length > 0) {
+          batch.set(doc(db, 'users', docSnap.id), updates, { merge: true });
+          updated += 1;
+        }
+      });
+
+      if (updated > 0) await batch.commit();
+      return { updated };
+  }
+
+  async checkAuthConsistency(users: User[]): Promise<{ missing: User[]; errors: { email: string; message: string }[]; checked: number }> {
+      if (USE_DEMO_MODE) return { missing: [], errors: [], checked: users.length };
+      if (!auth) throw new Error('Firebase auth not initialized');
+
+      const missing: User[] = [];
+      const errors: { email: string; message: string }[] = [];
+
+      for (const user of users) {
+        if (!user.email) continue;
+        try {
+          const methods = await fetchSignInMethodsForEmail(auth, user.email);
+          if (methods.length === 0) {
+            missing.push(user);
+          }
+        } catch (error: any) {
+          errors.push({ email: user.email, message: error?.message || 'Unknown error' });
+        }
+      }
+
+      return { missing, errors, checked: users.length };
+  }
+
+  async repairAuthUser(user: User, tempPassword: string): Promise<void> {
+      if (USE_DEMO_MODE) return;
+      if (!secondaryAuth || !db) throw new Error('Firebase not initialized');
+      if (!user.email || !tempPassword) throw new Error('Email and password required');
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, user.email, tempPassword);
+        const uid = userCredential.user.uid;
+
+        if (user.displayName) {
+          await updateProfile(userCredential.user, { displayName: user.displayName });
+        }
+
+        await signOut(secondaryAuth);
+
+        const ref = await this.resolveUserDocRef(user.uid, user.email);
+        if (!ref) throw new Error('User profile not found');
+
+        const normalizedRole = (user.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
+        await setDoc(ref, { uid, role: normalizedRole }, { merge: true });
+      } catch (error: any) {
+        try { await signOut(secondaryAuth); } catch {}
+        if (error.code === 'auth/email-already-in-use') {
+          throw new Error('Auth account already exists for this email');
+        }
+        if (error.code === 'auth/weak-password') {
+          throw new Error('Password is too weak (minimum 6 characters)');
+        }
+        throw new Error(`Failed to repair auth user: ${error.message}`);
       }
   }
 

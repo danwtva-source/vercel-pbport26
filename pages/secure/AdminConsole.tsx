@@ -44,6 +44,16 @@ const AdminConsole: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
   const [isScoringMode, setIsScoringMode] = useState(false);
+  const [authCheckRunning, setAuthCheckRunning] = useState(false);
+  const [authCheckResult, setAuthCheckResult] = useState<{
+    missing: User[];
+    errors: { email: string; message: string }[];
+    checked: number;
+  } | null>(null);
+  const [repairingUser, setRepairingUser] = useState<User | null>(null);
+  const [repairPassword, setRepairPassword] = useState('');
+  const [repairSubmitting, setRepairSubmitting] = useState(false);
+  const [normalizingUsers, setNormalizingUsers] = useState(false);
 
   // Data state
   const [applications, setApplications] = useState<Application[]>([]);
@@ -112,10 +122,61 @@ const AdminConsole: React.FC = () => {
       setAuditLogs(logsData);
       setScores(scoresData);
       setSettings(settingsData);
+      void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runAuthConsistencyCheck = async (usersData: User[]) => {
+    setAuthCheckRunning(true);
+    try {
+      const result = await DataService.checkAuthConsistency(usersData);
+      setAuthCheckResult(result);
+    } catch (error: any) {
+      setAuthCheckResult({
+        missing: [],
+        errors: [{ email: 'N/A', message: error?.message || 'Failed to check auth consistency' }],
+        checked: usersData.length
+      });
+    } finally {
+      setAuthCheckRunning(false);
+    }
+  };
+
+  const handleNormalizeUsers = async () => {
+    if (!confirm('Normalize roles and uid fields for all users? This updates Firestore records.')) return;
+    setNormalizingUsers(true);
+    try {
+      const result = await DataService.normalizeUsers();
+      alert(`User normalization complete. Updated ${result.updated} records.`);
+      await loadAllData();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to normalize users');
+    } finally {
+      setNormalizingUsers(false);
+    }
+  };
+
+  const handleRepairAuthUser = async () => {
+    if (!repairingUser) return;
+    if (repairPassword.length < 6) {
+      alert('Please enter a temporary password (minimum 6 characters).');
+      return;
+    }
+    setRepairSubmitting(true);
+    try {
+      await DataService.repairAuthUser(repairingUser, repairPassword);
+      alert(`Auth account created for ${repairingUser.email}. Share the temporary password securely.`);
+      setRepairingUser(null);
+      setRepairPassword('');
+      await loadAllData();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to repair auth account');
+    } finally {
+      setRepairSubmitting(false);
     }
   };
 
@@ -588,6 +649,63 @@ const AdminConsole: React.FC = () => {
           <p className="text-gray-600">Create, edit, and manage user accounts</p>
         </div>
 
+        <Card>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-purple-900">Auth Consistency Check</h3>
+              <p className="text-sm text-gray-600">
+                Verifies Firestore users against Firebase Auth sign-in methods.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => runAuthConsistencyCheck(users)} disabled={authCheckRunning}>
+                {authCheckRunning ? 'Checking...' : 'Recheck Auth Consistency'}
+              </Button>
+              <Button variant="secondary" onClick={handleNormalizeUsers} disabled={normalizingUsers}>
+                {normalizingUsers ? 'Normalizing...' : 'Normalize Roles & UID'}
+              </Button>
+            </div>
+          </div>
+
+          {authCheckResult && (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                Checked {authCheckResult.checked} users. Missing auth accounts: {authCheckResult.missing.length}.
+              </p>
+              {authCheckResult.errors.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-bold">Auth check warnings</p>
+                  <ul className="list-disc pl-5">
+                    {authCheckResult.errors.map(error => (
+                      <li key={`${error.email}-${error.message}`}>
+                        {error.email}: {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {authCheckResult.missing.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm font-bold text-red-700">Users missing Firebase Auth accounts</p>
+                  <div className="mt-2 space-y-2">
+                    {authCheckResult.missing.map(user => (
+                      <div key={user.uid} className="flex flex-col gap-2 rounded-lg bg-white p-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-gray-800">{user.displayName || user.email}</p>
+                          <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                        <Button variant="outline" onClick={() => setRepairingUser(user)}>
+                          Repair Auth Account
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
         {/* Create User */}
         <Card>
           <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
@@ -742,6 +860,30 @@ const AdminConsole: React.FC = () => {
                 <Button onClick={() => handleUpdateUser(editingUser)}>
                   <Save size={18} />
                   Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {repairingUser && (
+          <Modal isOpen={true} onClose={() => setRepairingUser(null)} title="Repair Auth Account" size="sm">
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Create a Firebase Auth account for <span className="font-bold">{repairingUser.email}</span>.
+                This will generate a temporary password that you should share securely.
+              </p>
+              <Input
+                label="Temporary Password"
+                type="password"
+                value={repairPassword}
+                onChange={(e) => setRepairPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setRepairingUser(null)}>Cancel</Button>
+                <Button onClick={handleRepairAuthUser} disabled={repairSubmitting}>
+                  {repairSubmitting ? 'Repairing...' : 'Create Auth Account'}
                 </Button>
               </div>
             </div>
