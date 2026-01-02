@@ -125,7 +125,7 @@ const AdminConsole: React.FC = () => {
     const invitedStage2 = applications.filter(a => a.status === 'Invited-Stage2').length;
     const submittedStage2 = applications.filter(a => a.status === 'Submitted-Stage2').length;
     const funded = applications.filter(a => a.status === 'Funded').length;
-    const rejected = applications.filter(a => a.status.includes('Rejected')).length;
+    const rejected = applications.filter(a => (a.status || '').includes('Rejected')).length;
 
     const committeeMembers = users.filter(u => u.role === 'committee').length;
     const adminUsers = users.filter(u => u.role === 'admin').length;
