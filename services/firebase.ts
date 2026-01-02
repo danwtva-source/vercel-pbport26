@@ -430,3 +430,32 @@ export const useAssignments = () => {
 
     return { assignments, assignCommittee };
 };
+
+// --- My Votes (Restored) ---
+export const useMyVotes = () => {
+    const [votes, setVotes] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+
+    useEffect(() => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        // Query scores where scorerId == user.uid
+        // Note: Requires index on 'scores' collection
+        const q = query(collection(db, 'scores'), where('scorerId', '==', user.uid));
+        
+        return onSnapshot(q, (snapshot) => {
+            const myVotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setVotes(myVotes);
+            setLoading(false);
+        }, (err) => {
+            console.error("Failed to load my votes", err);
+            setLoading(false);
+        });
+    }, [user]);
+
+    return { votes, loading };
+};
