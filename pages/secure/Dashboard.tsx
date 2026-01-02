@@ -38,7 +38,6 @@ const Dashboard: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedArea, setSelectedArea] = useState<string>('All');
 
   useEffect(() => {
     const user = DataService.getCurrentUser();
@@ -150,8 +149,6 @@ const Dashboard: React.FC = () => {
             scores={scores}
             assignments={assignments}
             currentUser={currentUser}
-            selectedArea={selectedArea}
-            setSelectedArea={setSelectedArea}
             navigate={navigate}
           />
         )}
@@ -328,8 +325,6 @@ interface CommitteeDashboardProps {
   scores: Score[];
   assignments: Assignment[];
   currentUser: User;
-  selectedArea: string;
-  setSelectedArea: (area: string) => void;
   navigate: any;
 }
 
@@ -339,8 +334,6 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   scores,
   assignments,
   currentUser,
-  selectedArea,
-  setSelectedArea,
   navigate
 }) => {
   const [scoringApp, setScoringApp] = useState<Application | null>(null);

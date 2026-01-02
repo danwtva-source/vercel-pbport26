@@ -100,8 +100,8 @@ const ApplicationForm: React.FC = () => {
         return;
       }
 
-      // Check permissions
-      if (currentUser?.role === UserRole.APPLICANT && app.userId !== currentUser.uid) {
+      // Check permissions - applicants can only view their own applications
+      if (roleToUserRole(currentUser?.role) === UserRole.APPLICANT && app.userId !== currentUser.uid) {
         setError('You do not have permission to view this application');
         setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
@@ -356,9 +356,10 @@ const ApplicationForm: React.FC = () => {
 
   // Determine if form is read-only
   const isReadOnly = () => {
-    if (currentUser?.role === UserRole.ADMIN) return false;
-    if (currentUser?.role === UserRole.COMMITTEE) return true;
-    if (currentUser?.role === UserRole.APPLICANT) {
+    const userRole = roleToUserRole(currentUser?.role);
+    if (userRole === UserRole.ADMIN) return false;
+    if (userRole === UserRole.COMMITTEE) return true;
+    if (userRole === UserRole.APPLICANT) {
       if (application.status === 'Draft') return false;
       if (application.status === 'Invited-Stage2' && formStage === 'part2') return false;
       return true;
@@ -449,7 +450,7 @@ const ApplicationForm: React.FC = () => {
         {readOnly && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
             <p className="text-sm text-blue-800 font-medium">
-              This application is in read-only mode. {currentUser.role === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
+              This application is in read-only mode. {roleToUserRole(currentUser.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
             </p>
           </div>
         )}

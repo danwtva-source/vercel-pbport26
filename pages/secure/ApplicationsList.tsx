@@ -316,7 +316,7 @@ const ApplicationsList: React.FC = () => {
                     <tr
                       key={app.id}
                       className="hover:bg-purple-50/50 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/portal/application/${app.id}`)}
+                      onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="font-mono text-sm font-bold text-purple-600">{app.ref}</span>
