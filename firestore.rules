@@ -98,8 +98,7 @@ service cloud.firestore {
 
       // Committee members can update their own scores (if not final)
       allow update: if isCommittee() &&
-                       resource.data.scorerId == request.auth.uid &&
-                       resource.data.isFinal == false;
+                       resource.data.scorerId == request.auth.uid;
 
       // Admins can read/write all scores (for management, but NOT create)
       allow read, update, delete: if isAdmin();
@@ -135,11 +134,17 @@ service cloud.firestore {
     }
 
     // Admin Documents collection (guidelines, resources, etc.)
-    match /documents/{docId} {
-      // Anyone authenticated can read documents
-      allow read: if isAuthenticated();
+    match /adminDocuments/{docId} {
+      // Public can read non-committee resources, committee/admin can read all
+      allow read: if resource.data.category != 'committee-only' || isCommittee() || isAdmin();
 
       // Only admins can manage documents
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Legacy documents collection (if used)
+    match /documents/{docId} {
+      allow read: if resource.data.category != 'committee-only' || isCommittee() || isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
