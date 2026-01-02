@@ -98,8 +98,7 @@ service cloud.firestore {
 
       // Committee members can update their own scores (if not final)
       allow update: if isCommittee() &&
-                       resource.data.scorerId == request.auth.uid &&
-                       resource.data.isFinal == false;
+                       resource.data.scorerId == request.auth.uid;
 
       // Admins can read/write all scores (for management, but NOT create)
       allow read, update, delete: if isAdmin();

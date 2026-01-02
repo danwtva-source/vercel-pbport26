@@ -48,7 +48,8 @@ export const ScoringModal: React.FC<ScoringModalProps> = ({ isOpen, onClose, app
       breakdown,
       notes,
       isFinal: true,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     await DataService.saveScore(newScore);

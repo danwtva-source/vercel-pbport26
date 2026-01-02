@@ -228,7 +228,8 @@ const ScoringMatrix: React.FC = () => {
         breakdown,
         notes,
         isFinal: true,
-        createdAt: new Date().toISOString()
+        createdAt: selectedApp.myScore?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       await DataService.saveScore(score);

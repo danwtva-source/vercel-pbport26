@@ -137,6 +137,7 @@ export interface Score {
   notes?: Record<string, string>; // criterionId -> comment
   isFinal?: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // Scoring State (from v8) - Alternative scoring representation

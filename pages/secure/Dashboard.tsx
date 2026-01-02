@@ -26,7 +26,8 @@ import {
   ChevronRight,
   Briefcase,
   Vote as VoteIcon,
-  Lock
+  Lock,
+  UserCircle
 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -593,10 +594,10 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
         <h2 className="text-xl font-bold text-gray-900 font-display mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <QuickActionCard
-            icon={<BarChart3 />}
-            title="Matrix Evaluation"
-            description="Score applications"
-            onClick={() => navigate('/portal/scoring')}
+            icon={<UserCircle />}
+            title="My Profile"
+            description="Update your committee profile"
+            onClick={() => navigate('/portal/settings')}
           />
           <QuickActionCard
             icon={<Briefcase />}
