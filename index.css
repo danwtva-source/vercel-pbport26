@@ -13,12 +13,12 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #9333ea;
+  @apply bg-brand-purple;
   border-radius: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #7e22ce;
+  @apply bg-brand-darkPurple;
 }
 
 /* Animation utilities */
