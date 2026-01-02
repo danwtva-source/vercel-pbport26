@@ -73,3 +73,17 @@ These changes introduce new Firestore collections (`rounds`, `assignments`) and 
 - Applicants should have no access to these collections.
 
 Further enhancements could include per‑round scoring criteria editing, budget per area, audit logging, and deeper integration of round stages into applicant flows.
+
+## 2025‑12‑09 Updates
+
+### Role persistence and routing
+
+* Added a `getUserById(uid)` method to **AuthService** in `services/firebase.ts`. This helper fetches a user document from Firestore by UID (and supports demo mode). It is used when restoring a session after a page reload.
+* Updated **App.tsx** to import `useEffect` and `auth` from the Firebase service. The app now listens for authentication state changes via `auth.onAuthStateChanged` and, when a user is authenticated, retrieves their profile using `getUserById()`. This ensures that the correct dashboard is displayed on refresh or direct navigation.
+* Added a secondary `useEffect` to keep the visible page in sync with the user’s role whenever it changes. If a user is an admin, the page automatically becomes `admin`, and similarly for committee or applicant roles.
+
+These changes fix a bug where committee users sometimes saw the applicant dashboard after logging in or refreshing the page. They also make the login state persistent across page reloads.
+
+### Notes
+
+These updates are backward compatible and do not alter existing UI structure or styling. They simply improve the authentication flow and routing logic so the portal behaves consistently.

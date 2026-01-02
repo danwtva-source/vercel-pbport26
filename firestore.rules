@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for role checking
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    function isCommittee() {
+      return isAuthenticated() && getUserData().role == 'committee';
+    }
+
+    function isApplicant() {
+      return isAuthenticated() && getUserData().role == 'applicant';
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function committeeAreaMatches(area) {
+      return getUserData().area == area || area == 'Cross-Area';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Anyone can read user profiles (needed for displaying names, etc.)
+      allow read: if isAuthenticated();
+
+      // Users can update their own profile (not role or area)
+      allow update: if isOwner(userId) &&
+                       request.resource.data.role == resource.data.role &&
+                       request.resource.data.area == resource.data.area;
+
+      // Only admins can create, delete users, or change roles/areas
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin();
+    }
+
+    // Applications collection
+    match /applications/{appId} {
+      // Public: Anyone can read applications (for public voting page)
+      allow read: if true;
+
+      // Applicants can create their own applications
+      allow create: if isAuthenticated() &&
+                       request.auth.uid == request.resource.data.applicantId;
+
+      // Applicants can update their own applications
+      allow update: if isAuthenticated() &&
+                       request.auth.uid == resource.data.applicantId;
+
+      // Applicants can delete their own draft applications
+      allow delete: if isAuthenticated() &&
+                       request.auth.uid == resource.data.applicantId &&
+                       resource.data.status == 'Draft';
+
+      // Admins can do everything with applications
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Votes collection
+    match /votes/{voteId} {
+      // Anyone authenticated can read votes (for counting)
+      allow read: if isAuthenticated();
+
+      // Committee members can create votes for applications in their area
+      allow create: if isCommittee() &&
+                       request.resource.data.voterId == request.auth.uid &&
+                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
+
+      // Committee members can update their own votes
+      allow update: if isCommittee() &&
+                       resource.data.voterId == request.auth.uid;
+
+      // Admins can read/write all votes (for management)
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Scores collection
+    match /scores/{scoreId} {
+      // Anyone authenticated can read scores (for transparency)
+      allow read: if isAuthenticated();
+
+      // Committee members can create scores for applications in their area
+      allow create: if isCommittee() &&
+                       request.resource.data.scorerId == request.auth.uid &&
+                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
+
+      // Committee members can update their own scores (if not final)
+      allow update: if isCommittee() &&
+                       resource.data.scorerId == request.auth.uid &&
+                       resource.data.isFinal == false;
+
+      // Admins can read/write all scores (for management, but NOT create)
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Rounds collection
+    match /rounds/{roundId} {
+      // Anyone can read rounds (for public information)
+      allow read: if true;
+
+      // Only admins can manage rounds
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Assignments collection (committee task assignments)
+    match /assignments/{assignmentId} {
+      // Committee members can read their own assignments
+      allow read: if isAuthenticated() &&
+                     (resource.data.committeeId == request.auth.uid || isAdmin());
+
+      // Only admins can create, update, delete assignments
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Portal Settings collection
+    match /portalSettings/{settingId} {
+      // Anyone can read portal settings (needed for feature flags)
+      allow read: if true;
+
+      // Only admins can update settings
+      allow update: if isAdmin();
+      allow create, delete: if isAdmin();
+    }
+
+    // Admin Documents collection (guidelines, resources, etc.)
+    match /documents/{docId} {
+      // Anyone authenticated can read documents
+      allow read: if isAuthenticated();
+
+      // Only admins can manage documents
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Audit Logs collection
+    match /auditLogs/{logId} {
+      // Only admins can read audit logs
+      allow read: if isAdmin();
+
+      // Audit logs are append-only (no updates or deletes)
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}
