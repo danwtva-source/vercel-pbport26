@@ -2,7 +2,6 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   onAuthStateChanged, 
-  User as FirebaseUser,
   signOut as firebaseSignOut
 } from 'firebase/auth';
 import { 
@@ -20,7 +19,8 @@ import {
   onSnapshot,
   Timestamp,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  runTransaction
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -37,7 +37,9 @@ import {
   UserRole, 
   DocumentFolder, 
   PBDocument, 
-  CommitteeAssignment 
+  CommitteeAssignment,
+  PortalSettings,
+  AuditLog
 } from '../types';
 
 // --- Configuration ---
@@ -101,7 +103,7 @@ export const useAuth = () => {
   return { user, role, loading, logout };
 };
 
-// --- Applications Hook (Requested Integration) ---
+// --- Applications Hook (CRITICAL FIX FOR CRASH) ---
 export const useApplications = (assignedAreaId?: string) => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,10 +163,7 @@ export const useUsers = () => {
 
   const fetchUsers = () => {
     setLoading(true);
-    // Simple query to get all users
     const q = query(collection(db, 'users'));
-    
-    // Using onSnapshot for real-time updates in admin console
     return onSnapshot(q, 
         (snapshot) => {
             const userList = snapshot.docs.map(doc => ({ 
@@ -215,6 +214,79 @@ export const useRounds = () => {
   return { rounds, loading, error };
 };
 
+// --- Portal Settings Hook (Restored) ---
+export const usePortalSettings = () => {
+  const [settings, setSettings] = useState<PortalSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const docRef = doc(db, 'settings', 'global'); // Assumes singleton settings doc
+    const unsubscribe = onSnapshot(docRef, (doc) => {
+      if (doc.exists()) {
+        setSettings(doc.data() as PortalSettings);
+      } else {
+        // Init default if missing
+        setSettings({ maintenanceMode: false, currentRoundId: 'round-1' });
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const updateSettings = async (newSettings: Partial<PortalSettings>) => {
+    await setDoc(doc(db, 'settings', 'global'), newSettings, { merge: true });
+  };
+
+  return { settings, loading, updateSettings };
+};
+
+// --- Stats Hook (Restored) ---
+export const useStats = () => {
+    const [stats, setStats] = useState<any>({
+        totalApplications: 0,
+        totalBudget: 0,
+        applicationsByStatus: {},
+        applicationsByArea: {}
+    });
+
+    useEffect(() => {
+        // This is a simplified client-side aggregation. 
+        // In production with thousands of docs, use Firebase Aggregation Queries or Cloud Functions.
+        const q = query(collection(db, 'applications'));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            let totalApps = 0;
+            let totalReq = 0;
+            const byStatus: any = {};
+            const byArea: any = {};
+
+            snap.forEach(doc => {
+                const data = doc.data();
+                totalApps++;
+                totalReq += (data.amountRequested || 0);
+                
+                // Count Status
+                const s = data.status || 'draft';
+                byStatus[s] = (byStatus[s] || 0) + 1;
+
+                // Count Area
+                const a = data.areaId || 'unassigned';
+                byArea[a] = (byArea[a] || 0) + 1;
+            });
+
+            setStats({
+                totalApplications: totalApps,
+                totalBudget: totalReq,
+                applicationsByStatus: byStatus,
+                applicationsByArea: byArea
+            });
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    return stats;
+};
+
 // --- Utility Functions ---
 
 export const updateUserProfile = async (uid: string, data: Partial<UserProfile>) => {
@@ -258,7 +330,7 @@ export const getApplication = async (id: string): Promise<Application | null> =>
     return null;
 };
 
-// --- Documents & Folders Management (Restored from Original) ---
+// --- Documents & Folders Management (Restored) ---
 
 export const useDocumentFolders = () => {
     const [folders, setFolders] = useState<DocumentFolder[]>([]);
@@ -323,7 +395,7 @@ export const useDocuments = (folderId: string) => {
     return { documents, loading, uploadDocument, removeDocument };
 };
 
-// --- Audit Logging (Restored from Original) ---
+// --- Audit Logging (Restored) ---
 export const logAuditEvent = async (userId: string, action: string, details: any) => {
     try {
         await addDoc(collection(db, 'auditLogs'), {
@@ -337,7 +409,7 @@ export const logAuditEvent = async (userId: string, action: string, details: any
     }
 };
 
-// --- Committee Assignments (Restored from Original) ---
+// --- Committee Assignments (Restored) ---
 export const useAssignments = () => {
     const [assignments, setAssignments] = useState<CommitteeAssignment[]>([]);
     
@@ -349,8 +421,6 @@ export const useAssignments = () => {
     }, []);
 
     const assignCommittee = async (userId: string, areaId: string) => {
-        // Check if exists first to avoid duplicates or update existing
-        // Simplified for this scope: just add new record
         await addDoc(collection(db, 'assignments'), {
             userId,
             areaId,
