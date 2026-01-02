@@ -1,461 +1,597 @@
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signOut as firebaseSignOut
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc,
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot,
-  Timestamp,
-  addDoc,
-  serverTimestamp,
-  runTransaction
-} from 'firebase/firestore';
-import { 
-  getStorage, 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject 
-} from 'firebase/storage';
-import { useState, useEffect } from 'react';
-import { 
-  UserProfile, 
-  Application, 
-  Round, 
-  UserRole, 
-  DocumentFolder, 
-  PBDocument, 
-  CommitteeAssignment,
-  PortalSettings,
-  AuditLog
-} from '../types';
+// services/firebase.ts
+import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
+import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
-// --- Configuration ---
+// --- CONFIGURATION ---
+// Set to FALSE for production with Firebase configured.
+// Set to TRUE for demo/development without Firebase.
+export const USE_DEMO_MODE = false; // Production mode with Firebase
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Check if Firebase config is available, otherwise log warning
+const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
-// --- Auth Hook ---
-export const useAuth = () => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [loading, setLoading] = useState(true);
+if (!hasFirebaseConfig && !USE_DEMO_MODE) {
+  console.warn('⚠️ Firebase configuration missing. Set environment variables or enable USE_DEMO_MODE.');
+}
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const docRef = doc(db, 'users', firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-          
-          if (docSnap.exists()) {
-            const userData = docSnap.data() as UserProfile;
-            setUser({ ...userData, uid: firebaseUser.uid });
-            setRole(userData.role);
-          } else {
-            // Fallback for new users not yet in Firestore
-            setUser({ 
-                uid: firebaseUser.uid, 
-                email: firebaseUser.email || '', 
-                role: 'applicant', 
-                displayName: firebaseUser.displayName || '' 
-            });
-            setRole('applicant');
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-        }
-      } else {
-        setUser(null);
-        setRole(null);
-      }
-      setLoading(false);
-    });
+// Initialize Firebase only if config is available
+let app: any;
+let auth: any;
+let db: any;
+let storage: any;
 
-    return () => unsubscribe();
-  }, []);
+try {
+  if (hasFirebaseConfig) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+  } else if (!USE_DEMO_MODE) {
+    console.error('❌ Cannot initialize Firebase: Missing configuration');
+  }
+} catch (error) {
+  console.error('❌ Firebase initialization error:', error);
+}
 
-  const logout = () => firebaseSignOut(auth);
+export { auth, db, storage };
 
-  return { user, role, loading, logout };
+const DEFAULT_SETTINGS: PortalSettings = {
+    stage1Visible: true,
+    stage2Visible: false,
+    votingOpen: false,
+    scoringThreshold: 50
 };
 
-// --- Applications Hook (CRITICAL FIX FOR CRASH) ---
-export const useApplications = (assignedAreaId?: string) => {
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+// --- HELPER: CSV Export ---
+export const exportToCSV = (data: any[], filename: string) => {
+    if (!data.length) return;
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            const val = row[header] ? String(row[header]).replace(/,/g, ' ').replace(/"/g, '""') : '';
+            return `"${val}"`;
+        }).join(','))
+    ].join('\n');
 
-  useEffect(() => {
-    // 1. Build the query
-    // Default: Sort by newest first
-    let q = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.csv`;
+    link.click();
+};
 
-    // 2. If a specific area is assigned (Committee), filter server-side
-    //    This ensures they only download relevant data.
-    if (assignedAreaId) {
-       q = query(
-         collection(db, 'applications'), 
-         where('areaId', '==', assignedAreaId),
-         orderBy('createdAt', 'desc')
-       );
-    }
+// --- HELPER: Upload Generic File to Firebase Storage ---
+export const uploadFile = async (path: string, file: File): Promise<string> => {
+    if (USE_DEMO_MODE) return `https://fake-url.com/${file.name}`;
+    if (!storage) throw new Error("Storage not initialized");
 
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const apps = snapshot.docs.map(doc => ({ 
-            id: doc.id, 
-            ...doc.data() 
-        } as Application));
-        setApplications(apps);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Failed to fetch applications:", err);
-        setError(err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [assignedAreaId]);
-
-  const updateStatus = async (id: string, status: Application['status']) => {
     try {
-      await updateDoc(doc(db, 'applications', id), { status });
-    } catch (err) {
-      console.error("Error updating status:", err);
-      throw err;
+        const storageRef = ref(storage, path);
+        const snapshot = await uploadBytes(storageRef, file);
+        return await getDownloadURL(snapshot.ref);
+    } catch (error) {
+        console.error("Upload failed:", error);
+        throw new Error("File upload failed.");
     }
-  };
-
-  return { applications, loading, error, updateStatus };
 };
 
-// --- Users Hook (For Admin Console) ---
-export const useUsers = () => {
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+// --- HELPER: Upload Profile Image ---
+export const uploadProfileImage = async (userId: string, file: File): Promise<string> => {
+    const timestamp = Date.now();
+    const ext = file.name.split('.').pop();
+    const filename = `profile_${userId}_${timestamp}.${ext}`;
+    return uploadFile(`profile-images/${filename}`, file);
+};
 
-  const fetchUsers = () => {
-    setLoading(true);
-    const q = query(collection(db, 'users'));
-    return onSnapshot(q, 
-        (snapshot) => {
-            const userList = snapshot.docs.map(doc => ({ 
-                uid: doc.id, 
-                ...doc.data() 
-            } as UserProfile));
-            setUsers(userList);
-            setLoading(false);
-        },
-        (err) => {
-            console.error("Error fetching users:", err);
-            setError(err);
-            setLoading(false);
+// --- HELPER: Delete Old Profile Image ---
+export const deleteProfileImage = async (imageUrl: string): Promise<void> => {
+    if (USE_DEMO_MODE || !storage || !imageUrl || !imageUrl.includes('firebasestorage')) return;
+    try {
+        const decodedUrl = decodeURIComponent(imageUrl);
+        const pathMatch = decodedUrl.match(/\/o\/(.+?)\?/);
+        if (pathMatch && pathMatch[1]) {
+            await deleteObject(ref(storage, pathMatch[1]));
         }
-    );
-  };
-
-  useEffect(() => {
-    const unsubscribe = fetchUsers();
-    return () => unsubscribe();
-  }, []);
-
-  return { users, loading, error, refresh: fetchUsers };
+    } catch (e) { console.warn("Delete image failed", e); }
 };
 
-// --- Rounds Hook (For Admin Rounds) ---
-export const useRounds = () => {
-  const [rounds, setRounds] = useState<Round[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+class AuthService {
+  // --- AUTH ---
+  async login(id: string, pass: string): Promise<User> {
+    if (USE_DEMO_MODE) return this.mockLogin(id, pass);
+    if (!auth || !db) throw new Error("Firebase not initialized");
 
-  useEffect(() => {
-    const q = query(collection(db, 'rounds'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const roundsData = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-      } as Round));
-      setRounds(roundsData);
-      setLoading(false);
-    }, (err) => {
-        setError(err);
-        setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    try {
+      const isEmail = id.includes('@');
+      const email = isEmail ? id : `${id}@committee.local`;
+      const uc = await signInWithEmailAndPassword(auth, email, pass);
+      return await this.getUserById(uc.user.uid) || { uid: uc.user.uid, email: uc.user.email || email, role: 'applicant' };
+    } catch (error) {
+      console.error('Login error:', error);
+      throw new Error('Invalid credentials or user not found');
+    }
+  }
 
-  return { rounds, loading, error };
-};
+  async register(email: string, pass: string, name: string): Promise<User> {
+    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
+    try {
+      const uc = await createUserWithEmailAndPassword(auth, email, pass);
+      const u: User = {
+        uid: uc.user.uid,
+        email,
+        username: email.split('@')[0],
+        displayName: name,
+        role: 'applicant',
+        createdAt: Date.now()
+      };
+      await setDoc(doc(db, 'users', u.uid), u);
+      return u;
+    } catch (error) { throw new Error('Failed to create account'); }
+  }
 
-// --- Portal Settings Hook (Restored) ---
-export const usePortalSettings = () => {
-  const [settings, setSettings] = useState<PortalSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  async logout(): Promise<void> {
+    if (USE_DEMO_MODE) {
+      localStorage.removeItem('pb_user');
+      return;
+    }
+    try {
+      await signOut(auth);
+      localStorage.removeItem('pb_user');
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw new Error('Failed to logout');
+    }
+  }
 
-  useEffect(() => {
-    const docRef = doc(db, 'settings', 'global'); // Assumes singleton settings doc
-    const unsubscribe = onSnapshot(docRef, (doc) => {
-      if (doc.exists()) {
-        setSettings(doc.data() as PortalSettings);
-      } else {
-        // Init default if missing
-        setSettings({ maintenanceMode: false, currentRoundId: 'round-1' });
+  getCurrentUser(): User | null {
+    const stored = localStorage.getItem('pb_user');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        return null;
       }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const updateSettings = async (newSettings: Partial<PortalSettings>) => {
-    await setDoc(doc(db, 'settings', 'global'), newSettings, { merge: true });
-  };
-
-  return { settings, loading, updateSettings };
-};
-
-// --- Stats Hook (Restored) ---
-export const useStats = () => {
-    const [stats, setStats] = useState<any>({
-        totalApplications: 0,
-        totalBudget: 0,
-        applicationsByStatus: {},
-        applicationsByArea: {}
-    });
-
-    useEffect(() => {
-        // This is a simplified client-side aggregation. 
-        // In production with thousands of docs, use Firebase Aggregation Queries or Cloud Functions.
-        const q = query(collection(db, 'applications'));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            let totalApps = 0;
-            let totalReq = 0;
-            const byStatus: any = {};
-            const byArea: any = {};
-
-            snap.forEach(doc => {
-                const data = doc.data();
-                totalApps++;
-                totalReq += (data.amountRequested || 0);
-                
-                // Count Status
-                const s = data.status || 'draft';
-                byStatus[s] = (byStatus[s] || 0) + 1;
-
-                // Count Area
-                const a = data.areaId || 'unassigned';
-                byArea[a] = (byArea[a] || 0) + 1;
-            });
-
-            setStats({
-                totalApplications: totalApps,
-                totalBudget: totalReq,
-                applicationsByStatus: byStatus,
-                applicationsByArea: byArea
-            });
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    return stats;
-};
-
-// --- Utility Functions ---
-
-export const updateUserProfile = async (uid: string, data: Partial<UserProfile>) => {
-  const userRef = doc(db, 'users', uid);
-  await updateDoc(userRef, data);
-};
-
-export const updateRound = async (id: string, data: Partial<Round>) => {
-    const roundRef = doc(db, 'rounds', id);
-    await updateDoc(roundRef, data);
-};
-
-export const uploadFile = async (file: File, path: string): Promise<string> => {
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  return await getDownloadURL(storageRef);
-};
-
-export const deleteFile = async (path: string): Promise<void> => {
-    const storageRef = ref(storage, path);
-    await deleteObject(storageRef);
-};
-
-export const createApplication = async (data: Partial<Application>) => {
-  const colRef = collection(db, 'applications');
-  const docRef = await addDoc(colRef, {
-    ...data,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-    status: 'draft'
-  });
-  return docRef.id;
-};
-
-export const getApplication = async (id: string): Promise<Application | null> => {
-    const docRef = doc(db, 'applications', id);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-        return { id: snap.id, ...snap.data() } as Application;
     }
     return null;
-};
+  }
 
-// --- Documents & Folders Management (Restored) ---
+  // --- DATA ---
+  async getApplications(area?: string): Promise<Application[]> {
+      if (USE_DEMO_MODE) return this.mockGetApps(area);
+      if (!db) return [];
+      try {
+        // Fetch all apps and filter in memory for complex OR logic (Area OR Cross-Area)
+        // In production with large datasets, use specific queries.
+        const snap = await getDocs(collection(db, "applications"));
+        const apps = snap.docs.map(d => d.data() as Application);
 
-export const useDocumentFolders = () => {
-    const [folders, setFolders] = useState<DocumentFolder[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const q = query(collection(db, 'documentFolders'), orderBy('order', 'asc'));
-        return onSnapshot(q, (snapshot) => {
-            setFolders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentFolder)));
-            setLoading(false);
-        });
-    }, []);
-
-    const createFolder = async (name: string, visibility: 'public' | 'committee' | 'admin') => {
-        await addDoc(collection(db, 'documentFolders'), {
-            name,
-            visibility,
-            order: folders.length,
-            createdAt: serverTimestamp()
-        });
-    };
-
-    const deleteFolder = async (id: string) => {
-        await deleteDoc(doc(db, 'documentFolders', id));
-    };
-
-    return { folders, loading, createFolder, deleteFolder };
-};
-
-export const useDocuments = (folderId: string) => {
-    const [documents, setDocuments] = useState<PBDocument[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!folderId) return;
-        const q = query(collection(db, 'documents'), where('folderId', '==', folderId), orderBy('createdAt', 'desc'));
-        return onSnapshot(q, (snapshot) => {
-            setDocuments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PBDocument)));
-            setLoading(false);
-        });
-    }, [folderId]);
-
-    const uploadDocument = async (file: File, name: string) => {
-        const path = `documents/${folderId}/${Date.now()}_${file.name}`;
-        const url = await uploadFile(file, path);
-        await addDoc(collection(db, 'documents'), {
-            folderId,
-            name,
-            url,
-            storagePath: path,
-            type: file.type,
-            size: file.size,
-            createdAt: serverTimestamp()
-        });
-    };
-
-    const removeDocument = async (id: string, storagePath: string) => {
-        await deleteFile(storagePath);
-        await deleteDoc(doc(db, 'documents', id));
-    };
-
-    return { documents, loading, uploadDocument, removeDocument };
-};
-
-// --- Audit Logging (Restored) ---
-export const logAuditEvent = async (userId: string, action: string, details: any) => {
-    try {
-        await addDoc(collection(db, 'auditLogs'), {
-            userId,
-            action,
-            details,
-            timestamp: serverTimestamp()
-        });
-    } catch (e) {
-        console.error("Failed to log audit event", e);
-    }
-};
-
-// --- Committee Assignments (Restored) ---
-export const useAssignments = () => {
-    const [assignments, setAssignments] = useState<CommitteeAssignment[]>([]);
-    
-    useEffect(() => {
-        const q = query(collection(db, 'assignments'));
-        return onSnapshot(q, (snap) => {
-            setAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() } as CommitteeAssignment)));
-        });
-    }, []);
-
-    const assignCommittee = async (userId: string, areaId: string) => {
-        await addDoc(collection(db, 'assignments'), {
-            userId,
-            areaId,
-            assignedAt: serverTimestamp()
-        });
-    };
-
-    return { assignments, assignCommittee };
-};
-
-// --- My Votes (Restored) ---
-export const useMyVotes = () => {
-    const [votes, setVotes] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const { user } = useAuth();
-
-    useEffect(() => {
-        if (!user) {
-            setLoading(false);
-            return;
+        if (area && area !== 'All') {
+             return apps.filter(a => a.area === area || a.area === 'Cross-Area');
         }
+        return apps;
+      } catch (error) { return []; }
+  }
 
-        // Query scores where scorerId == user.uid
-        // Note: Requires index on 'scores' collection
-        const q = query(collection(db, 'scores'), where('scorerId', '==', user.uid));
-        
-        return onSnapshot(q, (snapshot) => {
-            const myVotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setVotes(myVotes);
-            setLoading(false);
-        }, (err) => {
-            console.error("Failed to load my votes", err);
-            setLoading(false);
-        });
-    }, [user]);
+  async createApplication(app: Application): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateApp(app);
+      try {
+        const id = app.id || 'app_' + Date.now();
+        await setDoc(doc(db, 'applications', id), { ...app, id, updatedAt: Date.now() });
+      } catch (e) { throw new Error('Failed to create application'); }
+  }
 
-    return { votes, loading };
+  async updateApplication(id: string, updates: Partial<Application>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateApp(id, updates);
+      try {
+        await setDoc(doc(db, 'applications', id), { ...updates, updatedAt: Date.now() }, { merge: true });
+      } catch (e) { throw new Error('Failed to update application'); }
+  }
+
+  async deleteApplication(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteApp(id);
+      try { await deleteDoc(doc(db, 'applications', id)); } catch (e) { throw new Error('Failed to delete application'); }
+  }
+
+  // --- VOTING & SCORING ---
+  async saveVote(vote: Vote): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSaveVote(vote);
+      const voteId = vote.id || `${vote.appId}_${vote.voterId}`;
+      await setDoc(doc(db, 'votes', voteId), { ...vote, id: voteId });
+  }
+
+  async getVotes(): Promise<Vote[]> {
+      if (USE_DEMO_MODE) return this.mockGetVotes();
+      const snap = await getDocs(collection(db, 'votes'));
+      return snap.docs.map(d => d.data() as Vote);
+  }
+
+  async saveScore(score: Score): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSaveScore(score);
+      const scoreId = score.id || `${score.appId}_${score.scorerId}`;
+      await setDoc(doc(db, 'scores', scoreId), { ...score, id: scoreId });
+  }
+
+  async getScores(): Promise<Score[]> {
+      if (USE_DEMO_MODE) return this.mockGetScores();
+      const snap = await getDocs(collection(db, 'scores'));
+      return snap.docs.map(d => d.data() as Score);
+  }
+
+  // --- USERS ---
+  async getUsers(): Promise<User[]> {
+      if (USE_DEMO_MODE) return this.mockGetUsers();
+      const snap = await getDocs(collection(db, 'users'));
+      return snap.docs.map(d => d.data() as User);
+  }
+
+  async updateUser(u: User): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateUser(u);
+      await setDoc(doc(db, 'users', u.uid), u, { merge: true });
+  }
+
+  async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
+      if (USE_DEMO_MODE) return this.mockUpdateProfile(uid, u);
+      // Logic to find user by UID field if doc ID differs
+      let ref = doc(db, 'users', uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+          const q = query(collection(db, 'users'), where('uid', '==', uid));
+          const qSnap = await getDocs(q);
+          if (qSnap.empty) throw new Error("User not found");
+          ref = doc(db, 'users', qSnap.docs[0].id);
+      }
+
+      await setDoc(ref, u, { merge: true });
+      if (auth.currentUser && auth.currentUser.uid === uid) {
+          await updateProfile(auth.currentUser, { 
+              displayName: u.displayName || auth.currentUser.displayName,
+              photoURL: u.photoUrl || auth.currentUser.photoURL
+          });
+      }
+      const finalSnap = await getDoc(ref);
+      return finalSnap.data() as User;
+  }
+
+  async getUserById(uid: string): Promise<User | null> {
+      if (USE_DEMO_MODE) return (DEMO_USERS as any[]).find(u => u.uid === uid) || null;
+      try {
+          const snap = await getDoc(doc(db, 'users', uid));
+          if (snap.exists()) return snap.data() as User;
+          const q = query(collection(db, 'users'), where('uid', '==', uid));
+          const qSnap = await getDocs(q);
+          return qSnap.empty ? null : qSnap.docs[0].data() as User;
+      } catch (e) { return null; }
+  }
+
+  async deleteUser(uid: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockDeleteUser(uid);
+    await deleteDoc(doc(db, 'users', uid));
+  }
+
+  async adminCreateUser(u: User, p: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
+      const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
+      await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
+  }
+
+  // --- DOCUMENTS ---
+  async getDocuments(): Promise<AdminDocument[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocs();
+      const snap = await getDocs(collection(db, 'adminDocuments'));
+      return snap.docs.map(d => d.data() as AdminDocument);
+  }
+
+  async createDocument(docData: AdminDocument): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDoc(docData);
+      await setDoc(doc(db, 'adminDocuments', docData.id), docData);
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDoc(id);
+      await deleteDoc(doc(db, 'adminDocuments', id));
+  }
+
+  async updateDocument(id: string, updates: Partial<AdminDocument>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDoc(id, updates);
+      await setDoc(doc(db, 'adminDocuments', id), updates, { merge: true });
+  }
+
+  // --- PASSWORD MANAGEMENT ---
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+      if (USE_DEMO_MODE) {
+        console.log('[DEMO] Password change requested');
+        return;
+      }
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error('No authenticated user');
+      // Re-authenticate before password change
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+  }
+
+  // --- ROUNDS & ASSIGNMENTS ---
+  async getRounds(): Promise<Round[]> {
+      if (USE_DEMO_MODE) return this.mockGetRounds();
+      const snap = await getDocs(collection(db, 'rounds'));
+      return snap.docs.map(d => d.data() as Round);
+  }
+
+  async createRound(round: Round): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateRound(round);
+      await setDoc(doc(db, 'rounds', round.id), round);
+  }
+
+  async updateRound(id: string, updates: Partial<Round>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateRound(id, updates);
+      await setDoc(doc(db, 'rounds', id), updates, { merge: true });
+  }
+
+  async deleteRound(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteRound(id);
+      await deleteDoc(doc(db, 'rounds', id));
+  }
+
+  async getAssignments(committeeId?: string): Promise<Assignment[]> {
+      if (USE_DEMO_MODE) return this.mockGetAssignments(committeeId);
+      const q = committeeId
+        ? query(collection(db, 'assignments'), where('committeeId', '==', committeeId))
+        : collection(db, 'assignments');
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as Assignment);
+  }
+
+  async createAssignment(assignment: Assignment): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateAssignment(assignment);
+      await setDoc(doc(db, 'assignments', assignment.id), assignment);
+  }
+
+  async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateAssignment(id, updates);
+      await setDoc(doc(db, 'assignments', id), updates, { merge: true });
+  }
+
+  async deleteAssignment(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteAssignment(id);
+      await deleteDoc(doc(db, 'assignments', id));
+  }
+
+  // --- SETTINGS ---
+  async getPortalSettings(): Promise<PortalSettings> {
+      if (USE_DEMO_MODE) return this.mockGetSettings();
+      const s = await getDoc(doc(db, 'portalSettings', 'global'));
+      return s.exists() ? (s.data() as PortalSettings) : DEFAULT_SETTINGS;
+  }
+
+  async updatePortalSettings(s: PortalSettings): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
+      await setDoc(doc(db, 'portalSettings', 'global'), s);
+  }
+
+  // --- AUDIT LOGGING ---
+  async logAction(params: { adminId: string; action: string; targetId: string; details?: Record<string, unknown>; }): Promise<void> {
+      if (USE_DEMO_MODE) { console.log(`[AUDIT]`, params); return; }
+      const id = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      await setDoc(doc(db, 'auditLogs', id), { ...params, id, timestamp: Date.now() });
+  }
+
+  async getAuditLogs(): Promise<AuditLog[]> {
+      if (USE_DEMO_MODE) return this.mockGetAuditLogs();
+      const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as AuditLog);
+  }
+
+  // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---
+  private getLocal<T>(k: string): T[] { return JSON.parse(localStorage.getItem(k) || '[]'); }
+  private setLocal<T>(k: string, v: T[]) { localStorage.setItem(k, JSON.stringify(v)); }
+
+  mockLogin(id: string, p: string): Promise<User> {
+    return new Promise((res, rej) => {
+      setTimeout(() => {
+        const users = this.getLocal<User>('users');
+        if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); }
+        let email = id.includes('@') ? id : `${id}@committee.local`;
+        const u = users.find(u => (u.email.toLowerCase() === email.toLowerCase() || u.username === id) && u.password === p);
+        u ? res(u) : rej(new Error("Invalid login"));
+      }, 500);
+    });
+  }
+
+  mockRegister(e: string, p: string, n: string): Promise<User> {
+    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' };
+    this.setLocal('users', [...this.getLocal('users'), u]);
+    return Promise.resolve(u);
+  }
+
+  mockGetApps(area?: string): Promise<Application[]> {
+    const apps = this.getLocal<Application>('apps');
+    if (apps.length === 0 && !localStorage.getItem('apps_init')) {
+      this.setLocal('apps', DEMO_APPS);
+      localStorage.setItem('apps_init', '1');
+      return Promise.resolve(DEMO_APPS);
+    }
+    return Promise.resolve(area && area !== 'All' ? apps.filter(a => a.area === area || a.area === 'Cross-Area') : apps);
+  }
+
+  mockCreateApp(a: any): Promise<void> {
+    const code = a.area?.substring(0,3).toUpperCase() || 'GEN';
+    const na = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), updatedAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' as ApplicationStatus };
+    this.setLocal('apps', [...this.getLocal('apps'), na]);
+    return Promise.resolve();
+  }
+
+  mockUpdateApp(id: string, up: any): Promise<void> {
+    const apps = this.getLocal<Application>('apps');
+    const i = apps.findIndex(a => a.id === id);
+    if(i>=0) { apps[i] = { ...apps[i], ...up, updatedAt: Date.now() }; this.setLocal('apps', apps); }
+    return Promise.resolve();
+  }
+
+  mockDeleteApp(id: string): Promise<void> {
+    this.setLocal('apps', this.getLocal<Application>('apps').filter(a => a.id !== id));
+    return Promise.resolve();
+  }
+
+  mockSaveVote(vote: Vote): Promise<void> {
+    const votes = this.getLocal<Vote>('votes');
+    const i = votes.findIndex(v => v.appId === vote.appId && v.voterId === vote.voterId);
+    if(i>=0) votes[i] = vote; else votes.push(vote);
+    this.setLocal('votes', votes);
+    return Promise.resolve();
+  }
+
+  mockGetVotes(): Promise<Vote[]> {
+    return Promise.resolve(this.getLocal('votes'));
+  }
+
+  mockSaveScore(s: Score): Promise<void> {
+    const scores = this.getLocal<Score>('scores');
+    const i = scores.findIndex(x => x.appId === s.appId && x.scorerId === s.scorerId);
+    if(i>=0) scores[i] = s; else scores.push(s);
+    this.setLocal('scores', scores);
+    return Promise.resolve();
+  }
+
+  mockGetScores(): Promise<Score[]> {
+    return Promise.resolve(this.getLocal('scores'));
+  }
+
+  mockGetUsers(): Promise<User[]> {
+    const u = this.getLocal<User>('users');
+    if(u.length === 0) { this.setLocal('users', DEMO_USERS); return Promise.resolve(DEMO_USERS); }
+    return Promise.resolve(u);
+  }
+
+  mockUpdateUser(u: User): Promise<void> {
+    const users = this.getLocal<User>('users');
+    const i = users.findIndex(x => x.uid === u.uid);
+    if(i>=0) { users[i] = { ...users[i], ...u }; this.setLocal('users', users); }
+    return Promise.resolve();
+  }
+
+  mockUpdateProfile(uid: string, up: any): Promise<User> {
+    const users = this.getLocal<User>('users');
+    const i = users.findIndex(x => x.uid === uid);
+    if(i>=0) { users[i] = { ...users[i], ...up }; this.setLocal('users', users); return Promise.resolve(users[i]); }
+    throw new Error("User not found");
+  }
+
+  mockDeleteUser(uid: string): Promise<void> {
+    this.setLocal('users', this.getLocal<User>('users').filter(u => u.uid !== uid));
+    return Promise.resolve();
+  }
+
+  mockAdminCreateUser(u: User, p: string): Promise<void> {
+    this.setLocal('users', [...this.getLocal('users'), { ...u, password: p, uid: 'u_'+Date.now() }]);
+    return Promise.resolve();
+  }
+
+  mockGetDocs(): Promise<AdminDocument[]> {
+    return Promise.resolve(this.getLocal('adminDocs'));
+  }
+
+  mockCreateDoc(d: AdminDocument): Promise<void> {
+    this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]);
+    return Promise.resolve();
+  }
+
+  mockDeleteDoc(id: string): Promise<void> {
+    this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+    return Promise.resolve();
+  }
+
+  mockUpdateDoc(id: string, updates: Partial<AdminDocument>): Promise<void> {
+    const docs = this.getLocal<AdminDocument>('adminDocs');
+    const i = docs.findIndex(d => d.id === id);
+    if(i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('adminDocs', docs); }
+    return Promise.resolve();
+  }
+
+  mockGetRounds(): Promise<Round[]> {
+    return Promise.resolve(this.getLocal('rounds'));
+  }
+
+  mockCreateRound(round: Round): Promise<void> {
+    this.setLocal('rounds', [...this.getLocal('rounds'), round]);
+    return Promise.resolve();
+  }
+
+  mockUpdateRound(id: string, updates: Partial<Round>): Promise<void> {
+    const rounds = this.getLocal<Round>('rounds');
+    const i = rounds.findIndex(r => r.id === id);
+    if(i>=0) { rounds[i] = { ...rounds[i], ...updates }; this.setLocal('rounds', rounds); }
+    return Promise.resolve();
+  }
+
+  mockDeleteRound(id: string): Promise<void> {
+    this.setLocal('rounds', this.getLocal<Round>('rounds').filter(r => r.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetAssignments(committeeId?: string): Promise<Assignment[]> {
+    const assignments = this.getLocal<Assignment>('assignments');
+    return Promise.resolve(committeeId ? assignments.filter(a => a.committeeId === committeeId) : assignments);
+  }
+
+  mockCreateAssignment(assignment: Assignment): Promise<void> {
+    this.setLocal('assignments', [...this.getLocal('assignments'), assignment]);
+    return Promise.resolve();
+  }
+
+  mockUpdateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
+    const assignments = this.getLocal<Assignment>('assignments');
+    const i = assignments.findIndex(a => a.id === id);
+    if(i>=0) { assignments[i] = { ...assignments[i], ...updates }; this.setLocal('assignments', assignments); }
+    return Promise.resolve();
+  }
+
+  mockDeleteAssignment(id: string): Promise<void> {
+    this.setLocal('assignments', this.getLocal<Assignment>('assignments').filter(a => a.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetSettings(): Promise<PortalSettings> {
+    return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS);
+  }
+
+  mockUpdateSettings(s: PortalSettings): Promise<void> {
+    this.setLocal('portalSettings', [s]);
+    return Promise.resolve();
+  }
+
+  mockGetAuditLogs(): Promise<AuditLog[]> {
+    return Promise.resolve(this.getLocal('auditLogs'));
+  }
+}
+
+// Export primary instance
+export const api = new AuthService();
+
+// Export as DataService for v8 compatibility
+export const DataService = api;
+
+// Seed database function
+export const seedDatabase = async () => {
+  if (!db) throw new Error("Database not initialized");
+  const batch = writeBatch(db);
+  DEMO_USERS.forEach(({password, ...u}) => batch.set(doc(db, "users", u.uid), u));
+  DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a));
+  batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
+  await batch.commit();
 };
