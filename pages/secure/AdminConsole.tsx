@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
-import { DataService, exportToCSV } from '../../services/firebase';
+import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
@@ -1017,20 +1017,29 @@ const AdminConsole: React.FC = () => {
       }
       try {
         const id = 'doc_' + Date.now();
-        // In a real app, you'd upload the file to Firebase Storage first
+        let fileUrl: string | undefined;
+
+        // Upload file to Firebase Storage if a file was selected
+        if (uploadFile) {
+          const timestamp = Date.now();
+          const ext = uploadFile.name.split('.').pop();
+          const storagePath = `admin-documents/${id}_${timestamp}.${ext}`;
+          fileUrl = await uploadToStorage(storagePath, uploadFile);
+        }
+
         const docData: AdminDocument = {
           id,
           name: newDoc.name!,
           type: newDoc.type as 'file' | 'folder',
           parentId: newDoc.parentId as string,
           category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
-          uploadedBy: 'current-admin',
+          uploadedBy: currentUser?.uid || 'admin',
           createdAt: Date.now(),
-          url: uploadFile ? URL.createObjectURL(uploadFile) : undefined
+          url: fileUrl
         };
         await DataService.createDocument(docData);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'DOCUMENT_CREATE',
           targetId: id,
           details: { name: newDoc.name, type: newDoc.type }
@@ -1058,12 +1067,12 @@ const AdminConsole: React.FC = () => {
           type: 'folder',
           parentId: newDoc.parentId as string || 'root',
           category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
-          uploadedBy: 'current-admin',
+          uploadedBy: currentUser?.uid || 'admin',
           createdAt: Date.now()
         };
         await DataService.createDocument(folderData);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'FOLDER_CREATE',
           targetId: id,
           details: { name: newDoc.name }
