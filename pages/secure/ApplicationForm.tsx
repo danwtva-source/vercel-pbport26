@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Badge } from '../../components/UI';
 import { api, api as AuthService } from '../../services/firebase';
-import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS } from '../../types';
+import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS, Round, PortalSettings } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
 import { formatCurrency, ROUTES } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
@@ -30,6 +30,8 @@ const ApplicationForm: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [formStage, setFormStage] = useState<'eoi' | 'part2'>('eoi');
+  const [activeRound, setActiveRound] = useState<Round | null>(null);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
   // Application state
   const [application, setApplication] = useState<Partial<Application>>({
@@ -50,6 +52,23 @@ const ApplicationForm: React.FC = () => {
       navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
+
+    // Load round and settings data
+    const loadRoundData = async () => {
+      try {
+        const [rounds, settings] = await Promise.all([
+          api.getRounds(),
+          api.getPortalSettings()
+        ]);
+        // Find active/open round
+        const active = rounds.find(r => r.status === 'open') || rounds[0] || null;
+        setActiveRound(active);
+        setPortalSettings(settings);
+      } catch (err) {
+        console.error('Error loading round data:', err);
+      }
+    };
+    loadRoundData();
 
     if (!isNew && id) {
       loadApplication(id);
@@ -252,10 +271,48 @@ const ApplicationForm: React.FC = () => {
     }
   };
 
+  // Check if submission is allowed based on round settings
+  const isSubmissionAllowed = (): { allowed: boolean; reason?: string } => {
+    const isAdmin = roleToUserRole(currentUser?.role) === UserRole.ADMIN;
+
+    // Admin can always submit (override)
+    if (isAdmin) return { allowed: true };
+
+    // Check portal settings first
+    if (portalSettings) {
+      if (formStage === 'eoi' && !portalSettings.stage1Visible) {
+        return { allowed: false, reason: 'Stage 1 applications are currently closed.' };
+      }
+      if (formStage === 'part2' && !portalSettings.stage2Visible) {
+        return { allowed: false, reason: 'Stage 2 applications are currently closed.' };
+      }
+    }
+
+    // Check active round settings
+    if (activeRound) {
+      if (formStage === 'eoi' && !activeRound.stage1Open) {
+        return { allowed: false, reason: 'Stage 1 submissions are closed for the current round.' };
+      }
+      if (formStage === 'part2' && !activeRound.stage2Open) {
+        return { allowed: false, reason: 'Stage 2 submissions are closed for the current round.' };
+      }
+    }
+
+    return { allowed: true };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // Check round-based availability
+    const submissionCheck = isSubmissionAllowed();
+    if (!submissionCheck.allowed) {
+      setError(submissionCheck.reason || 'Submissions are currently closed.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -273,6 +330,7 @@ const ApplicationForm: React.FC = () => {
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
         userId: currentUser?.uid || '',
+        roundId: activeRound?.id, // Link application to active round
         status,
         createdAt: application.createdAt || now,
         updatedAt: now

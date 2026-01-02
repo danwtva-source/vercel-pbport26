@@ -285,8 +285,41 @@ class AuthService {
 
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
-      const fakeUid = 'u_' + Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, 'users', fakeUid), { ...u, uid: fakeUid, createdAt: Date.now() });
+
+      if (!auth || !db) throw new Error('Firebase not initialized');
+      if (!u.email || !p) throw new Error('Email and password required');
+
+      try {
+        // Create Firebase Auth user
+        const userCredential = await createUserWithEmailAndPassword(auth, u.email, p);
+        const uid = userCredential.user.uid;
+
+        // Update display name in Auth profile
+        if (u.displayName) {
+          await updateProfile(userCredential.user, { displayName: u.displayName });
+        }
+
+        // Save user profile to Firestore with matching UID
+        const userData: User = {
+          uid,
+          email: u.email,
+          displayName: u.displayName || '',
+          role: u.role || 'applicant',
+          area: u.area || null,
+          isActive: true,
+          createdAt: Date.now()
+        };
+
+        await setDoc(doc(db, 'users', uid), userData);
+      } catch (error: any) {
+        if (error.code === 'auth/email-already-in-use') {
+          throw new Error('Email already registered');
+        }
+        if (error.code === 'auth/weak-password') {
+          throw new Error('Password is too weak (minimum 6 characters)');
+        }
+        throw new Error(`Failed to create user: ${error.message}`);
+      }
   }
 
   // --- DOCUMENTS ---
@@ -498,7 +531,15 @@ class AuthService {
   }
 
   mockAdminCreateUser(u: User, p: string): Promise<void> {
-    this.setLocal('users', [...this.getLocal('users'), { ...u, password: p, uid: 'u_'+Date.now() }]);
+    const uid = 'u_' + Date.now();
+    const newUser: User = {
+      ...u,
+      uid,
+      password: p, // Only for demo login purposes
+      isActive: true,
+      createdAt: Date.now()
+    };
+    this.setLocal('users', [...this.getLocal('users'), newUser]);
     return Promise.resolve();
   }
 

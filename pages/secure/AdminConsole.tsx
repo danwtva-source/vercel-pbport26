@@ -514,26 +514,33 @@ const AdminConsole: React.FC = () => {
 
   const UsersTab = () => {
     const [newUser, setNewUser] = useState<Partial<User>>({ role: 'applicant', area: null });
+    const [newPassword, setNewPassword] = useState('');
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
     const handleCreateUser = async () => {
       if (!newUser.email || !newUser.displayName) {
-        alert('Please fill in all required fields');
+        alert('Please fill in email and display name');
+        return;
+      }
+      if (!newPassword || newPassword.length < 6) {
+        alert('Please enter a password (minimum 6 characters)');
         return;
       }
       try {
-        await DataService.adminCreateUser(newUser as User, 'defaultPassword123');
+        await DataService.adminCreateUser(newUser as User, newPassword);
         await DataService.logAction({
           adminId: 'current-admin',
           action: 'USER_CREATE',
           targetId: newUser.email,
           details: { role: newUser.role }
         });
-        setNewUser({ role: 'applicant' });
+        setNewUser({ role: 'applicant', area: null });
+        setNewPassword('');
         await loadAllData();
-      } catch (error) {
+        alert('User created successfully');
+      } catch (error: any) {
         console.error('Error creating user:', error);
-        alert('Failed to create user');
+        alert(error.message || 'Failed to create user');
       }
     };
 
@@ -583,21 +590,30 @@ const AdminConsole: React.FC = () => {
             <Plus size={24} />
             Create New User
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <input
               type="email"
-              placeholder="Email"
+              placeholder="Email *"
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.email || ''}
               onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
             />
             <input
+              type="password"
+              placeholder="Password * (min 6 chars)"
+              className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <input
               type="text"
-              placeholder="Display Name"
+              placeholder="Display Name *"
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.displayName || ''}
               onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
             />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.role}

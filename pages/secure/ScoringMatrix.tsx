@@ -189,7 +189,7 @@ const ScoringMatrix: React.FC = () => {
         id: `${selectedApp.id}_${currentUser.uid}`,
         appId: selectedApp.id,
         scorerId: currentUser.uid,
-        scorerName: currentUser.name,
+        scorerName: currentUser.displayName || currentUser.username || currentUser.email,
         weightedTotal: calculateWeightedTotal(),
         breakdown,
         notes,
