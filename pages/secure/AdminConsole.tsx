@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
@@ -37,6 +38,9 @@ import {
 // ============================================================================
 
 const AdminConsole: React.FC = () => {
+  // Get current user from auth context
+  const { userProfile: currentUser } = useAuth();
+
   const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
   const [isScoringMode, setIsScoringMode] = useState(false);

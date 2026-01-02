@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence, User as FirebaseUser } from 'firebase/auth';
 import { auth, db, USE_DEMO_MODE } from '../services/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -27,6 +27,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [initialized, setInitialized] = useState(false);
 
   // Load user profile from Firestore
+  // Robust lookup: first try direct document, then query by uid field
   const loadUserProfile = async (uid: string): Promise<User | null> => {
     if (USE_DEMO_MODE) {
       // In demo mode, read from localStorage
@@ -44,9 +45,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!db) return null;
 
     try {
+      // First try: direct document lookup by uid as document ID
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (userDoc.exists()) {
-        return userDoc.data() as User;
+        const data = userDoc.data() as User;
+        // Ensure uid is set (use doc ID if not in data)
+        return { ...data, uid: data.uid || userDoc.id };
+      }
+
+      // Second try: query by uid field (for cases where doc ID differs)
+      const q = query(collection(db, 'users'), where('uid', '==', uid));
+      const querySnap = await getDocs(q);
+      if (!querySnap.empty) {
+        const data = querySnap.docs[0].data() as User;
+        // Ensure uid is set
+        return { ...data, uid: data.uid || querySnap.docs[0].id };
       }
 
       // Profile not found - could be a new user or data issue

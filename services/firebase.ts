@@ -33,6 +33,8 @@ let app: any;
 let auth: any;
 let db: any;
 let storage: any;
+let secondaryApp: any;
+let secondaryAuth: any;
 
 try {
   if (hasFirebaseConfig) {
@@ -40,6 +42,10 @@ try {
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
+
+    // Create secondary app for admin user creation (prevents session switch)
+    secondaryApp = initializeApp(firebaseConfig, 'secondary');
+    secondaryAuth = getAuth(secondaryApp);
   } else if (!USE_DEMO_MODE) {
     console.error('❌ Cannot initialize Firebase: Missing configuration');
   }
@@ -236,12 +242,21 @@ class AuthService {
   async getUsers(): Promise<User[]> {
       if (USE_DEMO_MODE) return this.mockGetUsers();
       const snap = await getDocs(collection(db, 'users'));
-      return snap.docs.map(d => d.data() as User);
+      // Ensure uid is set from document ID if missing in data
+      return snap.docs.map(d => {
+        const data = d.data() as User;
+        return { ...data, uid: data.uid || d.id };
+      });
   }
 
   async updateUser(u: User): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateUser(u);
-      await setDoc(doc(db, 'users', u.uid), u, { merge: true });
+      // Normalize role to lowercase before saving
+      const normalizedUser = {
+        ...u,
+        role: u.role ? (u.role.toLowerCase() as 'admin' | 'committee' | 'applicant') : 'applicant'
+      };
+      await setDoc(doc(db, 'users', u.uid), normalizedUser, { merge: true });
   }
 
   async updateUserProfile(uid: string, u: Partial<User>): Promise<User> {
@@ -286,12 +301,12 @@ class AuthService {
   async adminCreateUser(u: User, p: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockAdminCreateUser(u, p);
 
-      if (!auth || !db) throw new Error('Firebase not initialized');
+      if (!secondaryAuth || !db) throw new Error('Firebase not initialized');
       if (!u.email || !p) throw new Error('Email and password required');
 
       try {
-        // Create Firebase Auth user
-        const userCredential = await createUserWithEmailAndPassword(auth, u.email, p);
+        // Use secondary auth instance to prevent switching current admin session
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, u.email, p);
         const uid = userCredential.user.uid;
 
         // Update display name in Auth profile
@@ -299,12 +314,17 @@ class AuthService {
           await updateProfile(userCredential.user, { displayName: u.displayName });
         }
 
+        // Sign out the secondary auth immediately (does not affect primary auth)
+        await signOut(secondaryAuth);
+
         // Save user profile to Firestore with matching UID
+        // Ensure role is lowercase for Firestore rules consistency
+        const normalizedRole = (u.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
         const userData: User = {
           uid,
           email: u.email,
           displayName: u.displayName || '',
-          role: u.role || 'applicant',
+          role: normalizedRole,
           area: u.area || null,
           isActive: true,
           createdAt: Date.now()
@@ -312,6 +332,9 @@ class AuthService {
 
         await setDoc(doc(db, 'users', uid), userData);
       } catch (error: any) {
+        // Ensure secondary auth is signed out even on error
+        try { await signOut(secondaryAuth); } catch {}
+
         if (error.code === 'auth/email-already-in-use') {
           throw new Error('Email already registered');
         }
@@ -362,7 +385,11 @@ class AuthService {
   async getRounds(): Promise<Round[]> {
       if (USE_DEMO_MODE) return this.mockGetRounds();
       const snap = await getDocs(collection(db, 'rounds'));
-      return snap.docs.map(d => d.data() as Round);
+      // Ensure id is set from document ID if missing in data
+      return snap.docs.map(d => {
+        const data = d.data() as Round;
+        return { ...data, id: data.id || d.id };
+      });
   }
 
   async createRound(round: Round): Promise<void> {
