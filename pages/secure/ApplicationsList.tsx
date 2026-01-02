@@ -120,11 +120,12 @@ const ApplicationsList: React.FC = () => {
 
   // Filter applications
   const filteredApplications = applications.filter(app => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      app.projectTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.orgName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.ref.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.applicantName.toLowerCase().includes(searchTerm.toLowerCase());
+      (app.projectTitle || '').toLowerCase().includes(searchLower) ||
+      (app.orgName || '').toLowerCase().includes(searchLower) ||
+      (app.ref || '').toLowerCase().includes(searchLower) ||
+      (app.applicantName || '').toLowerCase().includes(searchLower);
 
     const matchesStatus = filterStatus === 'All' || app.status === filterStatus;
     const matchesArea = filterArea === 'All' || app.area === filterArea;
@@ -215,7 +216,7 @@ const ApplicationsList: React.FC = () => {
               <option value="Not-Funded">Not Funded</option>
             </select>
 
-            {currentUser.role === UserRole.ADMIN && (
+            {isRole(currentUser.role, UserRole.ADMIN) && (
               <select
                 value={filterArea}
                 onChange={(e) => setFilterArea(e.target.value as Area | 'All')}
