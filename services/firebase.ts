@@ -2,13 +2,14 @@
 import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 // --- CONFIGURATION ---
-// Set to FALSE for production.
-export const USE_DEMO_MODE = false;
+// Set to FALSE for production with Firebase configured.
+// Set to TRUE for demo/development without Firebase.
+export const USE_DEMO_MODE = false; // Production mode with Firebase
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,10 +21,33 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Check if Firebase config is available, otherwise log warning
+const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
+
+if (!hasFirebaseConfig && !USE_DEMO_MODE) {
+  console.warn('⚠️ Firebase configuration missing. Set environment variables or enable USE_DEMO_MODE.');
+}
+
+// Initialize Firebase only if config is available
+let app: any;
+let auth: any;
+let db: any;
+let storage: any;
+
+try {
+  if (hasFirebaseConfig) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+  } else if (!USE_DEMO_MODE) {
+    console.error('❌ Cannot initialize Firebase: Missing configuration');
+  }
+} catch (error) {
+  console.error('❌ Firebase initialization error:', error);
+}
+
+export { auth, db, storage };
 
 const DEFAULT_SETTINGS: PortalSettings = {
     stage1Visible: true,
@@ -120,6 +144,32 @@ class AuthService {
     } catch (error) { throw new Error('Failed to create account'); }
   }
 
+  async logout(): Promise<void> {
+    if (USE_DEMO_MODE) {
+      localStorage.removeItem('pb_user');
+      return;
+    }
+    try {
+      await signOut(auth);
+      localStorage.removeItem('pb_user');
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw new Error('Failed to logout');
+    }
+  }
+
+  getCurrentUser(): User | null {
+    const stored = localStorage.getItem('pb_user');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   // --- DATA ---
   async getApplications(area?: string): Promise<Application[]> {
       if (USE_DEMO_MODE) return this.mockGetApps(area);
@@ -129,7 +179,7 @@ class AuthService {
         // In production with large datasets, use specific queries.
         const snap = await getDocs(collection(db, "applications"));
         const apps = snap.docs.map(d => d.data() as Application);
-        
+
         if (area && area !== 'All') {
              return apps.filter(a => a.area === area || a.area === 'Cross-Area');
         }
@@ -159,13 +209,13 @@ class AuthService {
 
   // --- VOTING & SCORING ---
   async saveVote(vote: Vote): Promise<void> {
-      if (USE_DEMO_MODE) return;
+      if (USE_DEMO_MODE) return this.mockSaveVote(vote);
       const voteId = vote.id || `${vote.appId}_${vote.voterId}`;
       await setDoc(doc(db, 'votes', voteId), { ...vote, id: voteId });
   }
 
   async getVotes(): Promise<Vote[]> {
-      if (USE_DEMO_MODE) return [];
+      if (USE_DEMO_MODE) return this.mockGetVotes();
       const snap = await getDocs(collection(db, 'votes'));
       return snap.docs.map(d => d.data() as Vote);
   }
@@ -205,7 +255,7 @@ class AuthService {
           if (qSnap.empty) throw new Error("User not found");
           ref = doc(db, 'users', qSnap.docs[0].id);
       }
-      
+
       await setDoc(ref, u, { merge: true });
       if (auth.currentUser && auth.currentUser.uid === uid) {
           await updateProfile(auth.currentUser, { 
@@ -258,35 +308,50 @@ class AuthService {
 
   // --- ROUNDS & ASSIGNMENTS ---
   async getRounds(): Promise<Round[]> {
-      if (USE_DEMO_MODE) return [];
+      if (USE_DEMO_MODE) return this.mockGetRounds();
       const snap = await getDocs(collection(db, 'rounds'));
       return snap.docs.map(d => d.data() as Round);
   }
 
   async createRound(round: Round): Promise<void> {
-      if (USE_DEMO_MODE) return;
+      if (USE_DEMO_MODE) return this.mockCreateRound(round);
       await setDoc(doc(db, 'rounds', round.id), round);
   }
 
   async updateRound(id: string, updates: Partial<Round>): Promise<void> {
-      if (USE_DEMO_MODE) return;
+      if (USE_DEMO_MODE) return this.mockUpdateRound(id, updates);
       await setDoc(doc(db, 'rounds', id), updates, { merge: true });
   }
 
   async deleteRound(id: string): Promise<void> {
-      if (USE_DEMO_MODE) return;
+      if (USE_DEMO_MODE) return this.mockDeleteRound(id);
       await deleteDoc(doc(db, 'rounds', id));
   }
 
   async getAssignments(committeeId?: string): Promise<Assignment[]> {
-      if (USE_DEMO_MODE) return [];
-      const q = committeeId 
+      if (USE_DEMO_MODE) return this.mockGetAssignments(committeeId);
+      const q = committeeId
         ? query(collection(db, 'assignments'), where('committeeId', '==', committeeId))
         : collection(db, 'assignments');
       const snap = await getDocs(q);
       return snap.docs.map(d => d.data() as Assignment);
   }
-  
+
+  async createAssignment(assignment: Assignment): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateAssignment(assignment);
+      await setDoc(doc(db, 'assignments', assignment.id), assignment);
+  }
+
+  async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateAssignment(id, updates);
+      await setDoc(doc(db, 'assignments', id), updates, { merge: true });
+  }
+
+  async deleteAssignment(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteAssignment(id);
+      await deleteDoc(doc(db, 'assignments', id));
+  }
+
   // --- SETTINGS ---
   async getPortalSettings(): Promise<PortalSettings> {
       if (USE_DEMO_MODE) return this.mockGetSettings();
@@ -307,7 +372,7 @@ class AuthService {
   }
 
   async getAuditLogs(): Promise<AuditLog[]> {
-      if (USE_DEMO_MODE) return [];
+      if (USE_DEMO_MODE) return this.mockGetAuditLogs();
       const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
       const snap = await getDocs(q);
       return snap.docs.map(d => d.data() as AuditLog);
@@ -316,25 +381,191 @@ class AuthService {
   // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---
   private getLocal<T>(k: string): T[] { return JSON.parse(localStorage.getItem(k) || '[]'); }
   private setLocal<T>(k: string, v: T[]) { localStorage.setItem(k, JSON.stringify(v)); }
-  mockLogin(id: string, p: string): Promise<User> { return new Promise((res, rej) => { setTimeout(() => { const users = this.getLocal<User>('users'); if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); } let email = id.includes('@') ? id : `${id}@committee.local`; const u = users.find(u => (u.email.toLowerCase() === email.toLowerCase() || u.username === id) && u.password === p); u ? res(u) : rej(new Error("Invalid login")); }, 500); }); }
-  mockRegister(e: string, p: string, n: string): Promise<User> { const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' }; this.setLocal('users', [...this.getLocal('users'), u]); return Promise.resolve(u); }
-  mockGetApps(area?: string): Promise<Application[]> { const apps = this.getLocal<Application>('apps'); if (apps.length === 0 && !localStorage.getItem('apps_init')) { this.setLocal('apps', DEMO_APPS); localStorage.setItem('apps_init', '1'); return Promise.resolve(DEMO_APPS); } return Promise.resolve(area && area !== 'All' ? apps.filter(a => a.area === area || a.area === 'Cross-Area') : apps); }
-  mockCreateApp(a: any): Promise<void> { const code = a.area?.substring(0,3).toUpperCase() || 'GEN'; const na = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), updatedAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' as ApplicationStatus }; this.setLocal('apps', [...this.getLocal('apps'), na]); return Promise.resolve(); }
-  mockUpdateApp(id: string, up: any): Promise<void> { const apps = this.getLocal<Application>('apps'); const i = apps.findIndex(a => a.id === id); if(i>=0) { apps[i] = { ...apps[i], ...up, updatedAt: Date.now() }; this.setLocal('apps', apps); } return Promise.resolve(); }
-  mockDeleteApp(id: string): Promise<void> { this.setLocal('apps', this.getLocal<Application>('apps').filter(a => a.id !== id)); return Promise.resolve(); }
-  mockSaveScore(s: Score): Promise<void> { const scores = this.getLocal<Score>('scores'); const i = scores.findIndex(x => x.appId === s.appId && x.scorerId === s.scorerId); if(i>=0) scores[i] = s; else scores.push(s); this.setLocal('scores', scores); return Promise.resolve(); }
-  mockGetScores(): Promise<Score[]> { return Promise.resolve(this.getLocal('scores')); }
-  mockGetUsers(): Promise<User[]> { const u = this.getLocal<User>('users'); if(u.length === 0) { this.setLocal('users', DEMO_USERS); return Promise.resolve(DEMO_USERS); } return Promise.resolve(u); }
-  mockUpdateUser(u: User): Promise<void> { const users = this.getLocal<User>('users'); const i = users.findIndex(x => x.uid === u.uid); if(i>=0) { users[i] = { ...users[i], ...u }; this.setLocal('users', users); } return Promise.resolve(); }
-  mockUpdateProfile(uid: string, up: any): Promise<User> { const users = this.getLocal<User>('users'); const i = users.findIndex(x => x.uid === uid); if(i>=0) { users[i] = { ...users[i], ...up }; this.setLocal('users', users); return Promise.resolve(users[i]); } throw new Error("User not found"); }
-  mockDeleteUser(uid: string): Promise<void> { this.setLocal('users', this.getLocal<User>('users').filter(u => u.uid !== uid)); return Promise.resolve(); }
-  mockAdminCreateUser(u: User, p: string): Promise<void> { this.setLocal('users', [...this.getLocal('users'), { ...u, password: p, uid: 'u_'+Date.now() }]); return Promise.resolve(); }
-  mockGetDocs(): Promise<AdminDocument[]> { return Promise.resolve(this.getLocal('adminDocs')); }
-  mockCreateDoc(d: AdminDocument): Promise<void> { this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]); return Promise.resolve(); }
-  mockDeleteDoc(id: string): Promise<void> { this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id)); return Promise.resolve(); }
-  mockGetSettings(): Promise<PortalSettings> { return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS); }
-  mockUpdateSettings(s: PortalSettings): Promise<void> { this.setLocal('portalSettings', [s]); return Promise.resolve(); }
+
+  mockLogin(id: string, p: string): Promise<User> {
+    return new Promise((res, rej) => {
+      setTimeout(() => {
+        const users = this.getLocal<User>('users');
+        if(users.length === 0) { this.setLocal('users', DEMO_USERS); return res(DEMO_USERS[0]); }
+        let email = id.includes('@') ? id : `${id}@committee.local`;
+        const u = users.find(u => (u.email.toLowerCase() === email.toLowerCase() || u.username === id) && u.password === p);
+        u ? res(u) : rej(new Error("Invalid login"));
+      }, 500);
+    });
+  }
+
+  mockRegister(e: string, p: string, n: string): Promise<User> {
+    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' };
+    this.setLocal('users', [...this.getLocal('users'), u]);
+    return Promise.resolve(u);
+  }
+
+  mockGetApps(area?: string): Promise<Application[]> {
+    const apps = this.getLocal<Application>('apps');
+    if (apps.length === 0 && !localStorage.getItem('apps_init')) {
+      this.setLocal('apps', DEMO_APPS);
+      localStorage.setItem('apps_init', '1');
+      return Promise.resolve(DEMO_APPS);
+    }
+    return Promise.resolve(area && area !== 'All' ? apps.filter(a => a.area === area || a.area === 'Cross-Area') : apps);
+  }
+
+  mockCreateApp(a: any): Promise<void> {
+    const code = a.area?.substring(0,3).toUpperCase() || 'GEN';
+    const na = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), updatedAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' as ApplicationStatus };
+    this.setLocal('apps', [...this.getLocal('apps'), na]);
+    return Promise.resolve();
+  }
+
+  mockUpdateApp(id: string, up: any): Promise<void> {
+    const apps = this.getLocal<Application>('apps');
+    const i = apps.findIndex(a => a.id === id);
+    if(i>=0) { apps[i] = { ...apps[i], ...up, updatedAt: Date.now() }; this.setLocal('apps', apps); }
+    return Promise.resolve();
+  }
+
+  mockDeleteApp(id: string): Promise<void> {
+    this.setLocal('apps', this.getLocal<Application>('apps').filter(a => a.id !== id));
+    return Promise.resolve();
+  }
+
+  mockSaveVote(vote: Vote): Promise<void> {
+    const votes = this.getLocal<Vote>('votes');
+    const i = votes.findIndex(v => v.appId === vote.appId && v.voterId === vote.voterId);
+    if(i>=0) votes[i] = vote; else votes.push(vote);
+    this.setLocal('votes', votes);
+    return Promise.resolve();
+  }
+
+  mockGetVotes(): Promise<Vote[]> {
+    return Promise.resolve(this.getLocal('votes'));
+  }
+
+  mockSaveScore(s: Score): Promise<void> {
+    const scores = this.getLocal<Score>('scores');
+    const i = scores.findIndex(x => x.appId === s.appId && x.scorerId === s.scorerId);
+    if(i>=0) scores[i] = s; else scores.push(s);
+    this.setLocal('scores', scores);
+    return Promise.resolve();
+  }
+
+  mockGetScores(): Promise<Score[]> {
+    return Promise.resolve(this.getLocal('scores'));
+  }
+
+  mockGetUsers(): Promise<User[]> {
+    const u = this.getLocal<User>('users');
+    if(u.length === 0) { this.setLocal('users', DEMO_USERS); return Promise.resolve(DEMO_USERS); }
+    return Promise.resolve(u);
+  }
+
+  mockUpdateUser(u: User): Promise<void> {
+    const users = this.getLocal<User>('users');
+    const i = users.findIndex(x => x.uid === u.uid);
+    if(i>=0) { users[i] = { ...users[i], ...u }; this.setLocal('users', users); }
+    return Promise.resolve();
+  }
+
+  mockUpdateProfile(uid: string, up: any): Promise<User> {
+    const users = this.getLocal<User>('users');
+    const i = users.findIndex(x => x.uid === uid);
+    if(i>=0) { users[i] = { ...users[i], ...up }; this.setLocal('users', users); return Promise.resolve(users[i]); }
+    throw new Error("User not found");
+  }
+
+  mockDeleteUser(uid: string): Promise<void> {
+    this.setLocal('users', this.getLocal<User>('users').filter(u => u.uid !== uid));
+    return Promise.resolve();
+  }
+
+  mockAdminCreateUser(u: User, p: string): Promise<void> {
+    this.setLocal('users', [...this.getLocal('users'), { ...u, password: p, uid: 'u_'+Date.now() }]);
+    return Promise.resolve();
+  }
+
+  mockGetDocs(): Promise<AdminDocument[]> {
+    return Promise.resolve(this.getLocal('adminDocs'));
+  }
+
+  mockCreateDoc(d: AdminDocument): Promise<void> {
+    this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]);
+    return Promise.resolve();
+  }
+
+  mockDeleteDoc(id: string): Promise<void> {
+    this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetRounds(): Promise<Round[]> {
+    return Promise.resolve(this.getLocal('rounds'));
+  }
+
+  mockCreateRound(round: Round): Promise<void> {
+    this.setLocal('rounds', [...this.getLocal('rounds'), round]);
+    return Promise.resolve();
+  }
+
+  mockUpdateRound(id: string, updates: Partial<Round>): Promise<void> {
+    const rounds = this.getLocal<Round>('rounds');
+    const i = rounds.findIndex(r => r.id === id);
+    if(i>=0) { rounds[i] = { ...rounds[i], ...updates }; this.setLocal('rounds', rounds); }
+    return Promise.resolve();
+  }
+
+  mockDeleteRound(id: string): Promise<void> {
+    this.setLocal('rounds', this.getLocal<Round>('rounds').filter(r => r.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetAssignments(committeeId?: string): Promise<Assignment[]> {
+    const assignments = this.getLocal<Assignment>('assignments');
+    return Promise.resolve(committeeId ? assignments.filter(a => a.committeeId === committeeId) : assignments);
+  }
+
+  mockCreateAssignment(assignment: Assignment): Promise<void> {
+    this.setLocal('assignments', [...this.getLocal('assignments'), assignment]);
+    return Promise.resolve();
+  }
+
+  mockUpdateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
+    const assignments = this.getLocal<Assignment>('assignments');
+    const i = assignments.findIndex(a => a.id === id);
+    if(i>=0) { assignments[i] = { ...assignments[i], ...updates }; this.setLocal('assignments', assignments); }
+    return Promise.resolve();
+  }
+
+  mockDeleteAssignment(id: string): Promise<void> {
+    this.setLocal('assignments', this.getLocal<Assignment>('assignments').filter(a => a.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetSettings(): Promise<PortalSettings> {
+    return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS);
+  }
+
+  mockUpdateSettings(s: PortalSettings): Promise<void> {
+    this.setLocal('portalSettings', [s]);
+    return Promise.resolve();
+  }
+
+  mockGetAuditLogs(): Promise<AuditLog[]> {
+    return Promise.resolve(this.getLocal('auditLogs'));
+  }
 }
 
+// Export primary instance
 export const api = new AuthService();
-export const seedDatabase = async () => { if (!db) throw new Error("Database not initialized"); const batch = writeBatch(db); DEMO_USERS.forEach(({password, ...u}) => batch.set(doc(db, "users", u.uid), u)); DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a)); batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS); await batch.commit(); };
+
+// Export as DataService for v8 compatibility
+export const DataService = api;
+
+// Seed database function
+export const seedDatabase = async () => {
+  if (!db) throw new Error("Database not initialized");
+  const batch = writeBatch(db);
+  DEMO_USERS.forEach(({password, ...u}) => batch.set(doc(db, "users", u.uid), u));
+  DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a));
+  batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
+  await batch.commit();
+};
