@@ -62,7 +62,8 @@ const DEFAULT_SETTINGS: PortalSettings = {
     stage1Visible: true,
     stage2Visible: false,
     votingOpen: false,
-    scoringThreshold: 50
+    scoringThreshold: 50,
+    resultsReleased: false
 };
 
 // --- HELPER: CSV Export ---

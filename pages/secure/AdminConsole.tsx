@@ -1624,6 +1624,32 @@ const AdminConsole: React.FC = () => {
         </Card>
 
         <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Part 2 Results Release</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border-2 border-amber-200">
+              <div>
+                <p className="font-bold text-gray-800">Release Part 2 Results</p>
+                <p className="text-sm text-gray-600">Make scoring results visible to applicants (successful and unsuccessful)</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={localSettings.resultsReleased || false}
+                  onChange={(e) => setLocalSettings({ ...localSettings, resultsReleased: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <p className="text-sm text-blue-800">
+                <strong>Important:</strong> Once released, successful applicants (Funded status) will be prompted to submit their public vote pack (image + blurb). Unsuccessful applicants will receive a notification.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
           <h3 className="text-xl font-bold text-purple-900 mb-6">Scoring Configuration</h3>
           <div className="space-y-4">
             <div>

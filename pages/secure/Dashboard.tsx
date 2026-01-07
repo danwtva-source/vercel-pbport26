@@ -143,6 +143,8 @@ const Dashboard: React.FC = () => {
             applications={applications}
             currentUser={currentUser}
             navigate={navigate}
+            portalSettings={portalSettings}
+            onReloadData={() => loadData(currentUser)}
           />
         )}
 
@@ -180,13 +182,61 @@ interface ApplicantDashboardProps {
   applications: Application[];
   currentUser: User;
   navigate: any;
+  portalSettings: PortalSettings | null;
+  onReloadData: () => void;
 }
 
-const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, currentUser, navigate }) => {
+const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, currentUser, navigate, portalSettings, onReloadData }) => {
+  const [submittingPublicPack, setSubmittingPublicPack] = useState(false);
+  const [publicPackApp, setPublicPackApp] = useState<Application | null>(null);
+  const [publicVoteBlurb, setPublicVoteBlurb] = useState('');
+  const [publicVoteImageFile, setPublicVoteImageFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const draftApps = applications.filter(app => app.status === 'Draft');
   const submittedApps = applications.filter(app => app.status.includes('Submitted'));
   const fundedApps = applications.filter(app => app.status === 'Funded');
   const rejectedApps = applications.filter(app => app.status.includes('Rejected') || app.status === 'Not-Funded');
+
+  // Check if results have been released
+  const resultsReleased = portalSettings?.resultsReleased || false;
+
+  // Find funded apps that need public vote pack
+  const fundedNeedingPack = fundedApps.filter(app => !app.publicVotePackComplete);
+
+  const handleSubmitPublicPack = async () => {
+    if (!publicPackApp || !publicVoteBlurb || !publicVoteImageFile) {
+      alert('Please provide both an image and a blurb');
+      return;
+    }
+
+    setSubmittingPublicPack(true);
+    try {
+      // Upload image
+      setUploadingImage(true);
+      const imagePath = `public-vote-images/${publicPackApp.id}_${Date.now()}_${publicVoteImageFile.name}`;
+      const imageUrl = await DataService.uploadFile(imagePath, publicVoteImageFile);
+      setUploadingImage(false);
+
+      // Update application with public vote pack
+      await DataService.updateApplication(publicPackApp.id, {
+        publicVoteImage: imageUrl,
+        publicVoteBlurb: publicVoteBlurb,
+        publicVotePackComplete: true
+      });
+
+      alert('Public vote pack submitted successfully!');
+      setPublicPackApp(null);
+      setPublicVoteBlurb('');
+      setPublicVoteImageFile(null);
+      onReloadData();
+    } catch (error) {
+      console.error('Error submitting public pack:', error);
+      alert('Failed to submit public vote pack');
+    } finally {
+      setSubmittingPublicPack(false);
+      setUploadingImage(false);
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     if (status === 'Draft') return <Clock className="text-gray-500" size={20} />;
@@ -208,6 +258,147 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
 
   return (
     <div className="space-y-6">
+      {/* Results Released Notifications */}
+      {resultsReleased && fundedApps.length > 0 && (
+        <div className="bg-gradient-to-r from-green-50 to-teal-50 border-2 border-green-300 rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 className="text-white" size={28} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-green-900 mb-2">Congratulations! Your Application Has Been Successful</h3>
+              <p className="text-green-800 mb-4">
+                Your project has been selected for public voting. To proceed, please submit your public vote pack (an image and a short description) below.
+              </p>
+              {fundedNeedingPack.length > 0 && (
+                <div className="bg-white rounded-lg p-4 border border-green-200">
+                  <p className="font-bold text-gray-900 mb-2">Applications needing public vote pack:</p>
+                  <ul className="space-y-2">
+                    {fundedNeedingPack.map(app => (
+                      <li key={app.id} className="flex items-center justify-between">
+                        <span className="text-gray-700">{app.projectTitle}</span>
+                        <button
+                          onClick={() => {
+                            setPublicPackApp(app);
+                            setPublicVoteBlurb(app.publicVoteBlurb || '');
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                        >
+                          Submit Pack
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resultsReleased && rejectedApps.length > 0 && fundedApps.length === 0 && (
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <XCircle className="text-white" size={28} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-red-900 mb-2">Application Update</h3>
+              <p className="text-red-800">
+                Unfortunately, you have not been successful on this occasion. We appreciate your interest and encourage you to look out for future funding rounds. Please feel free to contact us if you would like feedback on your application.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Public Vote Pack Submission Modal */}
+      {publicPackApp && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-purple-900">Submit Public Vote Pack</h2>
+              <button
+                onClick={() => {
+                  setPublicPackApp(null);
+                  setPublicVoteBlurb('');
+                  setPublicVoteImageFile(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <XCircle size={28} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <p className="text-gray-700 mb-4">
+                  <strong>Project:</strong> {publicPackApp.projectTitle}
+                </p>
+                <p className="text-sm text-gray-600 mb-6">
+                  Your public vote pack will be displayed to the community during public voting. Please provide a compelling image and description to help voters understand your project.
+                </p>
+              </div>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Project Image *
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPublicVoteImageFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+                />
+                {publicVoteImageFile && (
+                  <p className="text-sm text-green-600 mt-2">Selected: {publicVoteImageFile.name}</p>
+                )}
+              </div>
+
+              {/* Blurb */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Project Description * (max 200 words)
+                </label>
+                <textarea
+                  value={publicVoteBlurb}
+                  onChange={(e) => setPublicVoteBlurb(e.target.value)}
+                  rows={6}
+                  maxLength={1200}
+                  placeholder="Provide a short, engaging description of your project for public voters..."
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  {publicVoteBlurb.split(/\s+/).filter(Boolean).length} / 200 words
+                </p>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex gap-4">
+                <button
+                  onClick={handleSubmitPublicPack}
+                  disabled={submittingPublicPack || !publicVoteBlurb || !publicVoteImageFile}
+                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-xl font-bold transition"
+                >
+                  {uploadingImage ? 'Uploading Image...' : submittingPublicPack ? 'Submitting...' : 'Submit Public Vote Pack'}
+                </button>
+                <button
+                  onClick={() => {
+                    setPublicPackApp(null);
+                    setPublicVoteBlurb('');
+                    setPublicVoteImageFile(null);
+                  }}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

@@ -7,6 +7,7 @@ import { ROUTES } from './utils';
 // Lazy load pages for better performance
 import LandingPage from './pages/public/LandingPage';
 import PostcodeCheckPage from './pages/public/PostcodeCheckPage';
+import PublicVotingPage from './pages/public/PublicVotingPage';
 import PrioritiesPage from './pages/public/PrioritiesPage';
 import DocumentsPage from './pages/public/DocumentsPage';
 import TimelinePage from './pages/public/TimelinePage';
@@ -101,6 +102,7 @@ const AppRoutes: React.FC = () => {
       {/* Public Routes */}
       <Route path={ROUTES.PUBLIC.HOME} element={<LandingPage />} />
       <Route path={ROUTES.PUBLIC.VOTING_ZONE} element={<PostcodeCheckPage />} />
+      <Route path="/public-voting" element={<PublicVotingPage />} />
       <Route path={ROUTES.PUBLIC.PRIORITIES} element={<PrioritiesPage />} />
       <Route path={ROUTES.PUBLIC.RESOURCES} element={<DocumentsPage />} />
       <Route path={ROUTES.PUBLIC.TIMELINE} element={<TimelinePage />} />

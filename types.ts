@@ -5,13 +5,14 @@
 // Enum-based roles (from v8) for stricter type checking
 export enum UserRole {
   PUBLIC = 'PUBLIC',
+  COMMUNITY = 'COMMUNITY',
   APPLICANT = 'APPLICANT',
   COMMITTEE = 'COMMITTEE',
   ADMIN = 'ADMIN'
 }
 
 // String union type for backwards compatibility and flexibility
-export type Role = 'applicant' | 'committee' | 'admin';
+export type Role = 'community' | 'applicant' | 'committee' | 'admin';
 
 // --- GEOGRAPHIC AREAS ---
 
@@ -62,6 +63,7 @@ export interface PortalSettings {
     stage2Visible: boolean;
     votingOpen: boolean;
     scoringThreshold: number;
+    resultsReleased?: boolean; // Controls whether Part 2 results are visible to applicants
 }
 
 // System Settings (from v8) - Alternative/extended settings interface
@@ -180,6 +182,11 @@ export interface Application {
   voteCountNo?: number;
   averageScore?: number;
   scoreCount?: number;
+
+  // --- Public Vote Pack (for successful Part 2 applicants) ---
+  publicVoteImage?: string; // URL to image for public voting display
+  publicVoteBlurb?: string; // Short description for public voting (max 200 words)
+  publicVotePackComplete?: boolean; // True when both image and blurb submitted
 
   // --- Stage 1 (EOI) Data ---
   formData: {
