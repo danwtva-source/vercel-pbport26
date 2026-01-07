@@ -159,8 +159,8 @@ class AuthService {
     }
   }
 
-  async register(email: string, pass: string, name: string): Promise<User> {
-    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
+  async register(email: string, pass: string, name: string, role: 'applicant' | 'community' = 'applicant'): Promise<User> {
+    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name, role);
     try {
       const uc = await createUserWithEmailAndPassword(auth, email, pass);
       const u: User = {
@@ -168,7 +168,7 @@ class AuthService {
         email,
         username: email.split('@')[0],
         displayName: name,
-        role: 'applicant',
+        role,
         createdAt: Date.now()
       };
       await setDoc(doc(db, 'users', u.uid), u);
@@ -573,8 +573,8 @@ class AuthService {
     });
   }
 
-  mockRegister(e: string, p: string, n: string): Promise<User> {
-    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' };
+  mockRegister(e: string, p: string, n: string, role: 'applicant' | 'community' = 'applicant'): Promise<User> {
+    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role };
     this.setLocal('users', [...this.getLocal('users'), u]);
     return Promise.resolve(u);
   }

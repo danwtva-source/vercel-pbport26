@@ -118,10 +118,11 @@ const AppRoutes: React.FC = () => {
         }
       />
 
+      {/* Applicant, Committee, and Admin can access applications */}
       <Route
         path={ROUTES.PORTAL.APPLICATIONS}
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole={[UserRole.APPLICANT, UserRole.COMMITTEE, UserRole.ADMIN]}>
             <ApplicationsList />
           </ProtectedRoute>
         }
@@ -130,7 +131,7 @@ const AppRoutes: React.FC = () => {
       <Route
         path={ROUTES.PORTAL.APPLICATIONS_NEW}
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole={UserRole.APPLICANT}>
             <ApplicationForm />
           </ProtectedRoute>
         }
@@ -139,7 +140,7 @@ const AppRoutes: React.FC = () => {
       <Route
         path={`${ROUTES.PORTAL.APPLICATIONS}/:id`}
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole={[UserRole.APPLICANT, UserRole.COMMITTEE, UserRole.ADMIN]}>
             <ApplicationForm />
           </ProtectedRoute>
         }

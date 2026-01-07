@@ -1609,13 +1609,40 @@ const AdminConsole: React.FC = () => {
               <div>
                 <p className="font-bold text-gray-800">Voting Open</p>
                 <p className="text-sm text-gray-600">Enable public voting on applications</p>
+                {(() => {
+                  const fundedApps = applications.filter(app => app.status === 'Funded');
+                  const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+                  if (fundedApps.length > 0 && pendingPacks.length > 0) {
+                    return (
+                      <p className="text-sm text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertCircle size={14} />
+                        Warning: {pendingPacks.length} funded applicant(s) haven't submitted their pack yet
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   className="sr-only peer"
                   checked={localSettings.votingOpen}
-                  onChange={(e) => setLocalSettings({ ...localSettings, votingOpen: e.target.checked })}
+                  onChange={(e) => {
+                    const fundedApps = applications.filter(app => app.status === 'Funded');
+                    const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+
+                    if (e.target.checked && fundedApps.length > 0 && pendingPacks.length > 0) {
+                      const confirmEnable = window.confirm(
+                        `Warning: ${pendingPacks.length} funded applicant(s) have not yet submitted their public vote pack.\n\n` +
+                        `Their projects will not be visible in public voting until packs are complete.\n\n` +
+                        `Are you sure you want to enable public voting now?`
+                      );
+                      if (!confirmEnable) return;
+                    }
+
+                    setLocalSettings({ ...localSettings, votingOpen: e.target.checked });
+                  }}
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
               </label>
@@ -1673,6 +1700,124 @@ const AdminConsole: React.FC = () => {
                 Applications must score above this threshold to be considered for funding
               </p>
             </div>
+          </div>
+        </Card>
+
+        {/* Public Vote Pack Tracking */}
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Public Vote Pack Tracking</h3>
+          <div className="space-y-4">
+            {(() => {
+              const fundedApps = applications.filter(app => app.status === 'Funded');
+              const completedPacks = fundedApps.filter(app => app.publicVotePackComplete);
+              const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+              const allPacksComplete = fundedApps.length > 0 && pendingPacks.length === 0;
+
+              return (
+                <>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-purple-50 rounded-lg p-4 border-2 border-purple-200">
+                      <p className="text-sm font-bold text-purple-600 mb-1">Total Funded</p>
+                      <p className="text-3xl font-bold text-purple-900">{fundedApps.length}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 border-2 border-green-200">
+                      <p className="text-sm font-bold text-green-600 mb-1">Packs Complete</p>
+                      <p className="text-3xl font-bold text-green-900">{completedPacks.length}</p>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-4 border-2 border-amber-200">
+                      <p className="text-sm font-bold text-amber-600 mb-1">Packs Pending</p>
+                      <p className="text-3xl font-bold text-amber-900">{pendingPacks.length}</p>
+                    </div>
+                  </div>
+
+                  {/* Voting Readiness Indicator */}
+                  {fundedApps.length > 0 && (
+                    <div className={`p-4 rounded-lg border-2 ${
+                      allPacksComplete
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-amber-50 border-amber-300'
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        {allPacksComplete ? (
+                          <CheckCircle className="text-green-600 flex-shrink-0" size={24} />
+                        ) : (
+                          <AlertCircle className="text-amber-600 flex-shrink-0" size={24} />
+                        )}
+                        <div className="flex-1">
+                          <p className={`font-bold ${allPacksComplete ? 'text-green-900' : 'text-amber-900'}`}>
+                            {allPacksComplete
+                              ? 'All funded applicants have completed their public vote packs'
+                              : `${pendingPacks.length} funded applicant(s) still need to submit their public vote pack`}
+                          </p>
+                          <p className={`text-sm mt-1 ${allPacksComplete ? 'text-green-700' : 'text-amber-700'}`}>
+                            {allPacksComplete
+                              ? 'Public voting can be safely enabled'
+                              : 'Please ensure all packs are complete before enabling public voting'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pending Packs List */}
+                  {pendingPacks.length > 0 && (
+                    <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <p className="font-bold text-gray-900">Applicants Pending Pack Submission</p>
+                      </div>
+                      <div className="divide-y divide-gray-200">
+                        {pendingPacks.map(app => (
+                          <div key={app.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-900">{app.projectTitle}</p>
+                              <p className="text-sm text-gray-600">{app.orgName} • {app.area}</p>
+                            </div>
+                            <Badge variant="warning">Pending</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed Packs List */}
+                  {completedPacks.length > 0 && (
+                    <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <p className="font-bold text-gray-900">Completed Public Vote Packs</p>
+                      </div>
+                      <div className="divide-y divide-gray-200">
+                        {completedPacks.map(app => (
+                          <div key={app.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-900">{app.projectTitle}</p>
+                              <p className="text-sm text-gray-600">{app.orgName} • {app.area}</p>
+                              <div className="flex gap-3 mt-2">
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={12} />
+                                  Image uploaded
+                                </span>
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={12} />
+                                  Blurb submitted
+                                </span>
+                              </div>
+                            </div>
+                            <Badge variant="success">Complete</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {fundedApps.length === 0 && (
+                    <div className="bg-gray-50 rounded-lg p-8 text-center">
+                      <p className="text-gray-600">No funded applications yet. Public vote packs will appear here once results are released.</p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </Card>
 

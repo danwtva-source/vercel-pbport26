@@ -99,6 +99,7 @@ const Dashboard: React.FC = () => {
   const userRole = currentUser.role === 'applicant' ? UserRole.APPLICANT :
                    currentUser.role === 'committee' ? UserRole.COMMITTEE :
                    currentUser.role === 'admin' ? UserRole.ADMIN :
+                   currentUser.role === 'community' ? UserRole.COMMUNITY :
                    UserRole.PUBLIC;
 
   if (loading) {
@@ -121,6 +122,7 @@ const Dashboard: React.FC = () => {
               {userRole === UserRole.APPLICANT && 'My Dashboard'}
               {userRole === UserRole.COMMITTEE && 'Committee Dashboard'}
               {userRole === UserRole.ADMIN && 'Admin Console'}
+              {userRole === UserRole.COMMUNITY && 'Community Member Dashboard'}
             </h1>
             <p className="text-gray-600 mt-1">
               Welcome back, {currentUser.displayName || currentUser.username || currentUser.email}
@@ -170,6 +172,15 @@ const Dashboard: React.FC = () => {
             scores={scores}
             users={users}
             navigate={navigate}
+          />
+        )}
+
+        {/* Community Member Dashboard */}
+        {userRole === UserRole.COMMUNITY && (
+          <CommunityDashboard
+            currentUser={currentUser}
+            navigate={navigate}
+            portalSettings={portalSettings}
           />
         )}
       </div>
@@ -1074,5 +1085,125 @@ const QuickActionCard: React.FC<QuickActionCardProps> = ({ icon, title, descript
     <p className="text-sm text-gray-600">{description}</p>
   </button>
 );
+
+// --- COMMUNITY MEMBER DASHBOARD ---
+interface CommunityDashboardProps {
+  currentUser: User;
+  navigate: any;
+  portalSettings: PortalSettings | null;
+}
+
+const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, navigate, portalSettings }) => {
+  const votingOpen = portalSettings?.votingOpen || false;
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome Message */}
+      <div className="bg-gradient-to-r from-purple-600 to-teal-600 text-white rounded-2xl p-8">
+        <h2 className="text-2xl font-bold mb-3 font-display">Welcome to Communities' Choice!</h2>
+        <p className="text-lg text-purple-100 leading-relaxed">
+          As a community member, you can stay informed about participatory budgeting projects, participate in public voting when it's live, and engage in community discussions.
+        </p>
+      </div>
+
+      {/* Quick Info Cards */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Public Voting Status */}
+        <div className="bg-white rounded-xl shadow-md p-6 border-2 border-purple-100">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              votingOpen ? 'bg-green-100' : 'bg-gray-100'
+            }`}>
+              <VoteIcon size={24} className={votingOpen ? 'text-green-600' : 'text-gray-400'} />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">Public Voting</h3>
+              <p className={`text-sm font-semibold ${votingOpen ? 'text-green-600' : 'text-gray-500'}`}>
+                {votingOpen ? 'Now Open!' : 'Not Live Yet'}
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            {votingOpen
+              ? 'Public voting is currently open. You can view and vote on projects competing for funding.'
+              : 'Public voting will open soon. Check back later to vote on your favourite projects.'}
+          </p>
+          {votingOpen ? (
+            <button
+              onClick={() => navigate('/public-voting')}
+              className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold transition"
+            >
+              Vote on Projects
+            </button>
+          ) : (
+            <button
+              disabled
+              className="w-full bg-gray-200 text-gray-500 px-4 py-2 rounded-lg font-bold cursor-not-allowed"
+            >
+              Voting Opens Soon
+            </button>
+          )}
+        </div>
+
+        {/* Account Settings */}
+        <div className="bg-white rounded-xl shadow-md p-6 border-2 border-purple-100">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <Settings size={24} className="text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">Your Account</h3>
+              <p className="text-sm text-gray-500">Community Member</p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Manage your account settings, update your profile, and customize your preferences.
+          </p>
+          <button
+            onClick={() => navigate(ROUTES.PORTAL.SETTINGS)}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold transition"
+          >
+            Account Settings
+          </button>
+        </div>
+      </div>
+
+      {/* Learn More */}
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="text-white" size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-blue-900 mb-2">About Communities' Choice</h3>
+            <p className="text-blue-800 mb-4">
+              Communities' Choice is a participatory budgeting initiative that gives local residents a direct voice in how funding is allocated. Learn more about the process, view community priorities, and see the timeline for the current funding round.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => navigate('/priorities')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm transition"
+              >
+                View Priorities
+              </button>
+              <button
+                onClick={() => navigate('/timeline')}
+                className="bg-white hover:bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm transition"
+              >
+                View Timeline
+              </button>
+              <button
+                onClick={() => navigate('/documents')}
+                className="bg-white hover:bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm transition"
+              >
+                Resources
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default Dashboard;
