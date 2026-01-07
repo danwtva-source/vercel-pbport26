@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
 import { PUBLIC_DOCS } from '../../constants';
@@ -191,19 +192,19 @@ const DocumentsPage: React.FC = () => {
             Before you start, make sure you've reviewed the priorities for your area and downloaded the relevant guidance documents.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="/priorities"
+            <Link
+              to="/priorities"
               className="bg-teal-500 hover:bg-teal-400 text-purple-950 px-8 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl inline-flex items-center justify-center gap-2"
             >
               <BookOpen size={20} />
               View Community Priorities
-            </a>
-            <a
-              href="/"
+            </Link>
+            <Link
+              to="/"
               className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
             >
               Back to Home
-            </a>
+            </Link>
           </div>
         </div>
       </div>

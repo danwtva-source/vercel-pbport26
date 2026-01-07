@@ -4,6 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
+import { ROUTES } from '../../utils';
 import {
   Plus,
   FileText,
@@ -316,7 +317,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
             icon={<Settings />}
             title="Account Settings"
             description="Update your profile"
-            onClick={() => navigate('/portal/settings')}
+            onClick={() => navigate(ROUTES.PORTAL.SETTINGS)}
           />
         </div>
       </div>
