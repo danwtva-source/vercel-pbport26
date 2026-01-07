@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { Search, MapPin, CheckCircle2, XCircle, ArrowRight, Info } from 'lucide-react';
-import { AREA_DATA } from '../../constants';
+import { AREA_DATA, VOTING_ELIGIBILITY_RULE } from '../../constants';
+import { getEligibilityCopy } from '../../utils';
 
 const PostcodeCheckPage: React.FC = () => {
   const [postcode, setPostcode] = useState('');
@@ -65,6 +66,9 @@ const PostcodeCheckPage: React.FC = () => {
 
           <p className="text-lg text-purple-700 max-w-2xl mx-auto leading-relaxed">
             Enter your postcode to find out if you're in one of the three Communities' Choice areas and discover your local priorities.
+          </p>
+          <p className="text-sm text-purple-600 mt-3">
+            {getEligibilityCopy(VOTING_ELIGIBILITY_RULE.requiresAccount)}
           </p>
         </div>
 
