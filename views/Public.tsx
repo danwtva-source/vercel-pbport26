@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Card, Input, FileCard } from '../components/UI';
-import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS } from '../constants';
+import { POSTCODES, PRIORITY_DATA, COMMITTEE_DOCS, VOTING_ELIGIBILITY_RULE } from '../constants';
+import { getEligibilityCopy } from '../utils';
 
 // --- STYLED CAROUSEL (SwiperJS Implementation) ---
 const AreaCarousel: React.FC<{ onNavigate: (page: string) => void }> = ({ onNavigate }) => {
@@ -469,7 +470,8 @@ export const PostcodeChecker: React.FC = () => {
             <Card className="max-w-lg w-full text-center p-12 rounded-[2.5rem] shadow-2xl border-none">
                 <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center text-5xl mx-auto mb-8 shadow-inner">📍</div>
                 <h1 className="text-4xl font-bold font-dynapuff mb-4 text-gray-800">Check Eligibility</h1>
-                <p className="text-gray-500 mb-8 text-lg">Enter your full postcode to confirm you live within a participating area.</p>
+                <p className="text-gray-500 mb-3 text-lg">Enter your full postcode to confirm you live within a participating area.</p>
+                <p className="text-sm text-gray-500 mb-8">{getEligibilityCopy(VOTING_ELIGIBILITY_RULE.requiresAccount)}</p>
                 
                 <div className="space-y-4">
                     <Input 

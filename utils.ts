@@ -52,3 +52,12 @@ export const ROUTES = {
     ADMIN: '/portal/admin',
   }
 } as const;
+
+/**
+ * Build the eligibility helper copy for voting surfaces.
+ */
+export const getEligibilityCopy = (requiresAccount: boolean): string => {
+  return requiresAccount
+    ? 'An account is required to vote.'
+    : 'No account required to vote.';
+};
