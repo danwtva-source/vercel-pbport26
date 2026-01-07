@@ -37,17 +37,21 @@ export const ROUTES = {
   PORTAL: {
     ROOT: '/portal',
     DASHBOARD: '/portal/dashboard',
-    
+
     // Applicant routes
     APPLICANT: '/portal/applicant',
     APPLICATIONS: '/portal/applications',
     APPLICATIONS_NEW: '/portal/applications/new',
     APPLICATION_DETAIL: (id: string) => `/portal/applications/${id}`,
-    
+
     // Committee routes
     SCORING: '/portal/scoring',
-    
+    DOCUMENTS: '/portal/documents',
+
     // Admin routes
     ADMIN: '/portal/admin',
+
+    // User settings
+    SETTINGS: '/portal/settings',
   }
 } as const;

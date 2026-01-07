@@ -145,7 +145,7 @@ const AppRoutes: React.FC = () => {
 
       {/* User Settings - All authenticated users */}
       <Route
-        path="/portal/settings"
+        path={ROUTES.PORTAL.SETTINGS}
         element={
           <ProtectedRoute>
             <UserSettings />
