@@ -110,6 +110,13 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <span>Project Entries</span>
       </Link>
 
+      {(isCommittee || isAdmin) && (
+        <Link to={ROUTES.PORTAL.DOCUMENTS} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DOCUMENTS)}`}>
+          <FileText size={18} />
+          <span>Documents</span>
+        </Link>
+      )}
+
       {isAdmin && (
          <Link to={ROUTES.PORTAL.ADMIN} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.ADMIN)}`}>
           <Settings size={18} />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus, AuditLog } from '../types';
+import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, DocumentItem, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus, AuditLog } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
 import { AdminRounds } from './AdminRounds';
 import { api, exportToCSV, seedDatabase, auth, uploadProfileImage, deleteProfileImage, uploadFile } from '../services/firebase';
@@ -189,7 +189,7 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
 };
 
 const AdminDocCentre: React.FC = () => {
-    const [docs, setDocs] = useState<AdminDocument[]>([]);
+    const [docs, setDocs] = useState<DocumentItem[]>([]);
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => { api.getDocuments().then(setDocs); }, []);
@@ -197,14 +197,16 @@ const AdminDocCentre: React.FC = () => {
     const handleUpload = async (file: File) => {
         setUploading(true);
         try {
-            const url = await uploadFile(`admin-docs/${Date.now()}_${file.name}`, file);
-            const newDoc: AdminDocument = {
+            const timestamp = Date.now();
+            const storagePath = `documents/${timestamp}_${file.name}`;
+            const url = await uploadFile(storagePath, file);
+            const newDoc: DocumentItem = {
                 id: 'doc_' + Date.now(),
                 name: file.name,
-                type: 'file',
-                parentId: 'root',
+                folderId: 'root',
                 url,
-                category: 'committee-only', 
+                visibility: 'committee',
+                filePath: storagePath,
                 uploadedBy: auth.currentUser?.uid || 'admin',
                 createdAt: Date.now()
             };
@@ -214,10 +216,10 @@ const AdminDocCentre: React.FC = () => {
         setUploading(false);
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (doc: DocumentItem) => {
         if(!confirm("Delete?")) return;
-        await api.deleteDocument(id);
-        setDocs(docs.filter(d => d.id !== id));
+        await api.deleteDocument(doc.id, doc.filePath);
+        setDocs(docs.filter(d => d.id !== doc.id));
     };
 
     return (
@@ -234,7 +236,7 @@ const AdminDocCentre: React.FC = () => {
             <div className="grid md:grid-cols-4 gap-4">
                 {docs.length === 0 && <p className="col-span-4 text-center text-gray-400 italic py-8">No documents uploaded yet.</p>}
                 {docs.map(d => (
-                    <FileCard key={d.id} title={d.name} type={d.type} date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d.id)} onClick={() => window.open(d.url, '_blank')} />
+                    <FileCard key={d.id} title={d.name} type="file" date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d)} onClick={() => window.open(d.url, '_blank')} />
                 ))}
             </div>
         </div>
