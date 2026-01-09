@@ -379,6 +379,7 @@ export interface Round {
  * Committee dashboard task list and allow per‑member progress tracking and due dates.
  */
 export interface Assignment {
+  /** Canonical document ID: `${applicationId}_${committeeId}` */
   id: string;
   applicationId: string;
   committeeId: string;

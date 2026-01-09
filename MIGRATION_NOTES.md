@@ -25,6 +25,17 @@ The merged portal combines:
 
 ## Architectural Changes
 
+### Assignment ID Migration Plan
+
+Assignments now use a canonical document ID format of `${applicationId}_${committeeId}`. To align existing data with this rule:
+
+1. Export or query all documents from the `assignments` collection.
+2. For each assignment, compute the canonical ID from `applicationId` and `committeeId`.
+3. If the current document ID differs from the canonical ID:
+   - Write the assignment data to a new document with the canonical ID (ensuring the `id` field matches).
+   - Delete the old document ID once the new document is verified.
+4. Re-run any assignment queries in admin tooling to confirm no duplicates remain.
+
 ### 1. Routing System: State-Based → React Router
 
 #### v7 (Original)
