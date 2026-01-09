@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { BarChart3, Users, TrendingUp, Info, CheckCircle2 } from 'lucide-react';
 import { PRIORITIES_DATA, AREA_DATA } from '../../constants';
+import { ROUTES } from '../../utils';
 
 const PrioritiesPage: React.FC = () => {
   const [selectedArea, setSelectedArea] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');

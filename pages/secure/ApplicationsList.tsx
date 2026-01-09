@@ -5,23 +5,12 @@ import { Button, Card, Badge, Input } from '../../components/UI';
 import { api } from '../../services/firebase';
 import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
-import { formatCurrency, ROUTES } from '../../utils';
+import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
-
-// Helper to convert lowercase role string to UserRole enum
-const roleToUserRole = (role: string | undefined): UserRole => {
-  const normalized = (role || '').toUpperCase();
-  switch (normalized) {
-    case 'ADMIN': return UserRole.ADMIN;
-    case 'COMMITTEE': return UserRole.COMMITTEE;
-    case 'APPLICANT': return UserRole.APPLICANT;
-    default: return UserRole.PUBLIC;
-  }
-};
 
 // Helper to check role (case-insensitive)
 const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
-  return roleToUserRole(role) === targetRole;
+  return toUserRole(role) === targetRole;
 };
 
 const ApplicationsList: React.FC = () => {
@@ -156,7 +145,7 @@ const ApplicationsList: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+    <SecureLayout userRole={toUserRole(currentUser.role)}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

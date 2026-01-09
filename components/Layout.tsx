@@ -88,15 +88,17 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
   const normalizedRole = (userRole || '').toString().toUpperCase();
   const isAdmin = normalizedRole === UserRole.ADMIN || normalizedRole === 'ADMIN';
   const isCommittee = normalizedRole === UserRole.COMMITTEE || normalizedRole === 'COMMITTEE';
+  const isApplicant = normalizedRole === UserRole.APPLICANT || normalizedRole === 'APPLICANT';
+  const dashboardRoute = isApplicant ? ROUTES.PORTAL.APPLICANT : ROUTES.PORTAL.DASHBOARD;
 
   const NavLinks = () => (
     <>
-      <Link to={ROUTES.PORTAL.DASHBOARD} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DASHBOARD)}`}>
+      <Link to={dashboardRoute} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(dashboardRoute)}`}>
         <LayoutDashboard size={18} />
         <span>My Dashboard</span>
       </Link>
 
-      {(isCommittee || isAdmin) && (
+      {isCommittee && (
         <Link to={ROUTES.PORTAL.SCORING} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.SCORING)}`}>
           <BarChart3 size={18} />
           <span>Matrix Evaluation</span>
@@ -107,6 +109,13 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <Briefcase size={18} />
         <span>Project Entries</span>
       </Link>
+
+      {(isCommittee || isAdmin) && (
+        <Link to={ROUTES.PORTAL.DOCUMENTS} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DOCUMENTS)}`}>
+          <FileText size={18} />
+          <span>Documents</span>
+        </Link>
+      )}
 
       {isAdmin && (
          <Link to={ROUTES.PORTAL.ADMIN} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.ADMIN)}`}>
@@ -139,7 +148,9 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <div className="p-4 bg-purple-950 border-t border-purple-800">
            <div className="px-4 py-3 mb-4 bg-purple-900/50 rounded-xl border border-purple-800">
               <p className="text-[10px] font-bold text-purple-400 uppercase leading-none mb-1">Signed in as</p>
-              <p className="text-xs font-bold truncate">{currentUser?.name}</p>
+              <p className="text-xs font-bold truncate">
+                {currentUser?.displayName || currentUser?.username || currentUser?.email || 'Unknown User'}
+              </p>
            </div>
            <button onClick={handleLogout} className="flex items-center space-x-3 text-purple-300 hover:text-white transition w-full px-4 py-2 hover:bg-red-600 rounded-lg text-sm font-bold">
              <LogOut size={16} />

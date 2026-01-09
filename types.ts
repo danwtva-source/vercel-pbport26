@@ -5,13 +5,16 @@
 // Enum-based roles (from v8) for stricter type checking
 export enum UserRole {
   PUBLIC = 'PUBLIC',
+  COMMUNITY = 'COMMUNITY',
   APPLICANT = 'APPLICANT',
   COMMITTEE = 'COMMITTEE',
   ADMIN = 'ADMIN'
 }
 
-// String union type for backwards compatibility and flexibility
-export type Role = 'applicant' | 'committee' | 'admin';
+// String union type for backwards compatibility and flexibility (UI-facing)
+export type Role = 'community' | 'applicant' | 'committee' | 'admin';
+// Canonical storage role values (PRD) - always normalized in persistence
+export type StoredRole = 'admin' | 'committee' | 'applicant';
 
 // --- GEOGRAPHIC AREAS ---
 
@@ -42,6 +45,11 @@ export interface User {
   username?: string;
   role: Role;
   area?: Area | null;  // Area assignment (required for committee members)
+  /**
+   * Canonical PRD field: areaId (slug). Legacy "area" name is retained for UI.
+   * Mapping strategy: services/firebase.ts maps area <-> areaId on read/write.
+   */
+  areaId?: string | null;
   displayName?: string;
   password?: string; // For demo seeding only, never store in production
 
@@ -62,6 +70,7 @@ export interface PortalSettings {
     stage2Visible: boolean;
     votingOpen: boolean;
     scoringThreshold: number;
+    resultsReleased?: boolean; // Controls whether Part 2 results are visible to applicants
 }
 
 // System Settings (from v8) - Alternative/extended settings interface
@@ -96,44 +105,42 @@ export interface ScoreCriterion {
 // --- VOTING (Stage 1) ---
 
 export interface Vote {
-    id: string;
-    appId: string;
-    voterId: string;
-    voterName?: string;
-    decision: 'yes' | 'no';
-    reason?: string;
-    createdAt: string;
+  id: string;
+  // Legacy fields kept for backwards compatibility
+  appId: string;
+  voterId: string;
+  // Canonical PRD fields
+  applicationId?: string;
+  committeeId?: string;
+  /** Mapping strategy: services/firebase.ts mirrors appId <-> applicationId and voterId <-> committeeId. */
+  voterName?: string;
+  decision: 'yes' | 'no';
+  reason?: string;
+  createdAt: string;
 }
 
 // --- SCORING (Stage 2) ---
 
 export interface ScoreBreakdown {
-  [criterionKey: string]: number; // 0–100
-}
-
-// --- VOTING (Stage 1) ---
-export interface Vote {
-    id: string;
-    appId: string;
-    voterId: string;
-    voterName?: string;
-    decision: 'yes' | 'no';
-    reason?: string;
-    createdAt: string;
-}
-
-// --- SCORING (Stage 2) ---
-export interface ScoreBreakdown {
-  [criterionKey: string]: number; // 0–100
+  [criterionKey: string]: number; // 0–3 per PRD
 }
 
 export interface Score {
   id: string;
+  // Legacy fields kept for backwards compatibility
   appId: string;
   scorerId: string;
+  // Canonical PRD fields
+  applicationId?: string;
+  committeeId?: string;
   scorerName?: string;
   weightedTotal: number; // 0–100
   breakdown: ScoreBreakdown;
+  /**
+   * Canonical PRD field for per-criterion scoring.
+   * Mapping strategy: criterionScores <-> breakdown in services/firebase.ts.
+   */
+  criterionScores?: ScoreBreakdown;
   notes?: Record<string, string>; // criterionId -> comment
   isFinal?: boolean;
   createdAt: string;
@@ -153,6 +160,14 @@ export interface ScoringState {
 
 export interface Application {
   id: string;
+  /**
+   * Canonical PRD identifiers (applicationId/applicantId/areaId) map to legacy fields.
+   * Mapping strategy: services/firebase.ts mirrors applicationId <-> id,
+   * applicantId <-> userId, areaId <-> area.
+   */
+  applicationId?: string;
+  applicantId?: string;
+  areaId?: string;
   userId: string;
   applicantName: string; // Contact Name
   orgName: string;
@@ -180,6 +195,11 @@ export interface Application {
   voteCountNo?: number;
   averageScore?: number;
   scoreCount?: number;
+
+  // --- Public Vote Pack (for successful Part 2 applicants) ---
+  publicVoteImage?: string; // URL to image for public voting display
+  publicVoteBlurb?: string; // Short description for public voting (max 200 words)
+  publicVotePackComplete?: boolean; // True when both image and blurb submitted
 
   // --- Stage 1 (EOI) Data ---
   formData: {
@@ -284,6 +304,29 @@ export interface AdminDocument {
     category: 'general' | 'minutes' | 'policy' | 'committee-only';
     uploadedBy: string;
     createdAt: number;
+}
+
+// --- DOCUMENTS (Folders + Files) ---
+
+export type DocumentVisibility = 'public' | 'committee' | 'admin';
+
+export interface DocumentFolder {
+  id: string;
+  name: string;
+  visibility: DocumentVisibility;
+  createdAt: number;
+  createdBy: string;
+}
+
+export interface DocumentItem {
+  id: string;
+  name: string;
+  folderId: string | 'root' | null;
+  visibility: DocumentVisibility;
+  url?: string;
+  filePath: string;
+  uploadedBy: string;
+  createdAt: number;
 }
 
 // Document Resource (from v8) - Alternative document representation

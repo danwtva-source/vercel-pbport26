@@ -1,13 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
-import { Search, MapPin, CheckCircle2, XCircle, ArrowRight, Info } from 'lucide-react';
+import { Search, MapPin, CheckCircle2, XCircle, ArrowRight, Info, Vote, FileText } from 'lucide-react';
 import { AREA_DATA } from '../../constants';
+import { DataService } from '../../services/firebase';
+import { PortalSettings } from '../../types';
+import { ROUTES } from '../../utils';
 
 const PostcodeCheckPage: React.FC = () => {
   const [postcode, setPostcode] = useState('');
   const [result, setResult] = useState<{ eligible: boolean; area?: string; formUrl?: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [settings, setSettings] = useState<PortalSettings | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settingsData = await DataService.getPortalSettings();
+        setSettings(settingsData);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const normalizePostcode = (pc: string): string => {
     return pc.toUpperCase().replace(/\s+/g, '');
@@ -151,34 +167,39 @@ const PostcodeCheckPage: React.FC = () => {
                   You can participate in the Communities' Choice process for {result.area}. This includes viewing local priorities, voting on projects, and even submitting your own project applications.
                 </p>
 
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Link
-                    to="/priorities"
-                    className="inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
+                    to={ROUTES.PUBLIC.LOGIN}
+                    className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
                   >
-                    View {result.area} Priorities
-                    <ArrowRight size={18} />
+                    <FileText size={18} />
+                    Submit Application
                   </Link>
 
-                  {result.formUrl && (
-                    <a
-                      href={result.formUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
+                  {settings?.votingOpen ? (
+                    <Link
+                      to={ROUTES.PUBLIC.VOTING_LIVE}
+                      className="inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
                     >
-                      Submit Application
-                      <ArrowRight size={18} />
-                    </a>
+                      <Vote size={18} />
+                      Vote on Projects
+                    </Link>
+                  ) : (
+                    <button
+                      disabled
+                      className="inline-flex items-center justify-center gap-2 bg-gray-300 text-gray-500 px-6 py-3 rounded-xl font-bold cursor-not-allowed"
+                      title="Public voting is not live yet"
+                    >
+                      <Vote size={18} />
+                      Vote on Projects
+                    </button>
                   )}
-
-                  <Link
-                    to="/vote"
-                    className="inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-purple-600 border-2 border-purple-600 px-6 py-3 rounded-xl font-bold transition-all"
-                  >
-                    Vote on Projects
-                  </Link>
                 </div>
+                {!settings?.votingOpen && (
+                  <p className="text-sm text-purple-600 mt-2 text-center">
+                    Public voting is not live yet. Check back soon!
+                  </p>
+                )}
               </div>
             )}
 
@@ -192,7 +213,7 @@ const PostcodeCheckPage: React.FC = () => {
                   If the pilot is successful, there may be opportunities to expand the programme to other areas in the future.
                 </p>
                 <Link
-                  to="/"
+                  to={ROUTES.PUBLIC.HOME}
                   className="inline-flex items-center gap-2 text-purple-600 hover:text-purple-800 font-bold"
                 >
                   Learn More About the Initiative

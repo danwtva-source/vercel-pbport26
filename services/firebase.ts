@@ -1,6 +1,7 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
+import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
@@ -62,7 +63,143 @@ const DEFAULT_SETTINGS: PortalSettings = {
     stage1Visible: true,
     stage2Visible: false,
     votingOpen: false,
-    scoringThreshold: 50
+    scoringThreshold: 50,
+    resultsReleased: false
+};
+
+const AREA_NAME_TO_ID: Record<Area, string> = {
+  'Blaenavon': 'blaenavon',
+  'Thornhill & Upper Cwmbran': 'thornhill-upper-cwmbran',
+  'Trevethin, Penygarn & St. Cadocs': 'trevethin-penygarn-st-cadocs',
+  'Cross-Area': 'cross-area'
+};
+
+const AREA_ID_TO_NAME: Record<string, Area> = Object.entries(AREA_NAME_TO_ID).reduce(
+  (acc, [name, id]) => {
+    acc[id] = name as Area;
+    return acc;
+  },
+  {} as Record<string, Area>
+);
+
+const resolveAreaId = (area?: Area | null, areaId?: string | null): string | undefined => {
+  return areaId || (area ? AREA_NAME_TO_ID[area] : undefined);
+};
+
+const resolveAreaName = (area?: Area | null, areaId?: string | null): Area | null => {
+  return area || (areaId ? AREA_ID_TO_NAME[areaId] || null : null);
+};
+
+const mapUserFromFirestore = (data: Partial<User>, docId: string): User => {
+  const normalizedRole = toStoredRole(data.role);
+  const area = resolveAreaName(data.area || null, data.areaId || null);
+  return {
+    ...data,
+    uid: data.uid || docId,
+    role: normalizedRole,
+    area,
+    areaId: resolveAreaId(area || undefined, data.areaId || undefined) || null
+  } as User;
+};
+
+const mapUserToFirestore = (user: User): Partial<User> => {
+  const normalizedRole = toStoredRole(user.role);
+  const areaId = resolveAreaId(user.area || undefined, user.areaId || undefined);
+  const area = resolveAreaName(user.area || null, areaId || null);
+  return {
+    ...user,
+    role: normalizedRole,
+    area,
+    areaId: areaId || null
+  };
+};
+
+const mapApplicationFromFirestore = (data: Partial<Application>, docId: string): Application => {
+  const applicationId = data.applicationId || data.id || docId;
+  const applicantId = data.applicantId || data.userId || '';
+  const area = resolveAreaName(data.area || null, data.areaId || null);
+  const areaId = resolveAreaId(area || undefined, data.areaId || undefined);
+  return {
+    ...data,
+    id: applicationId,
+    applicationId,
+    applicantId,
+    userId: data.userId || applicantId,
+    area: area as Area,
+    areaId
+  } as Application;
+};
+
+const mapApplicationToFirestore = (app: Application): Partial<Application> => {
+  const applicationId = app.applicationId || app.id;
+  const applicantId = app.applicantId || app.userId;
+  const areaId = resolveAreaId(app.area || undefined, app.areaId || undefined);
+  const area = resolveAreaName(app.area || null, areaId || null);
+  return {
+    ...app,
+    id: applicationId,
+    applicationId,
+    applicantId,
+    userId: app.userId || applicantId,
+    area,
+    areaId
+  };
+};
+
+const mapVoteFromFirestore = (data: Partial<Vote>, docId: string): Vote => {
+  const applicationId = data.applicationId || data.appId || '';
+  const committeeId = data.committeeId || data.voterId || '';
+  return {
+    ...data,
+    id: data.id || docId,
+    applicationId,
+    appId: data.appId || applicationId,
+    committeeId,
+    voterId: data.voterId || committeeId
+  } as Vote;
+};
+
+const mapVoteToFirestore = (vote: Vote): Partial<Vote> => {
+  const applicationId = vote.applicationId || vote.appId;
+  const committeeId = vote.committeeId || vote.voterId;
+  return {
+    ...vote,
+    applicationId,
+    appId: vote.appId || applicationId,
+    committeeId,
+    voterId: vote.voterId || committeeId
+  };
+};
+
+const mapScoreFromFirestore = (data: Partial<Score>, docId: string): Score => {
+  const applicationId = data.applicationId || data.appId || '';
+  const committeeId = data.committeeId || data.scorerId || '';
+  const criterionScores = data.criterionScores || data.breakdown || {};
+  return {
+    ...data,
+    id: data.id || docId,
+    applicationId,
+    appId: data.appId || applicationId,
+    committeeId,
+    scorerId: data.scorerId || committeeId,
+    breakdown: data.breakdown || criterionScores,
+    criterionScores
+  } as Score;
+};
+
+const mapScoreToFirestore = (score: Score): Partial<Score> => {
+  const applicationId = score.applicationId || score.appId;
+  const committeeId = score.committeeId || score.scorerId;
+  const criterionScores = score.criterionScores || score.breakdown;
+  return {
+    ...score,
+    applicationId,
+    appId: score.appId || applicationId,
+    committeeId,
+    scorerId: score.scorerId || committeeId,
+    breakdown: score.breakdown || criterionScores,
+    criterionScores
+  };
 };
 
 // --- HELPER: CSV Export ---
@@ -158,8 +295,8 @@ class AuthService {
     }
   }
 
-  async register(email: string, pass: string, name: string): Promise<User> {
-    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name);
+  async register(email: string, pass: string, name: string, role: 'applicant' | 'community' = 'applicant'): Promise<User> {
+    if (USE_DEMO_MODE) return this.mockRegister(email, pass, name, role);
     try {
       const uc = await createUserWithEmailAndPassword(auth, email, pass);
       const u: User = {
@@ -167,7 +304,7 @@ class AuthService {
         email,
         username: email.split('@')[0],
         displayName: name,
-        role: 'applicant',
+        role: toStoredRole(role),
         createdAt: Date.now()
       };
       await setDoc(doc(db, 'users', u.uid), u);
@@ -209,10 +346,12 @@ class AuthService {
         // Fetch all apps and filter in memory for complex OR logic (Area OR Cross-Area)
         // In production with large datasets, use specific queries.
         const snap = await getDocs(collection(db, "applications"));
-        const apps = snap.docs.map(d => d.data() as Application);
+        const apps = snap.docs.map(d => mapApplicationFromFirestore(d.data() as Application, d.id));
 
         if (area && area !== 'All') {
-             return apps.filter(a => a.area === area || a.area === 'Cross-Area');
+             const areaId = resolveAreaId(area as Area, null);
+             const crossAreaId = AREA_NAME_TO_ID['Cross-Area'];
+             return apps.filter(a => a.area === area || a.areaId === areaId || a.area === 'Cross-Area' || a.areaId === crossAreaId);
         }
         return apps;
       } catch (error) { return []; }
@@ -222,14 +361,30 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockCreateApp(app);
       try {
         const id = app.id || 'app_' + Date.now();
-        await setDoc(doc(db, 'applications', id), { ...app, id, updatedAt: Date.now() });
+        const mapped = mapApplicationToFirestore({ ...app, id, updatedAt: Date.now() } as Application);
+        await setDoc(doc(db, 'applications', id), mapped);
       } catch (e) { throw new Error('Failed to create application'); }
   }
 
   async updateApplication(id: string, updates: Partial<Application>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateApp(id, updates);
       try {
-        await setDoc(doc(db, 'applications', id), { ...updates, updatedAt: Date.now() }, { merge: true });
+        const mappedUpdates: Partial<Application> = { ...updates, updatedAt: Date.now() };
+        if (updates.applicationId) {
+          mappedUpdates.id = updates.applicationId;
+        }
+        if (updates.applicantId || updates.userId) {
+          const applicantId = updates.applicantId || updates.userId;
+          mappedUpdates.applicantId = applicantId;
+          mappedUpdates.userId = updates.userId || applicantId;
+        }
+        if (updates.area || updates.areaId) {
+          const areaId = resolveAreaId(updates.area as Area, updates.areaId || null);
+          const areaName = resolveAreaName(updates.area || null, areaId || null);
+          mappedUpdates.areaId = areaId;
+          mappedUpdates.area = areaName || undefined;
+        }
+        await setDoc(doc(db, 'applications', id), mappedUpdates, { merge: true });
       } catch (e) { throw new Error('Failed to update application'); }
   }
 
@@ -242,25 +397,27 @@ class AuthService {
   async saveVote(vote: Vote): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveVote(vote);
       const voteId = vote.id || `${vote.appId}_${vote.voterId}`;
-      await setDoc(doc(db, 'votes', voteId), { ...vote, id: voteId });
+      const mapped = mapVoteToFirestore({ ...vote, id: voteId } as Vote);
+      await setDoc(doc(db, 'votes', voteId), mapped);
   }
 
   async getVotes(): Promise<Vote[]> {
       if (USE_DEMO_MODE) return this.mockGetVotes();
       const snap = await getDocs(collection(db, 'votes'));
-      return snap.docs.map(d => d.data() as Vote);
+      return snap.docs.map(d => mapVoteFromFirestore(d.data() as Vote, d.id));
   }
 
   async saveScore(score: Score): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveScore(score);
       const scoreId = score.id || `${score.appId}_${score.scorerId}`;
-      await setDoc(doc(db, 'scores', scoreId), { ...score, id: scoreId });
+      const mapped = mapScoreToFirestore({ ...score, id: scoreId } as Score);
+      await setDoc(doc(db, 'scores', scoreId), mapped);
   }
 
   async getScores(): Promise<Score[]> {
       if (USE_DEMO_MODE) return this.mockGetScores();
       const snap = await getDocs(collection(db, 'scores'));
-      return snap.docs.map(d => d.data() as Score);
+      return snap.docs.map(d => mapScoreFromFirestore(d.data() as Score, d.id));
   }
 
   // --- USERS ---
@@ -268,19 +425,12 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockGetUsers();
       const snap = await getDocs(collection(db, 'users'));
       // Ensure uid is set from document ID if missing in data
-      return snap.docs.map(d => {
-        const data = d.data() as User;
-        return { ...data, uid: data.uid || d.id };
-      });
+      return snap.docs.map(d => mapUserFromFirestore(d.data() as User, d.id));
   }
 
   async updateUser(u: User): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateUser(u);
-      // Normalize role to lowercase before saving
-      const normalizedUser = {
-        ...u,
-        role: u.role ? (u.role.toLowerCase() as 'admin' | 'committee' | 'applicant') : 'applicant'
-      };
+      const normalizedUser = mapUserToFirestore(u);
       await setDoc(doc(db, 'users', u.uid), normalizedUser, { merge: true });
   }
 
@@ -289,7 +439,15 @@ class AuthService {
       const ref = await this.resolveUserDocRef(uid);
       if (!ref) throw new Error("User not found");
 
-      await setDoc(ref, u, { merge: true });
+      const mappedUpdates: Partial<User> = { ...u };
+      if (u.role) mappedUpdates.role = toStoredRole(u.role);
+      if (u.area || u.areaId) {
+        const areaId = resolveAreaId(u.area as Area, u.areaId || null);
+        const areaName = resolveAreaName(u.area || null, areaId || null);
+        mappedUpdates.areaId = areaId || null;
+        mappedUpdates.area = areaName || undefined;
+      }
+      await setDoc(ref, mappedUpdates, { merge: true });
       if (auth.currentUser && auth.currentUser.uid === uid) {
           await updateProfile(auth.currentUser, { 
               displayName: u.displayName || auth.currentUser.displayName,
@@ -297,17 +455,20 @@ class AuthService {
           });
       }
       const finalSnap = await getDoc(ref);
-      return finalSnap.data() as User;
+      return mapUserFromFirestore(finalSnap.data() as User, finalSnap.id);
   }
 
   async getUserById(uid: string): Promise<User | null> {
-      if (USE_DEMO_MODE) return (DEMO_USERS as any[]).find(u => u.uid === uid) || null;
+      if (USE_DEMO_MODE) {
+        const demo = (DEMO_USERS as any[]).find(u => u.uid === uid) || null;
+        return demo ? mapUserFromFirestore(demo as User, demo.uid) : null;
+      }
       try {
           const snap = await getDoc(doc(db, 'users', uid));
-          if (snap.exists()) return snap.data() as User;
+          if (snap.exists()) return mapUserFromFirestore(snap.data() as User, snap.id);
           const q = query(collection(db, 'users'), where('uid', '==', uid));
           const qSnap = await getDocs(q);
-          return qSnap.empty ? null : qSnap.docs[0].data() as User;
+          return qSnap.empty ? null : mapUserFromFirestore(qSnap.docs[0].data() as User, qSnap.docs[0].id);
       } catch (e) { return null; }
   }
 
@@ -336,14 +497,16 @@ class AuthService {
         await signOut(secondaryAuth);
 
         // Save user profile to Firestore with matching UID
-        // Ensure role is lowercase for Firestore rules consistency
-        const normalizedRole = (u.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
+        const normalizedRole = toStoredRole(u.role);
+        const areaId = resolveAreaId(u.area || undefined, u.areaId || undefined);
+        const area = resolveAreaName(u.area || null, areaId || null);
         const userData: User = {
           uid,
           email: u.email,
           displayName: u.displayName || '',
           role: normalizedRole,
-          area: u.area || null,
+          area: area || null,
+          areaId: areaId || null,
           isActive: true,
           createdAt: Date.now()
         };
@@ -373,12 +536,16 @@ class AuthService {
 
       snap.docs.forEach(docSnap => {
         const data = docSnap.data() as User;
-        const normalizedRole = (data.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
+        const normalizedRole = toStoredRole(data.role);
         const normalizedUid = data.uid || docSnap.id;
+        const areaId = resolveAreaId(data.area || undefined, data.areaId || undefined);
+        const areaName = resolveAreaName(data.area || null, areaId || null);
         const updates: Partial<User> = {};
 
         if (data.role !== normalizedRole) updates.role = normalizedRole;
         if (data.uid !== normalizedUid) updates.uid = normalizedUid;
+        if (areaId && data.areaId !== areaId) updates.areaId = areaId;
+        if (areaName && data.area !== areaName) updates.area = areaName;
 
         if (Object.keys(updates).length > 0) {
           batch.set(doc(db, 'users', docSnap.id), updates, { merge: true });
@@ -427,10 +594,10 @@ class AuthService {
 
         await signOut(secondaryAuth);
 
-        const ref = await this.resolveUserDocRef(user.uid, user.email);
-        if (!ref) throw new Error('User profile not found');
+      const ref = await this.resolveUserDocRef(user.uid, user.email);
+      if (!ref) throw new Error('User profile not found');
 
-        const normalizedRole = (user.role || 'applicant').toLowerCase() as 'admin' | 'committee' | 'applicant';
+        const normalizedRole = toStoredRole(user.role);
         await setDoc(ref, { uid, role: normalizedRole }, { merge: true });
       } catch (error: any) {
         try { await signOut(secondaryAuth); } catch {}
@@ -445,25 +612,73 @@ class AuthService {
   }
 
   // --- DOCUMENTS ---
-  async getDocuments(): Promise<AdminDocument[]> {
-      if (USE_DEMO_MODE) return this.mockGetDocs();
-      const snap = await getDocs(collection(db, 'adminDocuments'));
-      return snap.docs.map(d => d.data() as AdminDocument);
+  async getDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocumentFolders(visibility);
+      const ref = collection(db, 'documentFolders');
+      const q = visibility
+        ? query(ref, where('visibility', Array.isArray(visibility) ? 'in' : '==', visibility))
+        : ref;
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as DocumentFolder);
   }
 
-  async createDocument(docData: AdminDocument): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockCreateDoc(docData);
-      await setDoc(doc(db, 'adminDocuments', docData.id), docData);
+  async createDocumentFolder(folderData: DocumentFolder): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDocumentFolder(folderData);
+      await setDoc(doc(db, 'documentFolders', folderData.id), folderData);
   }
 
-  async deleteDocument(id: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockDeleteDoc(id);
-      await deleteDoc(doc(db, 'adminDocuments', id));
+  async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
+      await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
   }
 
-  async updateDocument(id: string, updates: Partial<AdminDocument>): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockUpdateDoc(id, updates);
-      await setDoc(doc(db, 'adminDocuments', id), updates, { merge: true });
+  async deleteDocumentFolder(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDocumentFolder(id);
+      await deleteDoc(doc(db, 'documentFolders', id));
+  }
+
+  async getDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocuments(options);
+      const ref = collection(db, 'documents');
+      const constraints = [];
+      if (options?.visibility) {
+        constraints.push(where('visibility', Array.isArray(options.visibility) ? 'in' : '==', options.visibility));
+      }
+      if (options?.folderId && options.folderId !== 'root') {
+        constraints.push(where('folderId', '==', options.folderId));
+      }
+      const q = constraints.length ? query(ref, ...constraints) : ref;
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as DocumentItem);
+  }
+
+  async createDocument(docData: DocumentItem): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDocument(docData);
+      await setDoc(doc(db, 'documents', docData.id), docData);
+  }
+
+  async deleteDocument(id: string, filePath?: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDocument(id);
+      let resolvedPath = filePath;
+      if (!resolvedPath) {
+        const snap = await getDoc(doc(db, 'documents', id));
+        if (snap.exists()) {
+          resolvedPath = (snap.data() as DocumentItem).filePath;
+        }
+      }
+      if (resolvedPath && storage) {
+        try {
+          await deleteObject(ref(storage, resolvedPath));
+        } catch (error) {
+          console.warn('Failed to delete storage file:', error);
+        }
+      }
+      await deleteDoc(doc(db, 'documents', id));
+  }
+
+  async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDocument(id, updates);
+      await setDoc(doc(db, 'documents', id), updates, { merge: true });
   }
 
   // --- PASSWORD MANAGEMENT ---
@@ -572,8 +787,8 @@ class AuthService {
     });
   }
 
-  mockRegister(e: string, p: string, n: string): Promise<User> {
-    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: 'applicant' };
+  mockRegister(e: string, p: string, n: string, role: 'applicant' | 'community' = 'applicant'): Promise<User> {
+    const u: User = { uid: 'u_'+Date.now(), email: e, password: p, displayName: n, role: toStoredRole(role) };
     this.setLocal('users', [...this.getLocal('users'), u]);
     return Promise.resolve(u);
   }
@@ -581,16 +796,24 @@ class AuthService {
   mockGetApps(area?: string): Promise<Application[]> {
     const apps = this.getLocal<Application>('apps');
     if (apps.length === 0 && !localStorage.getItem('apps_init')) {
-      this.setLocal('apps', DEMO_APPS);
+      const normalized = DEMO_APPS.map(app => mapApplicationFromFirestore(app as Application, app.id));
+      this.setLocal('apps', normalized);
       localStorage.setItem('apps_init', '1');
-      return Promise.resolve(DEMO_APPS);
+      return Promise.resolve(normalized);
     }
-    return Promise.resolve(area && area !== 'All' ? apps.filter(a => a.area === area || a.area === 'Cross-Area') : apps);
+    const mapped = apps.map(app => mapApplicationFromFirestore(app as Application, app.id));
+    if (area && area !== 'All') {
+      const areaId = resolveAreaId(area as Area, null);
+      const crossAreaId = AREA_NAME_TO_ID['Cross-Area'];
+      return Promise.resolve(mapped.filter(a => a.area === area || a.areaId === areaId || a.area === 'Cross-Area' || a.areaId === crossAreaId));
+    }
+    return Promise.resolve(mapped);
   }
 
   mockCreateApp(a: any): Promise<void> {
     const code = a.area?.substring(0,3).toUpperCase() || 'GEN';
-    const na = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), updatedAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' as ApplicationStatus };
+    const base = { ...a, id: 'app_'+Date.now(), createdAt: Date.now(), updatedAt: Date.now(), ref: `PB-${code}-${Math.floor(Math.random()*900)}`, status: 'Submitted-Stage1' as ApplicationStatus };
+    const na = mapApplicationFromFirestore(base as Application, base.id);
     this.setLocal('apps', [...this.getLocal('apps'), na]);
     return Promise.resolve();
   }
@@ -598,7 +821,11 @@ class AuthService {
   mockUpdateApp(id: string, up: any): Promise<void> {
     const apps = this.getLocal<Application>('apps');
     const i = apps.findIndex(a => a.id === id);
-    if(i>=0) { apps[i] = { ...apps[i], ...up, updatedAt: Date.now() }; this.setLocal('apps', apps); }
+    if(i>=0) {
+      const updated = mapApplicationFromFirestore({ ...apps[i], ...up, updatedAt: Date.now() } as Application, id);
+      apps[i] = updated;
+      this.setLocal('apps', apps);
+    }
     return Promise.resolve();
   }
 
@@ -609,38 +836,44 @@ class AuthService {
 
   mockSaveVote(vote: Vote): Promise<void> {
     const votes = this.getLocal<Vote>('votes');
+    const normalized = mapVoteToFirestore(vote);
     const i = votes.findIndex(v => v.appId === vote.appId && v.voterId === vote.voterId);
-    if(i>=0) votes[i] = vote; else votes.push(vote);
+    if(i>=0) votes[i] = normalized as Vote; else votes.push(normalized as Vote);
     this.setLocal('votes', votes);
     return Promise.resolve();
   }
 
   mockGetVotes(): Promise<Vote[]> {
-    return Promise.resolve(this.getLocal('votes'));
+    return Promise.resolve(this.getLocal<Vote>('votes').map(vote => mapVoteFromFirestore(vote, vote.id)));
   }
 
   mockSaveScore(s: Score): Promise<void> {
     const scores = this.getLocal<Score>('scores');
     const i = scores.findIndex(x => x.appId === s.appId && x.scorerId === s.scorerId);
-    if(i>=0) scores[i] = s; else scores.push(s);
+    const normalized = mapScoreToFirestore(s);
+    if(i>=0) scores[i] = normalized as Score; else scores.push(normalized as Score);
     this.setLocal('scores', scores);
     return Promise.resolve();
   }
 
   mockGetScores(): Promise<Score[]> {
-    return Promise.resolve(this.getLocal('scores'));
+    return Promise.resolve(this.getLocal<Score>('scores').map(score => mapScoreFromFirestore(score, score.id)));
   }
 
   mockGetUsers(): Promise<User[]> {
     const u = this.getLocal<User>('users');
-    if(u.length === 0) { this.setLocal('users', DEMO_USERS); return Promise.resolve(DEMO_USERS); }
-    return Promise.resolve(u);
+    if(u.length === 0) {
+      const normalized = DEMO_USERS.map(user => mapUserFromFirestore(user as User, user.uid));
+      this.setLocal('users', normalized);
+      return Promise.resolve(normalized);
+    }
+    return Promise.resolve(u.map(user => mapUserFromFirestore(user as User, user.uid)));
   }
 
   mockUpdateUser(u: User): Promise<void> {
     const users = this.getLocal<User>('users');
     const i = users.findIndex(x => x.uid === u.uid);
-    if(i>=0) { users[i] = { ...users[i], ...u }; this.setLocal('users', users); }
+    if(i>=0) { users[i] = { ...users[i], ...u, role: toStoredRole(u.role) }; this.setLocal('users', users); }
     return Promise.resolve();
   }
 
@@ -662,6 +895,7 @@ class AuthService {
       ...u,
       uid,
       password: p, // Only for demo login purposes
+      role: toStoredRole(u.role),
       isActive: true,
       createdAt: Date.now()
     };
@@ -669,24 +903,56 @@ class AuthService {
     return Promise.resolve();
   }
 
-  mockGetDocs(): Promise<AdminDocument[]> {
-    return Promise.resolve(this.getLocal('adminDocs'));
+  mockGetDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
+    const folders = this.getLocal<DocumentFolder>('documentFolders');
+    if (!visibility) return Promise.resolve(folders);
+    const values = Array.isArray(visibility) ? visibility : [visibility];
+    return Promise.resolve(folders.filter(folder => values.includes(folder.visibility)));
   }
 
-  mockCreateDoc(d: AdminDocument): Promise<void> {
-    this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]);
+  mockCreateDocumentFolder(folder: DocumentFolder): Promise<void> {
+    this.setLocal('documentFolders', [...this.getLocal('documentFolders'), folder]);
     return Promise.resolve();
   }
 
-  mockDeleteDoc(id: string): Promise<void> {
-    this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+  mockDeleteDocumentFolder(id: string): Promise<void> {
+    this.setLocal('documentFolders', this.getLocal<DocumentFolder>('documentFolders').filter(folder => folder.id !== id));
     return Promise.resolve();
   }
 
-  mockUpdateDoc(id: string, updates: Partial<AdminDocument>): Promise<void> {
-    const docs = this.getLocal<AdminDocument>('adminDocs');
-    const i = docs.findIndex(d => d.id === id);
-    if(i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('adminDocs', docs); }
+  mockUpdateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
+    const folders = this.getLocal<DocumentFolder>('documentFolders');
+    const i = folders.findIndex(folder => folder.id === id);
+    if (i >= 0) { folders[i] = { ...folders[i], ...updates }; this.setLocal('documentFolders', folders); }
+    return Promise.resolve();
+  }
+
+  mockGetDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
+    let docs = this.getLocal<DocumentItem>('documents');
+    if (options?.visibility) {
+      const values = Array.isArray(options.visibility) ? options.visibility : [options.visibility];
+      docs = docs.filter(doc => values.includes(doc.visibility));
+    }
+    if (options?.folderId && options.folderId !== 'root') {
+      docs = docs.filter(doc => doc.folderId === options.folderId);
+    }
+    return Promise.resolve(docs);
+  }
+
+  mockCreateDocument(docItem: DocumentItem): Promise<void> {
+    this.setLocal('documents', [...this.getLocal('documents'), docItem]);
+    return Promise.resolve();
+  }
+
+  mockDeleteDocument(id: string): Promise<void> {
+    this.setLocal('documents', this.getLocal<DocumentItem>('documents').filter(doc => doc.id !== id));
+    return Promise.resolve();
+  }
+
+  mockUpdateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
+    const docs = this.getLocal<DocumentItem>('documents');
+    const i = docs.findIndex(doc => doc.id === id);
+    if (i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('documents', docs); }
     return Promise.resolve();
   }
 

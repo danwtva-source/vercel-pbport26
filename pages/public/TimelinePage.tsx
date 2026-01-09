@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { Calendar, CheckCircle2, Clock, Circle, ArrowRight, Users, FileText, Vote, Trophy } from 'lucide-react';
+import { ROUTES } from '../../utils';
 
 interface Milestone {
   id: number;
