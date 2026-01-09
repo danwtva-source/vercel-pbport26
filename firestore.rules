@@ -182,15 +182,6 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Document folders collection
-    match /documentFolders/{folderId} {
-      // Folder lists are readable for navigation
-      allow read: if true;
-
-      // Only admins can manage folders
-      allow create, update, delete: if isAdmin();
-    }
-
     // Audit Logs collection
     match /auditLogs/{logId} {
       // Only admins can read audit logs
