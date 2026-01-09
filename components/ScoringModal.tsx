@@ -42,10 +42,13 @@ export const ScoringModal: React.FC<ScoringModalProps> = ({ isOpen, onClose, app
     const newScore: Score = {
       id: `${app.id}_${user.uid}`,
       appId: app.id,
+      applicationId: app.id,
       scorerId: user.uid,
+      committeeId: user.uid,
       scorerName: user.displayName || user.username,
       weightedTotal,
       breakdown,
+      criterionScores: breakdown,
       notes,
       isFinal: true,
       createdAt: new Date().toISOString()

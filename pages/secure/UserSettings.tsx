@@ -4,6 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Card, Button, Input, Badge } from '../../components/UI';
 import { DataService, uploadProfileImage, deleteProfileImage } from '../../services/firebase';
 import { User, UserRole } from '../../types';
+import { toUserRole } from '../../utils';
 import {
   User as UserIcon,
   Camera,
@@ -17,17 +18,6 @@ import {
   AlertCircle,
   CheckCircle
 } from 'lucide-react';
-
-// Helper to convert lowercase role string to UserRole enum
-const roleToUserRole = (role: string | undefined): UserRole => {
-  const normalized = (role || '').toUpperCase();
-  switch (normalized) {
-    case 'ADMIN': return UserRole.ADMIN;
-    case 'COMMITTEE': return UserRole.COMMITTEE;
-    case 'APPLICANT': return UserRole.APPLICANT;
-    default: return UserRole.PUBLIC;
-  }
-};
 
 const UserSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -187,7 +177,7 @@ const UserSettings: React.FC = () => {
     );
   }
 
-  const userRole = roleToUserRole(currentUser.role);
+  const userRole = toUserRole(currentUser.role);
 
   return (
     <SecureLayout userRole={userRole}>

@@ -2,7 +2,7 @@ import React from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { User, UserRole } from './types';
-import { ROUTES } from './utils';
+import { ROUTES, toUserRole } from './utils';
 
 // Lazy load pages for better performance
 import LandingPage from './pages/public/LandingPage';
@@ -24,11 +24,6 @@ interface ProtectedRouteProps {
   children: React.ReactElement;
   requiredRole?: UserRole | UserRole[];
 }
-
-// Helper to normalize role strings for comparison (handles case differences)
-const normalizeRole = (role: string | undefined): string => {
-  return (role || '').toUpperCase();
-};
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
   const { userProfile, loading, error } = useAuth();
@@ -72,21 +67,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
     return <Navigate to={ROUTES.PUBLIC.LOGIN} replace />;
   }
 
-  // Normalize the user's role for comparison (handles 'admin' vs 'ADMIN')
-  const userRoleNormalized = normalizeRole(userProfile.role);
+  const userRole = toUserRole(userProfile.role);
 
   // Check role authorization if required
   if (requiredRole) {
     const allowedRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
 
     // Admin can access everything
-    if (userRoleNormalized === UserRole.ADMIN) {
+    if (userRole === UserRole.ADMIN) {
       return children;
     }
 
-    // Check if user's role is in allowed roles (normalize for comparison)
-    const allowedRolesNormalized = allowedRoles.map(r => normalizeRole(r));
-    if (!allowedRolesNormalized.includes(userRoleNormalized)) {
+    if (!allowedRoles.includes(userRole)) {
       // Redirect to dashboard - user doesn't have required role
       return <Navigate to={ROUTES.PORTAL.DASHBOARD} replace />;
     }

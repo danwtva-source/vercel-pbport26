@@ -115,26 +115,35 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
     const [breakdown, setBreakdown] = useState<Record<string, number>>({});
     const [notes, setNotes] = useState<Record<string, string>>({});
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        let total = 0;
-        let maxTotal = 0;
-        
+    const calculateTotals = () => {
+        let rawTotal = 0;
+        let weightedSum = 0;
+
         SCORING_CRITERIA.forEach(c => {
             const score = breakdown[c.id] || 0;
-            total += score * c.weight;
-            maxTotal += 100 * c.weight;
+            rawTotal += score;
+            const normalizedScore = score / 3;
+            weightedSum += normalizedScore * c.weight;
         });
-        
-        const weightedTotal = Math.round((total / maxTotal) * 100);
+
+        const weightedTotal = Math.round(weightedSum);
+        return { rawTotal, weightedTotal };
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const { weightedTotal } = calculateTotals();
 
         const newScore: Score = {
             id: `${app.id}_${user.uid}`,
             appId: app.id,
+            applicationId: app.id,
             scorerId: user.uid,
+            committeeId: user.uid,
             scorerName: user.displayName,
             weightedTotal,
             breakdown,
+            criterionScores: breakdown,
             notes,
             isFinal: true,
             createdAt: new Date().toISOString()
@@ -145,11 +154,15 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
         onClose();
     };
 
+    const { rawTotal, weightedTotal } = calculateTotals();
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="lg">
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm">
-                    Please score each criterion from 0-100. The system will automatically calculate the weighted total based on committee priorities.
+                    <p className="font-bold mb-1">Scoring Instructions:</p>
+                    <p>Score each criterion from 0-3 (0 = Not met, 1 = Partially met, 2 = Well met, 3 = Excellently met)</p>
+                    <p className="mt-2">Raw Total: <span className="font-bold">{rawTotal}/30</span> | Weighted Total: <span className="font-bold">{weightedTotal}/100</span></p>
                 </div>
                 
                 {SCORING_CRITERIA.map(criterion => (
@@ -162,13 +175,13 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
                             <Badge>Weight: {criterion.weight}x</Badge>
                         </div>
                         <div className="flex gap-4 items-center">
-                            <input 
-                                type="range" min="0" max="100" step="5" 
+                            <input
+                                type="range" min="0" max="3" step="1"
                                 value={breakdown[criterion.id] || 0}
                                 onChange={e => setBreakdown({ ...breakdown, [criterion.id]: Number(e.target.value) })}
                                 className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-purple"
                             />
-                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}</div>
+                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}/3</div>
                         </div>
                         <textarea 
                             placeholder="Optional comments..."
@@ -735,7 +748,15 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     useEffect(() => { refresh(); }, [user.uid, user.area, isAdmin]);
 
     const handleVote = async (appId: string, decision: 'yes'|'no') => {
-        await api.saveVote({ id: `${appId}_${user.uid}`, appId, voterId: user.uid, decision, createdAt: new Date().toISOString() });
+        await api.saveVote({
+            id: `${appId}_${user.uid}`,
+            appId,
+            applicationId: appId,
+            voterId: user.uid,
+            committeeId: user.uid,
+            decision,
+            createdAt: new Date().toISOString()
+        });
         refresh();
     };
 

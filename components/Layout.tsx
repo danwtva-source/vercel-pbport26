@@ -84,10 +84,8 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
 
   const isActive = (path: string) => location.pathname === path ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white';
 
-  // Normalize role for comparison (handles 'admin' vs 'ADMIN' case differences)
-  const normalizedRole = (userRole || '').toString().toUpperCase();
-  const isAdmin = normalizedRole === UserRole.ADMIN || normalizedRole === 'ADMIN';
-  const isCommittee = normalizedRole === UserRole.COMMITTEE || normalizedRole === 'COMMITTEE';
+  const isAdmin = userRole === UserRole.ADMIN;
+  const isCommittee = userRole === UserRole.COMMITTEE;
 
   const NavLinks = () => (
     <>
