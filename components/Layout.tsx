@@ -98,7 +98,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <span>My Dashboard</span>
       </Link>
 
-      {(isCommittee || isAdmin) && (
+      {isCommittee && (
         <Link to={ROUTES.PORTAL.SCORING} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.SCORING)}`}>
           <BarChart3 size={18} />
           <span>Matrix Evaluation</span>

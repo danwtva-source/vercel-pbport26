@@ -76,10 +76,7 @@ const Dashboard: React.FC = () => {
         setApplications(appsData.filter(app => app.userId === user.uid));
       } else if (user.role === 'committee') {
         const assignedAppIds = assignmentsData.map(a => a.applicationId);
-        const committeeApps = appsData.filter(app =>
-          assignedAppIds.includes(app.id) ||
-          (user.area && (app.area === user.area || app.area === 'Cross-Area'))
-        );
+        const committeeApps = appsData.filter(app => assignedAppIds.includes(app.id));
         setApplications(committeeApps);
       } else {
         setApplications(appsData);
@@ -559,10 +556,8 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   const stage1Apps = applications.filter(app => app.status === 'Submitted-Stage1');
   const stage2Apps = applications.filter(app => app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2');
 
-  // Committee members can only see applications in their assigned area
-  const filteredApps = currentUser.area
-    ? applications.filter(app => app.area === currentUser.area || app.area === 'Cross-Area')
-    : applications;
+  const assignedAppIds = new Set(assignments.map(assignment => assignment.applicationId));
+  const filteredApps = applications.filter(app => assignedAppIds.has(app.id));
 
   // Check if voting is allowed based on portal settings
   const isVotingAllowed = portalSettings?.votingOpen !== false;
@@ -617,13 +612,13 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
         />
       </div>
 
-      {/* Area Indicator - Committee members can only see their assigned area */}
+      {/* Area Indicator - Context only */}
       {currentUser.area && (
         <div className="bg-white rounded-xl shadow-md p-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter className="text-gray-600" size={20} />
-              <span className="font-semibold text-gray-700">Your Assigned Area:</span>
+              <span className="font-semibold text-gray-700">Your Area (context):</span>
             </div>
             <span className="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">
               {currentUser.area}
