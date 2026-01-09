@@ -1,23 +1,63 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
 import { PUBLIC_DOCS } from '../../constants';
+import { DataService } from '../../services/firebase';
+import { DocumentFolder, DocumentItem } from '../../types';
 
 type CategoryFilter = 'All' | 'Part 1' | 'Part 2';
 
 const DocumentsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [folders, setFolders] = useState<DocumentFolder[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredDocs = selectedCategory === 'All'
-    ? PUBLIC_DOCS
-    : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory);
+  useEffect(() => {
+    let isMounted = true;
+    const loadDocuments = async () => {
+      try {
+        const [docsData, folderData] = await Promise.all([
+          DataService.getDocuments({ visibility: 'public' }),
+          DataService.getDocumentFolders('public')
+        ]);
+        if (isMounted) {
+          setDocuments(docsData);
+          setFolders(folderData);
+        }
+      } catch (error) {
+        console.error('Failed to load public documents:', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    loadDocuments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const usingFallback = documents.length === 0;
+  const filteredDocs = usingFallback
+    ? (selectedCategory === 'All'
+      ? PUBLIC_DOCS
+      : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory))
+    : documents;
 
   const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
 
   const getCategoryCount = (category: CategoryFilter) => {
     if (category === 'All') return PUBLIC_DOCS.length;
     return PUBLIC_DOCS.filter(doc => doc.category === category).length;
+  };
+
+  const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
+
+  const isSeedDoc = (doc: DocumentItem | (typeof PUBLIC_DOCS)[number]): doc is (typeof PUBLIC_DOCS)[number] => {
+    return (doc as (typeof PUBLIC_DOCS)[number]).title !== undefined;
   };
 
   return (
@@ -71,53 +111,83 @@ const DocumentsPage: React.FC = () => {
         </div>
 
         {/* Category Filter */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <Filter size={20} className="text-purple-600" />
-            <h2 className="text-lg font-bold text-purple-900">Filter by Stage</h2>
-          </div>
+        {usingFallback && (
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Filter size={20} className="text-purple-600" />
+              <h2 className="text-lg font-bold text-purple-900">Filter by Stage</h2>
+            </div>
 
-          <div className="flex flex-wrap gap-3">
-            {categories.map((category) => {
-              const isSelected = selectedCategory === category;
-              const count = getCategoryCount(category);
+            <div className="flex flex-wrap gap-3">
+              {categories.map((category) => {
+                const isSelected = selectedCategory === category;
+                const count = getCategoryCount(category);
 
-              return (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                    isSelected
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
-                  }`}
-                >
-                  {category}
-                  <span className={`ml-2 text-sm ${isSelected ? 'text-purple-200' : 'text-purple-500'}`}>
-                    ({count})
-                  </span>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                      isSelected
+                        ? 'bg-purple-600 text-white shadow-lg'
+                        : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
+                    }`}
+                  >
+                    {category}
+                    <span className={`ml-2 text-sm ${isSelected ? 'text-purple-200' : 'text-purple-500'}`}>
+                      ({count})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Documents Grid */}
         <div className="space-y-4 mb-12">
-          {filteredDocs.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
+              <FileText size={48} className="text-purple-300 mx-auto mb-4" />
+              <p className="text-purple-600 font-semibold">Loading documents...</p>
+            </div>
+          ) : filteredDocs.length === 0 ? (
             <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
               <FileText size={48} className="text-purple-300 mx-auto mb-4" />
               <p className="text-purple-600 font-semibold">No documents found in this category</p>
             </div>
           ) : (
             filteredDocs.map((doc, index) => (
+              (() => {
+                const isSeed = isSeedDoc(doc as DocumentItem | (typeof PUBLIC_DOCS)[number]);
+                const title = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).title : (doc as DocumentItem).name;
+                const url = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).url : (doc as DocumentItem).url;
+                const description = isSeed
+                  ? (doc as (typeof PUBLIC_DOCS)[number]).desc
+                  : ((doc as DocumentItem).folderId && folderLookup.get((doc as DocumentItem).folderId || ''))
+                    ? `Folder: ${folderLookup.get((doc as DocumentItem).folderId || '')}`
+                    : 'Shared document';
+                const badgeLabel = isSeed
+                  ? (doc as (typeof PUBLIC_DOCS)[number]).category
+                  : ((doc as DocumentItem).folderId && folderLookup.get((doc as DocumentItem).folderId || ''))
+                    ? folderLookup.get((doc as DocumentItem).folderId || '')
+                    : 'General';
+                const badgeClass = isSeed && (doc as (typeof PUBLIC_DOCS)[number]).category === 'Part 1'
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'bg-teal-100 text-teal-700';
+
+                if (!url) {
+                  return null;
+                }
+
+                return (
               <div
                 key={index}
                 className="bg-white border-2 border-purple-200 hover:border-purple-400 rounded-xl p-6 transition-all hover:shadow-lg group"
               >
                 <div className="flex items-start gap-4">
                   <div className={`flex-shrink-0 w-14 h-14 rounded-lg flex items-center justify-center ${
-                    doc.category === 'Part 1'
+                    isSeed && (doc as (typeof PUBLIC_DOCS)[number]).category === 'Part 1'
                       ? 'bg-purple-100 text-purple-600'
                       : 'bg-teal-100 text-teal-600'
                   }`}>
@@ -128,18 +198,16 @@ const DocumentsPage: React.FC = () => {
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
                         <h3 className="text-lg font-bold text-purple-900 mb-1 font-display group-hover:text-purple-700 transition-colors">
-                          {doc.title}
+                          {title}
                         </h3>
                         <p className="text-purple-700 text-sm leading-relaxed mb-3">
-                          {doc.desc}
+                          {description}
                         </p>
                         <div className="flex items-center gap-2">
                           <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${
-                            doc.category === 'Part 1'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-teal-100 text-teal-700'
+                            badgeClass
                           }`}>
-                            {doc.category}
+                            {badgeLabel}
                           </span>
                         </div>
                       </div>
@@ -147,7 +215,7 @@ const DocumentsPage: React.FC = () => {
                   </div>
 
                   <a
-                    href={doc.url}
+                    href={url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 group"
@@ -158,6 +226,8 @@ const DocumentsPage: React.FC = () => {
                   </a>
                 </div>
               </div>
+                );
+              })()
             ))
           )}
         </div>

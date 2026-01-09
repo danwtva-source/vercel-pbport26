@@ -5,19 +5,8 @@ import { Button, Card, Input, Badge } from '../../components/UI';
 import { api, api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS, Round, PortalSettings } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
-import { formatCurrency, ROUTES } from '../../utils';
+import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
-
-// Helper to convert lowercase role string to UserRole enum
-const roleToUserRole = (role: string | undefined): UserRole => {
-  const normalized = (role || '').toUpperCase();
-  switch (normalized) {
-    case 'ADMIN': return UserRole.ADMIN;
-    case 'COMMITTEE': return UserRole.COMMITTEE;
-    case 'APPLICANT': return UserRole.APPLICANT;
-    default: return UserRole.PUBLIC;
-  }
-};
 
 const ApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -101,7 +90,7 @@ const ApplicationForm: React.FC = () => {
       }
 
       // Check permissions - applicants can only view their own applications
-      if (roleToUserRole(currentUser?.role) === UserRole.APPLICANT && app.userId !== currentUser.uid) {
+      if (toUserRole(currentUser?.role) === UserRole.APPLICANT && app.userId !== currentUser.uid) {
         setError('You do not have permission to view this application');
         setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
@@ -285,7 +274,7 @@ const ApplicationForm: React.FC = () => {
 
   // Check if submission is allowed based on round settings
   const isSubmissionAllowed = (): { allowed: boolean; reason?: string } => {
-    const isAdmin = roleToUserRole(currentUser?.role) === UserRole.ADMIN;
+    const isAdmin = toUserRole(currentUser?.role) === UserRole.ADMIN;
 
     // Admin can always submit (override)
     if (isAdmin) return { allowed: true };
@@ -368,7 +357,7 @@ const ApplicationForm: React.FC = () => {
 
   // Determine if form is read-only
   const isReadOnly = () => {
-    const userRole = roleToUserRole(currentUser?.role);
+    const userRole = toUserRole(currentUser?.role);
     if (userRole === UserRole.ADMIN) return false;
     if (userRole === UserRole.COMMITTEE) return true;
     if (userRole === UserRole.APPLICANT) {
@@ -387,7 +376,7 @@ const ApplicationForm: React.FC = () => {
 
   if (loading) {
     return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+      <SecureLayout userRole={toUserRole(currentUser.role)}>
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600 font-bold">Loading application...</p>
@@ -397,7 +386,7 @@ const ApplicationForm: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+    <SecureLayout userRole={toUserRole(currentUser.role)}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -462,7 +451,7 @@ const ApplicationForm: React.FC = () => {
         {readOnly && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
             <p className="text-sm text-blue-800 font-medium">
-              This application is in read-only mode. {roleToUserRole(currentUser.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
+              This application is in read-only mode. {toUserRole(currentUser.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
             </p>
           </div>
         )}
