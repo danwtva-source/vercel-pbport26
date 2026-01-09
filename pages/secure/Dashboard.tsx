@@ -1130,7 +1130,7 @@ const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, na
           </p>
           {votingOpen ? (
             <button
-              onClick={() => navigate('/public-voting')}
+              onClick={() => navigate(ROUTES.PUBLIC.VOTING_LIVE)}
               className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold transition"
             >
               Vote on Projects
@@ -1193,7 +1193,7 @@ const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, na
                 View Timeline
               </button>
               <button
-                onClick={() => navigate('/documents')}
+                onClick={() => navigate(ROUTES.PUBLIC.RESOURCES)}
                 className="bg-white hover:bg-blue-50 text-blue-700 border-2 border-blue-300 px-4 py-2 rounded-lg font-bold text-sm transition"
               >
                 Resources

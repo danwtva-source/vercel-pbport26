@@ -88,10 +88,12 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
   const normalizedRole = (userRole || '').toString().toUpperCase();
   const isAdmin = normalizedRole === UserRole.ADMIN || normalizedRole === 'ADMIN';
   const isCommittee = normalizedRole === UserRole.COMMITTEE || normalizedRole === 'COMMITTEE';
+  const isApplicant = normalizedRole === UserRole.APPLICANT || normalizedRole === 'APPLICANT';
+  const dashboardRoute = isApplicant ? ROUTES.PORTAL.APPLICANT : ROUTES.PORTAL.DASHBOARD;
 
   const NavLinks = () => (
     <>
-      <Link to={ROUTES.PORTAL.DASHBOARD} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DASHBOARD)}`}>
+      <Link to={dashboardRoute} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(dashboardRoute)}`}>
         <LayoutDashboard size={18} />
         <span>My Dashboard</span>
       </Link>

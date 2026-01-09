@@ -27,10 +27,16 @@ export const ROUTES = {
   PUBLIC: {
     HOME: '/',
     PRIORITIES: '/priorities',
-    VOTING_ZONE: '/vote',
-    RESOURCES: '/documents',
+    VOTING_ZONE: '/voting',
+    VOTING_LIVE: '/voting/live',
+    RESOURCES: '/resources',
     TIMELINE: '/timeline',
     LOGIN: '/login',
+    ALIASES: {
+      VOTING_ZONE: '/vote',
+      VOTING_LIVE: '/public-voting',
+      RESOURCES: '/documents',
+    },
   },
   
   // Secure portal routes
