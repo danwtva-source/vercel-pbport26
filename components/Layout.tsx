@@ -148,7 +148,9 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <div className="p-4 bg-purple-950 border-t border-purple-800">
            <div className="px-4 py-3 mb-4 bg-purple-900/50 rounded-xl border border-purple-800">
               <p className="text-[10px] font-bold text-purple-400 uppercase leading-none mb-1">Signed in as</p>
-              <p className="text-xs font-bold truncate">{currentUser?.name}</p>
+              <p className="text-xs font-bold truncate">
+                {currentUser?.displayName || currentUser?.username || currentUser?.email || 'Unknown User'}
+              </p>
            </div>
            <button onClick={handleLogout} className="flex items-center space-x-3 text-purple-300 hover:text-white transition w-full px-4 py-2 hover:bg-red-600 rounded-lg text-sm font-bold">
              <LogOut size={16} />
