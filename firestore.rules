@@ -31,6 +31,27 @@ service cloud.firestore {
       return getUserData().area == area || area == 'Cross-Area';
     }
 
+    function getApplicantId(data) {
+      return data.applicantId != null ? data.applicantId : data.userId;
+    }
+
+    function getCommitteeId(data) {
+      return data.committeeId != null ? data.committeeId : data.userId;
+    }
+
+    function getVoterId(data) {
+      return data.voterId != null ? data.voterId : data.userId;
+    }
+
+    function getScorerId(data) {
+      return data.scorerId != null ? data.scorerId : data.userId;
+    }
+
+    function hasAssignment(appId) {
+      return exists(/databases/$(database)/documents/assignments/$(appId + '_' + request.auth.uid)) ||
+             exists(/databases/$(database)/documents/assignments/$(request.auth.uid + '_' + appId));
+    }
+
     // Users collection
     match /users/{userId} {
       // Anyone can read user profiles (needed for displaying names, etc.)
@@ -48,21 +69,30 @@ service cloud.firestore {
 
     // Applications collection
     match /applications/{appId} {
-      // Public: Anyone can read applications (for public voting page)
-      allow read: if true;
+      // Admins can read all applications
+      allow read: if isAdmin();
 
       // Applicants can create their own applications
       allow create: if isAuthenticated() &&
-                       request.auth.uid == request.resource.data.applicantId;
+                       request.auth.uid == getApplicantId(request.resource.data);
 
       // Applicants can update their own applications
       allow update: if isAuthenticated() &&
-                       request.auth.uid == resource.data.applicantId;
+                       request.auth.uid == getApplicantId(resource.data);
 
       // Applicants can delete their own draft applications
       allow delete: if isAuthenticated() &&
-                       request.auth.uid == resource.data.applicantId &&
+                       request.auth.uid == getApplicantId(resource.data) &&
                        resource.data.status == 'Draft';
+
+      // Applicants can read their own applications
+      allow read: if isApplicant() &&
+                     request.auth.uid == getApplicantId(resource.data);
+
+      // Committee members can read assigned applications in their area
+      allow read: if isCommittee() &&
+                     committeeAreaMatches(resource.data.area) &&
+                     hasAssignment(appId);
 
       // Admins can do everything with applications
       allow create, update, delete: if isAdmin();
@@ -75,12 +105,12 @@ service cloud.firestore {
 
       // Committee members can create votes for applications in their area
       allow create: if isCommittee() &&
-                       request.resource.data.voterId == request.auth.uid &&
+                       getVoterId(request.resource.data) == request.auth.uid &&
                        committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
 
       // Committee members can update their own votes
       allow update: if isCommittee() &&
-                       resource.data.voterId == request.auth.uid;
+                       getVoterId(resource.data) == request.auth.uid;
 
       // Admins can read/write all votes (for management)
       allow create, update, delete: if isAdmin();
@@ -93,12 +123,12 @@ service cloud.firestore {
 
       // Committee members can create scores for applications in their area
       allow create: if isCommittee() &&
-                       request.resource.data.scorerId == request.auth.uid &&
+                       getScorerId(request.resource.data) == request.auth.uid &&
                        committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
 
       // Committee members can update their own scores (if not final)
       allow update: if isCommittee() &&
-                       resource.data.scorerId == request.auth.uid &&
+                       getScorerId(resource.data) == request.auth.uid &&
                        resource.data.isFinal == false;
 
       // Admins can read/write all scores (for management, but NOT create)
@@ -118,7 +148,7 @@ service cloud.firestore {
     match /assignments/{assignmentId} {
       // Committee members can read their own assignments
       allow read: if isAuthenticated() &&
-                     (resource.data.committeeId == request.auth.uid || isAdmin());
+                     (getCommitteeId(resource.data) == request.auth.uid || isAdmin());
 
       // Only admins can create, update, delete assignments
       allow create, update, delete: if isAdmin();
@@ -136,10 +166,21 @@ service cloud.firestore {
 
     // Admin Documents collection (guidelines, resources, etc.)
     match /documents/{docId} {
-      // Anyone authenticated can read documents
-      allow read: if isAuthenticated();
+      // Read documents based on visibility
+      allow read: if resource.data.visibility == 'public' ||
+                     (isCommittee() && resource.data.visibility == 'committee') ||
+                     isAdmin();
 
       // Only admins can manage documents
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Document folders collection
+    match /documentFolders/{folderId} {
+      // Folder lists are readable for navigation
+      allow read: if true;
+
+      // Only admins can manage folders
       allow create, update, delete: if isAdmin();
     }
 
