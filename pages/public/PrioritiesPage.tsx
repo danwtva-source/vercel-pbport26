@@ -191,7 +191,7 @@ const PrioritiesPage: React.FC = () => {
                 Submit Application for {currentAreaName}
               </a>
               <Link
-                to={ROUTES.PUBLIC.RESOURCES}
+                to="/documents"
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold transition-all"
               >
                 View Application Guidance

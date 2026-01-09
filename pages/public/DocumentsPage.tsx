@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
