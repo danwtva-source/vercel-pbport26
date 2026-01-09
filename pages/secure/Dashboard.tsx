@@ -4,7 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
-import { ROUTES } from '../../utils';
+import { ROUTES, isStoredRole, toUserRole } from '../../utils';
 import {
   Plus,
   FileText,
@@ -59,8 +59,8 @@ const Dashboard: React.FC = () => {
         DataService.getApplications(),
         DataService.getVotes(),
         DataService.getScores(),
-        user.role === 'committee' ? DataService.getAssignments(user.uid) : Promise.resolve([]),
-        user.role === 'admin' ? DataService.getUsers() : Promise.resolve([]),
+        isStoredRole(user.role, 'committee') ? DataService.getAssignments(user.uid) : Promise.resolve([]),
+        isStoredRole(user.role, 'admin') ? DataService.getUsers() : Promise.resolve([]),
         DataService.getPortalSettings()
       ]);
 
@@ -72,9 +72,9 @@ const Dashboard: React.FC = () => {
       setPortalSettings(settings);
 
       // Filter applications based on role
-      if (user.role === 'applicant') {
+      if (isStoredRole(user.role, 'applicant')) {
         setApplications(appsData.filter(app => app.userId === user.uid));
-      } else if (user.role === 'committee') {
+      } else if (isStoredRole(user.role, 'committee')) {
         const assignedAppIds = assignmentsData.map(a => a.applicationId);
         const committeeApps = appsData.filter(app => assignedAppIds.includes(app.id));
         setApplications(committeeApps);
@@ -93,11 +93,7 @@ const Dashboard: React.FC = () => {
   }
 
   // Determine user role from enum or string
-  const userRole = currentUser.role === 'applicant' ? UserRole.APPLICANT :
-                   currentUser.role === 'committee' ? UserRole.COMMITTEE :
-                   currentUser.role === 'admin' ? UserRole.ADMIN :
-                   currentUser.role === 'community' ? UserRole.COMMUNITY :
-                   UserRole.PUBLIC;
+  const userRole = toUserRole(currentUser.role);
 
   if (loading) {
     return (
@@ -570,7 +566,9 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
     await DataService.saveVote({
       id: `${appId}_${currentUser.uid}`,
       appId,
+      applicationId: appId,
       voterId: currentUser.uid,
+      committeeId: currentUser.uid,
       decision,
       createdAt: new Date().toISOString()
     });

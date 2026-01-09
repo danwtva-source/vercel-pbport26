@@ -6,17 +6,7 @@ import { DataService } from '../../services/firebase';
 import { Application, Score, UserRole, User, Round, PortalSettings } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock } from 'lucide-react';
-
-// Helper to convert lowercase role string to UserRole enum
-const roleToUserRole = (role: string | undefined): UserRole => {
-  const normalized = (role || '').toUpperCase();
-  switch (normalized) {
-    case 'ADMIN': return UserRole.ADMIN;
-    case 'COMMITTEE': return UserRole.COMMITTEE;
-    case 'APPLICANT': return UserRole.APPLICANT;
-    default: return UserRole.PUBLIC;
-  }
-};
+import { isStoredRole, toUserRole } from '../../utils';
 
 interface CriterionScore {
   score: number;
@@ -136,7 +126,7 @@ const ScoringMatrix: React.FC = () => {
 
   if (!isCommittee) {
     return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+      <SecureLayout userRole={toUserRole(currentUser.role)}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <Card className="max-w-md text-center">
             <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
@@ -220,10 +210,13 @@ const ScoringMatrix: React.FC = () => {
       const score: Score = {
         id: `${selectedApp.id}_${currentUser.uid}`,
         appId: selectedApp.id,
+        applicationId: selectedApp.id,
         scorerId: currentUser.uid,
+        committeeId: currentUser.uid,
         scorerName: currentUser.displayName || currentUser.username || currentUser.email,
         weightedTotal: calculateWeightedTotal(),
         breakdown,
+        criterionScores: breakdown,
         notes,
         isFinal: true,
         createdAt: new Date().toISOString()
@@ -256,7 +249,7 @@ const ScoringMatrix: React.FC = () => {
 
   if (loading) {
     return (
-      <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+      <SecureLayout userRole={toUserRole(currentUser.role)}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
@@ -268,7 +261,7 @@ const ScoringMatrix: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={roleToUserRole(currentUser.role)}>
+    <SecureLayout userRole={toUserRole(currentUser.role)}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">

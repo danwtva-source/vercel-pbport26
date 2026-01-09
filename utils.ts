@@ -1,4 +1,5 @@
 // utils.ts - Utility Functions for PB Portal
+import { UserRole } from './types';
 
 /**
  * Format a number as GBP currency
@@ -61,3 +62,36 @@ export const ROUTES = {
     SETTINGS: '/portal/settings',
   }
 } as const;
+
+export type StoredRole = 'admin' | 'committee' | 'applicant';
+
+export const toStoredRole = (role: string | undefined | null): StoredRole => {
+  const normalized = (role || '').toString().trim().toLowerCase();
+  if (normalized === 'admin' || normalized === 'committee' || normalized === 'applicant') {
+    return normalized;
+  }
+  if (normalized === 'community' || normalized === 'public') {
+    return 'applicant';
+  }
+  return 'applicant';
+};
+
+export const toUserRole = (role: string | undefined | null): UserRole => {
+  const normalized = (role || '').toString().trim().toUpperCase();
+  switch (normalized) {
+    case UserRole.ADMIN:
+      return UserRole.ADMIN;
+    case UserRole.COMMITTEE:
+      return UserRole.COMMITTEE;
+    case UserRole.APPLICANT:
+      return UserRole.APPLICANT;
+    case UserRole.COMMUNITY:
+      return UserRole.COMMUNITY;
+    default:
+      return UserRole.PUBLIC;
+  }
+};
+
+export const isStoredRole = (role: string | undefined | null, target: StoredRole): boolean => {
+  return toStoredRole(role) === target;
+};
