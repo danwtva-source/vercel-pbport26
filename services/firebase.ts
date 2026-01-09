@@ -202,6 +202,10 @@ const mapScoreToFirestore = (score: Score): Partial<Score> => {
   };
 };
 
+const buildAssignmentId = (assignment: Pick<Assignment, 'applicationId' | 'committeeId'>): string => {
+  return `${assignment.applicationId}_${assignment.committeeId}`;
+};
+
 // --- HELPER: CSV Export ---
 export const exportToCSV = (data: any[], filename: string) => {
     if (!data.length) return;
@@ -735,7 +739,8 @@ class AuthService {
 
   async createAssignment(assignment: Assignment): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateAssignment(assignment);
-      await setDoc(doc(db, 'assignments', assignment.id), assignment);
+      const id = buildAssignmentId(assignment);
+      await setDoc(doc(db, 'assignments', id), { ...assignment, id });
   }
 
   async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
@@ -992,7 +997,8 @@ class AuthService {
   }
 
   mockCreateAssignment(assignment: Assignment): Promise<void> {
-    this.setLocal('assignments', [...this.getLocal('assignments'), assignment]);
+    const id = buildAssignmentId(assignment);
+    this.setLocal('assignments', [...this.getLocal('assignments'), { ...assignment, id }]);
     return Promise.resolve();
   }
 
