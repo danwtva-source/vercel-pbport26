@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { ArrowRight, MapPin, Users, Vote, FileText, CheckCircle2, Heart, Sparkles } from 'lucide-react';
 import { AREA_DATA } from '../../constants';
+import { ROUTES } from '../../utils';
 
 const LandingPage: React.FC = () => {
   const areas = Object.values(AREA_DATA);
@@ -32,7 +33,7 @@ const LandingPage: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Link
-                to="/vote"
+                to={ROUTES.PUBLIC.VOTING_ZONE}
                 className="group bg-teal-500 hover:bg-teal-400 text-purple-950 px-8 py-4 rounded-xl font-bold text-lg shadow-2xl transition-all transform hover:scale-105 flex items-center gap-2"
               >
                 <Vote size={24} />
@@ -41,7 +42,7 @@ const LandingPage: React.FC = () => {
               </Link>
 
               <Link
-                to="/priorities"
+                to={ROUTES.PUBLIC.PRIORITIES}
                 className="group bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all flex items-center gap-2"
               >
                 <FileText size={24} />
@@ -118,7 +119,7 @@ const LandingPage: React.FC = () => {
               </p>
 
               <Link
-                to="/priorities"
+                to={ROUTES.PUBLIC.PRIORITIES}
                 className="inline-flex items-center gap-2 text-purple-600 hover:text-purple-800 font-bold text-sm group-hover:gap-3 transition-all"
               >
                 View {area.name} Priorities
@@ -177,13 +178,13 @@ const LandingPage: React.FC = () => {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
-            to="/documents"
+            to={ROUTES.PUBLIC.RESOURCES}
             className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl"
           >
             Application Resources
           </Link>
           <Link
-            to="/login"
+            to={ROUTES.PUBLIC.LOGIN}
             className="bg-white hover:bg-gray-50 text-purple-600 border-2 border-purple-600 px-8 py-4 rounded-xl font-bold transition-all"
           >
             Access Secure Portal
