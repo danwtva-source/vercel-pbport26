@@ -134,12 +134,21 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
-    // Admin Documents collection (guidelines, resources, etc.)
-    match /documents/{docId} {
-      // Anyone authenticated can read documents
-      allow read: if isAuthenticated();
+    function canReadVisibility(visibility) {
+      return visibility == 'public'
+        || (visibility == 'committee' && (isCommittee() || isAdmin()))
+        || (visibility == 'admin' && isAdmin());
+    }
 
-      // Only admins can manage documents
+    // Document Folders collection
+    match /documentFolders/{folderId} {
+      allow read: if canReadVisibility(resource.data.visibility);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Documents collection (guidelines, resources, etc.)
+    match /documents/{docId} {
+      allow read: if canReadVisibility(resource.data.visibility);
       allow create, update, delete: if isAdmin();
     }
 

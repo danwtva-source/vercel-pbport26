@@ -293,6 +293,29 @@ export interface AdminDocument {
     createdAt: number;
 }
 
+// --- DOCUMENTS (Folders + Files) ---
+
+export type DocumentVisibility = 'public' | 'committee' | 'admin';
+
+export interface DocumentFolder {
+  id: string;
+  name: string;
+  visibility: DocumentVisibility;
+  createdAt: number;
+  createdBy: string;
+}
+
+export interface DocumentItem {
+  id: string;
+  name: string;
+  folderId: string | 'root' | null;
+  visibility: DocumentVisibility;
+  url?: string;
+  filePath: string;
+  uploadedBy: string;
+  createdAt: number;
+}
+
 // Document Resource (from v8) - Alternative document representation
 export interface DocumentResource {
   id: string;

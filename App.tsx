@@ -18,6 +18,7 @@ import ApplicationsList from './pages/secure/ApplicationsList';
 import ApplicationForm from './pages/secure/ApplicationForm';
 import AdminConsole from './pages/secure/AdminConsole';
 import UserSettings from './pages/secure/UserSettings';
+import DocumentsPortal from './pages/secure/DocumentsPortal';
 
 // Route guard wrapper component
 interface ProtectedRouteProps {
@@ -162,6 +163,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
             <ScoringMatrix />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path={ROUTES.PORTAL.DOCUMENTS}
+        element={
+          <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
+            <DocumentsPortal />
           </ProtectedRoute>
         }
       />
