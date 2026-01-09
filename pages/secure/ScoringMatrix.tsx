@@ -44,13 +44,10 @@ const ScoringMatrix: React.FC = () => {
 
   // Determine role flags (safe to compute even with null user)
   const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
-  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
+  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee';
 
   // Check if scoring is allowed based on round/portal settings
   const isScoringAllowed = (): { allowed: boolean; reason?: string } => {
-    // Admins can always score
-    if (isAdmin) return { allowed: true };
-
     // Check if there's an active round with scoring enabled
     if (activeRound && activeRound.scoringOpen === false) {
       return { allowed: false, reason: 'Scoring is currently closed for this funding round.' };
@@ -81,9 +78,10 @@ const ScoringMatrix: React.FC = () => {
     setLoading(true);
     try {
       // Fetch portal settings and rounds
-      const [settings, rounds] = await Promise.all([
+      const [settings, rounds, assignments] = await Promise.all([
         DataService.getPortalSettings(),
-        DataService.getRounds()
+        DataService.getRounds(),
+        DataService.getAssignments(currentUser.uid)
       ]);
       setPortalSettings(settings);
 
@@ -91,13 +89,13 @@ const ScoringMatrix: React.FC = () => {
       const active = rounds.find(r => r.status === 'scoring' || r.status === 'open');
       setActiveRound(active || null);
 
-      // Fetch applications - filter by area for committee members
-      const area = isAdmin ? undefined : currentUser.area;
-      const apps = await DataService.getApplications(area);
+      // Fetch applications based on assignments
+      const assignedAppIds = new Set(assignments.map(assignment => assignment.applicationId));
+      const apps = await DataService.getApplications();
 
       // Only show Stage 2 applications that are ready for scoring
       const eligibleApps = apps.filter(
-        app => (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2')
+        app => assignedAppIds.has(app.id) && (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2')
       );
 
       // Fetch all scores
@@ -144,7 +142,7 @@ const ScoringMatrix: React.FC = () => {
             <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
             <p className="text-gray-600">
-              This scoring interface is only accessible to Committee Members and Administrators.
+              This scoring interface is only accessible to Committee Members.
             </p>
           </Card>
         </div>
