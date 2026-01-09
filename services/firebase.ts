@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
