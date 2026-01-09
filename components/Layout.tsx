@@ -84,17 +84,21 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
 
   const isActive = (path: string) => location.pathname === path ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white';
 
-  const isAdmin = userRole === UserRole.ADMIN;
-  const isCommittee = userRole === UserRole.COMMITTEE;
+  // Normalize role for comparison (handles 'admin' vs 'ADMIN' case differences)
+  const normalizedRole = (userRole || '').toString().toUpperCase();
+  const isAdmin = normalizedRole === UserRole.ADMIN || normalizedRole === 'ADMIN';
+  const isCommittee = normalizedRole === UserRole.COMMITTEE || normalizedRole === 'COMMITTEE';
+  const isApplicant = normalizedRole === UserRole.APPLICANT || normalizedRole === 'APPLICANT';
+  const dashboardRoute = isApplicant ? ROUTES.PORTAL.APPLICANT : ROUTES.PORTAL.DASHBOARD;
 
   const NavLinks = () => (
     <>
-      <Link to={ROUTES.PORTAL.DASHBOARD} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DASHBOARD)}`}>
+      <Link to={dashboardRoute} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(dashboardRoute)}`}>
         <LayoutDashboard size={18} />
         <span>My Dashboard</span>
       </Link>
 
-      {(isCommittee || isAdmin) && (
+      {isCommittee && (
         <Link to={ROUTES.PORTAL.SCORING} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.SCORING)}`}>
           <BarChart3 size={18} />
           <span>Matrix Evaluation</span>
@@ -105,6 +109,13 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
         <Briefcase size={18} />
         <span>Project Entries</span>
       </Link>
+
+      {(isCommittee || isAdmin) && (
+        <Link to={ROUTES.PORTAL.DOCUMENTS} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DOCUMENTS)}`}>
+          <FileText size={18} />
+          <span>Documents</span>
+        </Link>
+      )}
 
       {isAdmin && (
          <Link to={ROUTES.PORTAL.ADMIN} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.ADMIN)}`}>

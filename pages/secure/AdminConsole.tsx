@@ -3,7 +3,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import {
@@ -59,7 +59,8 @@ const AdminConsole: React.FC = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
-  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
@@ -85,10 +86,11 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
+        DataService.getDocumentFolders(),
         DataService.getDocuments(),
         DataService.getAuditLogs(),
         DataService.getScores(),
@@ -118,6 +120,7 @@ const AdminConsole: React.FC = () => {
       setApplications(enrichedApps);
       setUsers(usersData);
       setRounds(roundsData);
+      setDocumentFolders(folderData);
       setDocuments(docsData);
       setAuditLogs(logsData);
       setScores(scoresData);
@@ -1147,18 +1150,26 @@ const AdminConsole: React.FC = () => {
   const DocumentsTab = () => {
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [showFolderModal, setShowFolderModal] = useState(false);
-    const [editingDoc, setEditingDoc] = useState<AdminDocument | null>(null);
-    const [newDoc, setNewDoc] = useState<Partial<AdminDocument>>({
+    const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(null);
+    const [editingFolder, setEditingFolder] = useState<DocumentFolder | null>(null);
+    const [newDocument, setNewDocument] = useState<{ name: string; visibility: DocumentVisibility; folderId: string }>({
       name: '',
-      type: 'file',
-      category: 'general',
-      parentId: 'root'
+      visibility: 'public',
+      folderId: 'root'
+    });
+    const [newFolder, setNewFolder] = useState<{ name: string; visibility: DocumentVisibility }>({
+      name: '',
+      visibility: 'public'
     });
     const [uploadFile, setUploadFile] = useState<File | null>(null);
 
     const handleUploadDocument = async () => {
-      if (!newDoc.name) {
+      if (!newDocument.name) {
         alert('Please provide a document name');
+        return;
+      }
+      if (!uploadFile) {
+        alert('Please select a file to upload');
         return;
       }
       try {
@@ -1169,28 +1180,27 @@ const AdminConsole: React.FC = () => {
         if (uploadFile) {
           const timestamp = Date.now();
           const ext = uploadFile.name.split('.').pop();
-          const storagePath = `admin-documents/${id}_${timestamp}.${ext}`;
+          const storagePath = `documents/${id}_${timestamp}.${ext}`;
           fileUrl = await uploadToStorage(storagePath, uploadFile);
-        }
-
-        const docData: AdminDocument = {
-          id,
-          name: newDoc.name!,
-          type: newDoc.type as 'file' | 'folder',
-          parentId: newDoc.parentId as string,
-          category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
-          uploadedBy: currentUser?.uid || 'admin',
-          createdAt: Date.now(),
-          url: fileUrl
+          const docData: DocumentItem = {
+            id,
+            name: newDocument.name,
+            folderId: newDocument.folderId || 'root',
+            visibility: newDocument.visibility,
+            uploadedBy: currentUser?.uid || 'admin',
+            createdAt: Date.now(),
+            url: fileUrl,
+            filePath: storagePath
+          };
+          await DataService.createDocument(docData);
+          await DataService.logAction({
+            adminId: currentUser?.uid || 'admin',
+            action: 'DOCUMENT_CREATE',
+            targetId: id,
+            details: { name: newDocument.name, visibility: newDocument.visibility, folderId: newDocument.folderId }
+          });
         };
-        await DataService.createDocument(docData);
-        await DataService.logAction({
-          adminId: currentUser?.uid || 'admin',
-          action: 'DOCUMENT_CREATE',
-          targetId: id,
-          details: { name: newDoc.name, type: newDoc.type }
-        });
-        setNewDoc({ name: '', type: 'file', category: 'general', parentId: 'root' });
+        setNewDocument({ name: '', visibility: 'public', folderId: 'root' });
         setUploadFile(null);
         setShowUploadModal(false);
         await loadAllData();
@@ -1201,29 +1211,27 @@ const AdminConsole: React.FC = () => {
     };
 
     const handleCreateFolder = async () => {
-      if (!newDoc.name) {
+      if (!newFolder.name) {
         alert('Please provide a folder name');
         return;
       }
       try {
         const id = 'folder_' + Date.now();
-        const folderData: AdminDocument = {
+        const folderData: DocumentFolder = {
           id,
-          name: newDoc.name!,
-          type: 'folder',
-          parentId: newDoc.parentId as string || 'root',
-          category: newDoc.category as 'general' | 'minutes' | 'policy' | 'committee-only',
-          uploadedBy: currentUser?.uid || 'admin',
-          createdAt: Date.now()
+          name: newFolder.name,
+          visibility: newFolder.visibility,
+          createdBy: currentUser?.uid || 'admin',
+          createdAt: Date.now(),
         };
-        await DataService.createDocument(folderData);
+        await DataService.createDocumentFolder(folderData);
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'FOLDER_CREATE',
           targetId: id,
-          details: { name: newDoc.name }
+          details: { name: newFolder.name, visibility: newFolder.visibility }
         });
-        setNewDoc({ name: '', type: 'file', category: 'general', parentId: 'root' });
+        setNewFolder({ name: '', visibility: 'public' });
         setShowFolderModal(false);
         await loadAllData();
       } catch (error) {
@@ -1232,15 +1240,36 @@ const AdminConsole: React.FC = () => {
       }
     };
 
-    const handleDeleteDocument = async (id: string, name: string) => {
-      if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    const handleDeleteFolder = async (folder: DocumentFolder) => {
+      const docsInFolder = documents.filter(doc => doc.folderId === folder.id);
+      const message = docsInFolder.length > 0
+        ? `This folder contains ${docsInFolder.length} document(s). Delete "${folder.name}" anyway?`
+        : `Are you sure you want to delete "${folder.name}"?`;
+      if (!confirm(message)) return;
       try {
-        await DataService.deleteDocument(id);
+        await DataService.deleteDocumentFolder(folder.id);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FOLDER_DELETE',
+          targetId: folder.id,
+          details: { name: folder.name }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error deleting folder:', error);
+        alert('Failed to delete folder');
+      }
+    };
+
+    const handleDeleteDocument = async (doc: DocumentItem) => {
+      if (!confirm(`Are you sure you want to delete "${doc.name}"?`)) return;
+      try {
+        await DataService.deleteDocument(doc.id, doc.filePath);
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'DOCUMENT_DELETE',
-          targetId: id,
-          details: { name }
+          targetId: doc.id,
+          details: { name: doc.name }
         });
         await loadAllData();
       } catch (error) {
@@ -1249,16 +1278,16 @@ const AdminConsole: React.FC = () => {
       }
     };
 
-    const handleUpdateDocument = async (doc: AdminDocument) => {
+    const handleUpdateDocument = async (doc: DocumentItem) => {
       try {
-        await DataService.updateDocument(doc.id, { name: doc.name, category: doc.category });
+        await DataService.updateDocument(doc.id, { name: doc.name, visibility: doc.visibility, folderId: doc.folderId || 'root' });
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'DOCUMENT_UPDATE',
           targetId: doc.id,
-          details: { name: doc.name }
+          details: { name: doc.name, visibility: doc.visibility, folderId: doc.folderId }
         });
-        setEditingDoc(null);
+        setEditingDocument(null);
         await loadAllData();
       } catch (error) {
         console.error('Error updating document:', error);
@@ -1266,8 +1295,26 @@ const AdminConsole: React.FC = () => {
       }
     };
 
-    const folders = documents.filter(d => d.type === 'folder');
-    const files = documents.filter(d => d.type === 'file');
+    const handleUpdateFolder = async (folder: DocumentFolder) => {
+      try {
+        await DataService.updateDocumentFolder(folder.id, { name: folder.name, visibility: folder.visibility });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FOLDER_UPDATE',
+          targetId: folder.id,
+          details: { name: folder.name, visibility: folder.visibility }
+        });
+        setEditingFolder(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating folder:', error);
+        alert('Failed to update folder');
+      }
+    };
+
+    const folders = documentFolders;
+    const folderLookup = new Map(documentFolders.map(folder => [folder.id, folder.name]));
+    const files = documents;
 
     return (
       <div className="space-y-6">
@@ -1303,12 +1350,12 @@ const AdminConsole: React.FC = () => {
                     <span className="font-bold text-gray-800 truncate">{folder.name}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <Badge variant="amber">{folder.category}</Badge>
+                    <Badge variant="amber">{folder.visibility}</Badge>
                     <div className="flex gap-1">
-                      <button onClick={() => setEditingDoc(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
+                      <button onClick={() => setEditingFolder(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
                         <Edit size={14} />
                       </button>
-                      <button onClick={() => handleDeleteDocument(folder.id, folder.name)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
+                      <button onClick={() => handleDeleteFolder(folder)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -1335,7 +1382,10 @@ const AdminConsole: React.FC = () => {
                   <div>
                     <p className="font-bold text-gray-800">{doc.name}</p>
                     <div className="flex gap-2 mt-1">
-                      <Badge variant="gray">{doc.category}</Badge>
+                      <Badge variant="gray">{doc.visibility}</Badge>
+                      {doc.folderId && doc.folderId !== 'root' && (
+                        <Badge variant="amber">{folderLookup.get(doc.folderId) || 'Folder'}</Badge>
+                      )}
                       <span className="text-xs text-gray-500">
                         {new Date(doc.createdAt).toLocaleDateString()}
                       </span>
@@ -1348,10 +1398,10 @@ const AdminConsole: React.FC = () => {
                       <Eye size={16} />
                     </a>
                   )}
-                  <button onClick={() => setEditingDoc(doc)} className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700">
+                  <button onClick={() => setEditingDocument(doc)} className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700">
                     <Edit size={16} />
                   </button>
-                  <button onClick={() => handleDeleteDocument(doc.id, doc.name)} className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
+                  <button onClick={() => handleDeleteDocument(doc)} className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -1370,20 +1420,19 @@ const AdminConsole: React.FC = () => {
               <Input
                 label="Document Name"
                 placeholder="Enter document name"
-                value={newDoc.name || ''}
-                onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+                value={newDocument.name}
+                onChange={(e) => setNewDocument({ ...newDocument, name: e.target.value })}
               />
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
-                  value={newDoc.category}
-                  onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value as any })}
+                  value={newDocument.visibility}
+                  onChange={(e) => setNewDocument({ ...newDocument, visibility: e.target.value as DocumentVisibility })}
                 >
-                  <option value="general">General</option>
-                  <option value="minutes">Minutes</option>
-                  <option value="policy">Policy</option>
-                  <option value="committee-only">Committee Only</option>
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
               {folders.length > 0 && (
@@ -1391,8 +1440,8 @@ const AdminConsole: React.FC = () => {
                   <label className="block text-sm font-bold text-gray-700 mb-2">Parent Folder</label>
                   <select
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
-                    value={newDoc.parentId}
-                    onChange={(e) => setNewDoc({ ...newDoc, parentId: e.target.value })}
+                    value={newDocument.folderId}
+                    onChange={(e) => setNewDocument({ ...newDocument, folderId: e.target.value })}
                   >
                     <option value="root">Root</option>
                     {folders.map(folder => (
@@ -1427,20 +1476,19 @@ const AdminConsole: React.FC = () => {
               <Input
                 label="Folder Name"
                 placeholder="Enter folder name"
-                value={newDoc.name || ''}
-                onChange={(e) => setNewDoc({ ...newDoc, name: e.target.value })}
+                value={newFolder.name}
+                onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
               />
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
-                  value={newDoc.category}
-                  onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value as any })}
+                  value={newFolder.visibility}
+                  onChange={(e) => setNewFolder({ ...newFolder, visibility: e.target.value as DocumentVisibility })}
                 >
-                  <option value="general">General</option>
-                  <option value="minutes">Minutes</option>
-                  <option value="policy">Policy</option>
-                  <option value="committee-only">Committee Only</option>
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
               <div className="flex gap-2 justify-end">
@@ -1455,30 +1503,74 @@ const AdminConsole: React.FC = () => {
         )}
 
         {/* Edit Document Modal */}
-        {editingDoc && (
-          <Modal isOpen={true} onClose={() => setEditingDoc(null)} title={`Edit ${editingDoc.type === 'folder' ? 'Folder' : 'Document'}`} size="md">
+        {editingDocument && (
+          <Modal isOpen={true} onClose={() => setEditingDocument(null)} title="Edit Document" size="md">
             <div className="space-y-4">
               <Input
                 label="Name"
-                value={editingDoc.name}
-                onChange={(e) => setEditingDoc({ ...editingDoc, name: e.target.value })}
+                value={editingDocument.name}
+                onChange={(e) => setEditingDocument({ ...editingDocument, name: e.target.value })}
               />
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
                 <select
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
-                  value={editingDoc.category}
-                  onChange={(e) => setEditingDoc({ ...editingDoc, category: e.target.value as any })}
+                  value={editingDocument.visibility}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, visibility: e.target.value as DocumentVisibility })}
                 >
-                  <option value="general">General</option>
-                  <option value="minutes">Minutes</option>
-                  <option value="policy">Policy</option>
-                  <option value="committee-only">Committee Only</option>
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Folder</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingDocument.folderId || 'root'}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, folderId: e.target.value })}
+                >
+                  <option value="root">Root</option>
+                  {folders.map(folder => (
+                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  ))}
                 </select>
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="ghost" onClick={() => setEditingDoc(null)}>Cancel</Button>
-                <Button onClick={() => handleUpdateDocument(editingDoc)}>
+                <Button variant="ghost" onClick={() => setEditingDocument(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateDocument(editingDocument)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Edit Folder Modal */}
+        {editingFolder && (
+          <Modal isOpen={true} onClose={() => setEditingFolder(null)} title="Edit Folder" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Name"
+                value={editingFolder.name}
+                onChange={(e) => setEditingFolder({ ...editingFolder, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingFolder.visibility}
+                  onChange={(e) => setEditingFolder({ ...editingFolder, visibility: e.target.value as DocumentVisibility })}
+                >
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingFolder(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateFolder(editingFolder)}>
                   <Save size={18} />
                   Save Changes
                 </Button>

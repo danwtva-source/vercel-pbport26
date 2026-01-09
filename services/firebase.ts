@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, AdminDocument, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -612,25 +612,73 @@ class AuthService {
   }
 
   // --- DOCUMENTS ---
-  async getDocuments(): Promise<AdminDocument[]> {
-      if (USE_DEMO_MODE) return this.mockGetDocs();
-      const snap = await getDocs(collection(db, 'adminDocuments'));
-      return snap.docs.map(d => d.data() as AdminDocument);
+  async getDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocumentFolders(visibility);
+      const ref = collection(db, 'documentFolders');
+      const q = visibility
+        ? query(ref, where('visibility', Array.isArray(visibility) ? 'in' : '==', visibility))
+        : ref;
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as DocumentFolder);
   }
 
-  async createDocument(docData: AdminDocument): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockCreateDoc(docData);
-      await setDoc(doc(db, 'adminDocuments', docData.id), docData);
+  async createDocumentFolder(folderData: DocumentFolder): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDocumentFolder(folderData);
+      await setDoc(doc(db, 'documentFolders', folderData.id), folderData);
   }
 
-  async deleteDocument(id: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockDeleteDoc(id);
-      await deleteDoc(doc(db, 'adminDocuments', id));
+  async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
+      await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
   }
 
-  async updateDocument(id: string, updates: Partial<AdminDocument>): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockUpdateDoc(id, updates);
-      await setDoc(doc(db, 'adminDocuments', id), updates, { merge: true });
+  async deleteDocumentFolder(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDocumentFolder(id);
+      await deleteDoc(doc(db, 'documentFolders', id));
+  }
+
+  async getDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
+      if (USE_DEMO_MODE) return this.mockGetDocuments(options);
+      const ref = collection(db, 'documents');
+      const constraints = [];
+      if (options?.visibility) {
+        constraints.push(where('visibility', Array.isArray(options.visibility) ? 'in' : '==', options.visibility));
+      }
+      if (options?.folderId && options.folderId !== 'root') {
+        constraints.push(where('folderId', '==', options.folderId));
+      }
+      const q = constraints.length ? query(ref, ...constraints) : ref;
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as DocumentItem);
+  }
+
+  async createDocument(docData: DocumentItem): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockCreateDocument(docData);
+      await setDoc(doc(db, 'documents', docData.id), docData);
+  }
+
+  async deleteDocument(id: string, filePath?: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteDocument(id);
+      let resolvedPath = filePath;
+      if (!resolvedPath) {
+        const snap = await getDoc(doc(db, 'documents', id));
+        if (snap.exists()) {
+          resolvedPath = (snap.data() as DocumentItem).filePath;
+        }
+      }
+      if (resolvedPath && storage) {
+        try {
+          await deleteObject(ref(storage, resolvedPath));
+        } catch (error) {
+          console.warn('Failed to delete storage file:', error);
+        }
+      }
+      await deleteDoc(doc(db, 'documents', id));
+  }
+
+  async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockUpdateDocument(id, updates);
+      await setDoc(doc(db, 'documents', id), updates, { merge: true });
   }
 
   // --- PASSWORD MANAGEMENT ---
@@ -855,24 +903,56 @@ class AuthService {
     return Promise.resolve();
   }
 
-  mockGetDocs(): Promise<AdminDocument[]> {
-    return Promise.resolve(this.getLocal('adminDocs'));
+  mockGetDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
+    const folders = this.getLocal<DocumentFolder>('documentFolders');
+    if (!visibility) return Promise.resolve(folders);
+    const values = Array.isArray(visibility) ? visibility : [visibility];
+    return Promise.resolve(folders.filter(folder => values.includes(folder.visibility)));
   }
 
-  mockCreateDoc(d: AdminDocument): Promise<void> {
-    this.setLocal('adminDocs', [...this.getLocal('adminDocs'), d]);
+  mockCreateDocumentFolder(folder: DocumentFolder): Promise<void> {
+    this.setLocal('documentFolders', [...this.getLocal('documentFolders'), folder]);
     return Promise.resolve();
   }
 
-  mockDeleteDoc(id: string): Promise<void> {
-    this.setLocal('adminDocs', this.getLocal<AdminDocument>('adminDocs').filter(d => d.id !== id));
+  mockDeleteDocumentFolder(id: string): Promise<void> {
+    this.setLocal('documentFolders', this.getLocal<DocumentFolder>('documentFolders').filter(folder => folder.id !== id));
     return Promise.resolve();
   }
 
-  mockUpdateDoc(id: string, updates: Partial<AdminDocument>): Promise<void> {
-    const docs = this.getLocal<AdminDocument>('adminDocs');
-    const i = docs.findIndex(d => d.id === id);
-    if(i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('adminDocs', docs); }
+  mockUpdateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
+    const folders = this.getLocal<DocumentFolder>('documentFolders');
+    const i = folders.findIndex(folder => folder.id === id);
+    if (i >= 0) { folders[i] = { ...folders[i], ...updates }; this.setLocal('documentFolders', folders); }
+    return Promise.resolve();
+  }
+
+  mockGetDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
+    let docs = this.getLocal<DocumentItem>('documents');
+    if (options?.visibility) {
+      const values = Array.isArray(options.visibility) ? options.visibility : [options.visibility];
+      docs = docs.filter(doc => values.includes(doc.visibility));
+    }
+    if (options?.folderId && options.folderId !== 'root') {
+      docs = docs.filter(doc => doc.folderId === options.folderId);
+    }
+    return Promise.resolve(docs);
+  }
+
+  mockCreateDocument(docItem: DocumentItem): Promise<void> {
+    this.setLocal('documents', [...this.getLocal('documents'), docItem]);
+    return Promise.resolve();
+  }
+
+  mockDeleteDocument(id: string): Promise<void> {
+    this.setLocal('documents', this.getLocal<DocumentItem>('documents').filter(doc => doc.id !== id));
+    return Promise.resolve();
+  }
+
+  mockUpdateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
+    const docs = this.getLocal<DocumentItem>('documents');
+    const i = docs.findIndex(doc => doc.id === id);
+    if (i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('documents', docs); }
     return Promise.resolve();
   }
 

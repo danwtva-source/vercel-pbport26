@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { Search, MapPin, CheckCircle2, XCircle, ArrowRight, Info, Vote, FileText } from 'lucide-react';
 import { AREA_DATA } from '../../constants';
 import { DataService } from '../../services/firebase';
 import { PortalSettings } from '../../types';
+import { ROUTES } from '../../utils';
 
 const PostcodeCheckPage: React.FC = () => {
-  const navigate = useNavigate();
   const [postcode, setPostcode] = useState('');
   const [result, setResult] = useState<{ eligible: boolean; area?: string; formUrl?: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -169,7 +169,7 @@ const PostcodeCheckPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Link
-                    to="/login"
+                    to={ROUTES.PUBLIC.LOGIN}
                     className="inline-flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
                   >
                     <FileText size={18} />
@@ -178,7 +178,7 @@ const PostcodeCheckPage: React.FC = () => {
 
                   {settings?.votingOpen ? (
                     <Link
-                      to="/public-voting"
+                      to={ROUTES.PUBLIC.VOTING_LIVE}
                       className="inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
                     >
                       <Vote size={18} />
@@ -213,7 +213,7 @@ const PostcodeCheckPage: React.FC = () => {
                   If the pilot is successful, there may be opportunities to expand the programme to other areas in the future.
                 </p>
                 <Link
-                  to="/"
+                  to={ROUTES.PUBLIC.HOME}
                   className="inline-flex items-center gap-2 text-purple-600 hover:text-purple-800 font-bold"
                 >
                   Learn More About the Initiative
