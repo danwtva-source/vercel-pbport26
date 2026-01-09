@@ -110,7 +110,7 @@ const PortalRedirect: React.FC = () => {
     return <Navigate to={ROUTES.PUBLIC.LOGIN} replace />;
   }
 
-  const userRoleNormalized = normalizeRole(userProfile.role);
+  const userRoleNormalized = toUserRole(userProfile.role);
 
   if (userRoleNormalized === UserRole.APPLICANT) {
     return <Navigate to={ROUTES.PORTAL.APPLICANT} replace />;
