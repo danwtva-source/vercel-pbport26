@@ -313,6 +313,7 @@ export type DocumentVisibility = 'public' | 'committee' | 'admin';
 export interface DocumentFolder {
   id: string;
   name: string;
+  slug: string;
   visibility: DocumentVisibility;
   createdAt: number;
   createdBy: string;

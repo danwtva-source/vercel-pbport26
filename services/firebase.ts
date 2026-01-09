@@ -629,7 +629,10 @@ class AuthService {
 
   async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
-      await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
+      const sanitizedUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([, value]) => value !== undefined)
+      );
+      await setDoc(doc(db, 'documentFolders', id), sanitizedUpdates, { merge: true });
   }
 
   async deleteDocumentFolder(id: string): Promise<void> {
@@ -923,7 +926,13 @@ class AuthService {
   mockUpdateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
     const folders = this.getLocal<DocumentFolder>('documentFolders');
     const i = folders.findIndex(folder => folder.id === id);
-    if (i >= 0) { folders[i] = { ...folders[i], ...updates }; this.setLocal('documentFolders', folders); }
+    if (i >= 0) {
+      const sanitizedUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([, value]) => value !== undefined)
+      );
+      folders[i] = { ...folders[i], ...sanitizedUpdates };
+      this.setLocal('documentFolders', folders);
+    }
     return Promise.resolve();
   }
 
