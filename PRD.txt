@@ -1,6 +1,6 @@
 Communities’ Choice Participatory ‎Budgeting Portal 
 Final Product Requirements ‎Document (PRD)‎
-Version: FINAL (v4) 
+Version: FINAL (v5) 
 Date: 2026-01-01 
 Owner: Torfaen Voluntary Alliance (TVA) – Communities’ Choice Team
 
@@ -189,6 +189,7 @@ timestamp	timestamp	Yes	When logged
 •	Public header includes: logo (public logo), navigation (Home, Priorities, Voting Zone, ‎Resources), CTA button ‘Secure Portal’.‎
 •	Public site content uses UK English and Communities’ Choice branding.‎
 •	Resources page must support a curated list of public documents/links; if documents are ‎served via the document module, only 'public' visibility documents are shown.‎
+•	Seed content (PUBLIC_DOCS) is a temporary placeholder for design/testing only. In production, all roles see Firestore-backed documents. If no public documents exist, the public Resources page shows an explicit empty state. Admins see guidance with a CTA to upload public documents in the secure Documents area; applicants/committee/public visitors see a “no documents yet” message. This keeps the public UX clear while prompting admins to populate content.‎
 •	Voting Zone: either (a) placeholder explaining voting dates; or (b) live voting (if already ‎implemented). Do not remove existing capability.‎
 ‎8. Authentication, sessions, and profile‎
 ‎8.1 Authentication‎
