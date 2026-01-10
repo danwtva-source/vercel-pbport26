@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FileText, Eye, FolderOpen } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { FileText, Eye, FolderOpen, AlertCircle } from 'lucide-react';
 import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { Badge, Card } from '../../components/UI';
 import { DocumentFolder, DocumentItem, User, UserRole } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES, toUserRole } from '../../utils';
+import { COMMITTEE_DOCS } from '../../constants';
 
 const DocumentsPortal: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ const DocumentsPortal: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { userProfile, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -29,15 +31,30 @@ const DocumentsPortal: React.FC = () => {
 
     const loadDocuments = async () => {
       setLoading(true);
+      setError(null);
       try {
-        const [docsData, folderData] = await Promise.all([
-          DataService.getDocuments({ visibility: ['public', 'committee'] }),
-          DataService.getDocumentFolders(['public', 'committee'])
+        // Fetch public and committee documents separately to avoid Firestore security rule issues
+        // The 'in' operator with arrays doesn't work well with field-level security rules
+        const [publicDocs, committeeDocs, publicFolders, committeeFolders] = await Promise.all([
+          DataService.getDocuments({ visibility: 'public' }),
+          DataService.getDocuments({ visibility: 'committee' }),
+          DataService.getDocumentFolders('public'),
+          DataService.getDocumentFolders('committee')
         ]);
-        setDocuments(docsData);
-        setFolders(folderData);
+        
+        // Combine results and deduplicate by id
+        const allDocs = [...publicDocs, ...committeeDocs];
+        const uniqueDocs = Array.from(new Map(allDocs.map(doc => [doc.id, doc])).values());
+        
+        const allFolders = [...publicFolders, ...committeeFolders];
+        const uniqueFolders = Array.from(new Map(allFolders.map(folder => [folder.id, folder])).values());
+        
+        setDocuments(uniqueDocs);
+        setFolders(uniqueFolders);
       } catch (error) {
         console.error('Error loading committee documents:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load documents';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -59,8 +76,20 @@ const DocumentsPortal: React.FC = () => {
   }
 
   const userRole = toUserRole(currentUser.role);
+  const isAdmin = userRole === UserRole.ADMIN;
+  const usingFallback = documents.length === 0 && !error;
+  const hasDocuments = documents.length > 0;
 
   const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
+
+  // Use fallback documents if no documents are loaded from Firestore
+  const displayDocs = useMemo(() => {
+    if (hasDocuments) {
+      return documents;
+    }
+    // Return empty array - fallback documents will be shown separately
+    return [];
+  }, [documents, hasDocuments]);
 
   return (
     <SecureLayout userRole={userRole}>
@@ -70,12 +99,50 @@ const DocumentsPortal: React.FC = () => {
           <p className="text-gray-600">Access committee-only and public resources in one place.</p>
         </div>
 
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-red-800">
+              <AlertCircle className="w-5 h-5" />
+              <p className="font-semibold">Error loading documents</p>
+            </div>
+            <p className="text-red-700 text-sm mt-1">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition"
+            >
+              Reload Page
+            </button>
+          </div>
+        )}
+
+        {usingFallback && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-amber-800">
+              <AlertCircle className="w-5 h-5" />
+              <p className="font-semibold">No documents uploaded yet</p>
+            </div>
+            <p className="text-amber-700 text-sm mt-1">
+              {isAdmin
+                ? 'Upload committee documents and public guidance in the Admin Console to make them available here.'
+                : 'No documents have been uploaded yet. Check back later or contact an administrator.'}
+            </p>
+            {isAdmin && (
+              <Link
+                to={ROUTES.PORTAL.ADMIN}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold transition"
+              >
+                Go to Admin Console
+              </Link>
+            )}
+          </div>
+        )}
+
         <Card>
           <div className="space-y-4">
-            {documents.length === 0 && (
-              <div className="text-center text-gray-500 py-8">No documents available yet.</div>
+            {displayDocs.length === 0 && !error && !usingFallback && (
+              <div className="text-center text-gray-500 py-8">Loading documents...</div>
             )}
-              {documents.map(doc => (
+            {displayDocs.map(doc => (
                 <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-purple-300 transition">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100">
