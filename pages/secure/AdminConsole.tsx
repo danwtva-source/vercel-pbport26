@@ -3,14 +3,14 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
   Eye, Upload, FolderOpen, Calendar, Search, Filter, TrendingUp,
-  UserCheck, FileCheck, Activity, ShieldCheck
+  UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList
 } from 'lucide-react';
 
 // ============================================================================
@@ -41,7 +41,7 @@ const AdminConsole: React.FC = () => {
   // Get current user from auth context
   const { userProfile: currentUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
   const [isScoringMode, setIsScoringMode] = useState(false);
   const [authCheckRunning, setAuthCheckRunning] = useState(false);
@@ -63,6 +63,7 @@ const AdminConsole: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
     stage1Visible: true,
     stage2Visible: false,
@@ -77,6 +78,21 @@ const AdminConsole: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'app' | 'user' | 'round' | 'document'>('app');
+  const [assignmentCommitteeFilter, setAssignmentCommitteeFilter] = useState<string>('All');
+  const [assignmentRoundFilter, setAssignmentRoundFilter] = useState<string>('All');
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<string>('All');
+  const [newAssignment, setNewAssignment] = useState<{
+    applicationId: string;
+    committeeId: string;
+    dueDate: string;
+    status: Assignment['status'];
+  }>({
+    applicationId: '',
+    committeeId: '',
+    dueDate: '',
+    status: 'assigned'
+  });
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
 
   // Load all data
   useEffect(() => {
@@ -86,7 +102,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, assignmentsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -95,7 +111,8 @@ const AdminConsole: React.FC = () => {
         DataService.getAuditLogs(),
         DataService.getScores(),
         DataService.getPortalSettings(),
-        DataService.getVotes()
+        DataService.getVotes(),
+        DataService.getAssignments()
       ]);
 
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
@@ -125,6 +142,7 @@ const AdminConsole: React.FC = () => {
       setAuditLogs(logsData);
       setScores(scoresData);
       setSettings(settingsData);
+      setAssignments(assignmentsData);
       void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -887,6 +905,364 @@ const AdminConsole: React.FC = () => {
                 <Button variant="ghost" onClick={() => setRepairingUser(null)}>Cancel</Button>
                 <Button onClick={handleRepairAuthUser} disabled={repairSubmitting}>
                   {repairSubmitting ? 'Repairing...' : 'Create Auth Account'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================================
+  // TAB: ASSIGNMENTS - COMMITTEE ASSIGNMENTS (CRUD)
+  // ============================================================================
+
+  const AssignmentsTab = () => {
+    const committeeMembers = users.filter(u => u.role === 'committee');
+    const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString() : '—');
+
+    const resolveApplication = (applicationId: string) =>
+      applications.find(app => app.id === applicationId);
+    const resolveCommittee = (committeeId: string) =>
+      committeeMembers.find(member => member.uid === committeeId);
+    const resolveRoundName = (roundId?: string) =>
+      rounds.find(round => round.id === roundId)?.name || 'Unassigned';
+
+    const filteredAssignments = assignments.filter(assignment => {
+      if (assignmentCommitteeFilter !== 'All' && assignment.committeeId !== assignmentCommitteeFilter) {
+        return false;
+      }
+      if (assignmentStatusFilter !== 'All' && assignment.status !== assignmentStatusFilter) {
+        return false;
+      }
+      if (assignmentRoundFilter !== 'All') {
+        const app = resolveApplication(assignment.applicationId);
+        const roundId = app?.roundId || 'unassigned';
+        if (assignmentRoundFilter === 'unassigned') {
+          return roundId === 'unassigned';
+        }
+        if (roundId !== assignmentRoundFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const refreshAssignments = async () => {
+      const assignmentsData = await DataService.getAssignments();
+      setAssignments(assignmentsData);
+    };
+
+    const handleCreateAssignment = async () => {
+      if (!newAssignment.applicationId || !newAssignment.committeeId) {
+        alert('Select an application and committee member.');
+        return;
+      }
+      const assignmentId = `${newAssignment.applicationId}_${newAssignment.committeeId}`;
+      const assignment: Assignment = {
+        id: assignmentId,
+        applicationId: newAssignment.applicationId,
+        committeeId: newAssignment.committeeId,
+        assignedDate: new Date().toISOString(),
+        dueDate: newAssignment.dueDate || undefined,
+        status: newAssignment.status
+      };
+      try {
+        await DataService.createAssignment(assignment);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_CREATE',
+          targetId: assignmentId,
+          details: {
+            applicationId: assignment.applicationId,
+            committeeId: assignment.committeeId,
+            status: assignment.status,
+            dueDate: assignment.dueDate || null
+          }
+        });
+        setNewAssignment({ applicationId: '', committeeId: '', dueDate: '', status: 'assigned' });
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error creating assignment:', error);
+        alert(error?.message || 'Failed to create assignment');
+      }
+    };
+
+    const handleUpdateAssignment = async () => {
+      if (!editingAssignment) return;
+      const assignmentId = `${editingAssignment.applicationId}_${editingAssignment.committeeId}`;
+      try {
+        await DataService.updateAssignment(assignmentId, {
+          status: editingAssignment.status,
+          dueDate: editingAssignment.dueDate || undefined
+        });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_UPDATE',
+          targetId: assignmentId,
+          details: {
+            status: editingAssignment.status,
+            dueDate: editingAssignment.dueDate || null
+          }
+        });
+        setEditingAssignment(null);
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error updating assignment:', error);
+        alert(error?.message || 'Failed to update assignment');
+      }
+    };
+
+    const handleDeleteAssignment = async (assignment: Assignment) => {
+      if (!confirm('Delete this assignment?')) return;
+      const assignmentId = `${assignment.applicationId}_${assignment.committeeId}`;
+      try {
+        await DataService.deleteAssignment(assignmentId);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_DELETE',
+          targetId: assignmentId,
+          details: {
+            applicationId: assignment.applicationId,
+            committeeId: assignment.committeeId,
+            status: assignment.status
+          }
+        });
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error deleting assignment:', error);
+        alert(error?.message || 'Failed to delete assignment');
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-purple-900 mb-2">Assignments</h2>
+          <p className="text-gray-600">Assign committee members to applications and track scoring status.</p>
+        </div>
+
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <Plus size={24} />
+            Create Assignment
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Application</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.applicationId}
+                onChange={(e) => setNewAssignment({ ...newAssignment, applicationId: e.target.value })}
+              >
+                <option value="">Select application</option>
+                {applications.map(app => (
+                  <option key={app.id} value={app.id}>
+                    {app.ref} • {app.projectTitle}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Committee Member</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.committeeId}
+                onChange={(e) => setNewAssignment({ ...newAssignment, committeeId: e.target.value })}
+              >
+                <option value="">Select committee member</option>
+                {committeeMembers.map(member => (
+                  <option key={member.uid} value={member.uid}>
+                    {member.displayName || member.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Due Date</label>
+              <input
+                type="date"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.dueDate}
+                onChange={(e) => setNewAssignment({ ...newAssignment, dueDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Status</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.status}
+                onChange={(e) => setNewAssignment({ ...newAssignment, status: e.target.value as Assignment['status'] })}
+              >
+                <option value="assigned">Assigned</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="rescore">Rescore</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleCreateAssignment}>
+              <Plus size={18} />
+              Create Assignment
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+            <h3 className="text-xl font-bold text-purple-900">Assignments List ({filteredAssignments.length})</h3>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-gray-500" />
+                <select
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                  value={assignmentCommitteeFilter}
+                  onChange={(e) => setAssignmentCommitteeFilter(e.target.value)}
+                >
+                  <option value="All">All committee members</option>
+                  {committeeMembers.map(member => (
+                    <option key={member.uid} value={member.uid}>
+                      {member.displayName || member.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <select
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                value={assignmentRoundFilter}
+                onChange={(e) => setAssignmentRoundFilter(e.target.value)}
+              >
+                <option value="All">All rounds</option>
+                <option value="unassigned">Unassigned</option>
+                {rounds.map(round => (
+                  <option key={round.id} value={round.id}>
+                    {round.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                value={assignmentStatusFilter}
+                onChange={(e) => setAssignmentStatusFilter(e.target.value)}
+              >
+                <option value="All">All statuses</option>
+                <option value="assigned">Assigned</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="rescore">Rescore</option>
+              </select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Application</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Committee Member</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Round</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Status</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Assigned</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Due</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAssignments.map(assignment => {
+                  const app = resolveApplication(assignment.applicationId);
+                  const committee = resolveCommittee(assignment.committeeId);
+                  return (
+                    <tr key={assignment.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
+                      <td className="p-3">
+                        <div>
+                          <p className="font-bold text-gray-900">{app?.projectTitle || assignment.applicationId}</p>
+                          <p className="text-xs text-gray-500">{app?.ref}</p>
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm">{committee?.displayName || committee?.email || assignment.committeeId}</td>
+                      <td className="p-3 text-sm">{resolveRoundName(app?.roundId)}</td>
+                      <td className="p-3">
+                        <Badge variant={assignment.status === 'submitted' ? 'success' : assignment.status === 'rescore' ? 'warning' : 'purple'}>
+                          {assignment.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-sm">{formatDate(assignment.assignedDate)}</td>
+                      <td className="p-3 text-sm">{formatDate(assignment.dueDate)}</td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingAssignment({
+                              ...assignment,
+                              dueDate: assignment.dueDate ? assignment.dueDate.slice(0, 10) : ''
+                            })}
+                            className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700"
+                            title="Edit"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAssignment(assignment)}
+                            className="p-2 hover:bg-red-100 rounded-lg transition text-red-700"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filteredAssignments.length === 0 && (
+              <p className="text-gray-500 text-center py-8">No assignments match the selected filters.</p>
+            )}
+          </div>
+        </Card>
+
+        {editingAssignment && (
+          <Modal isOpen={true} onClose={() => setEditingAssignment(null)} title="Edit Assignment" size="md">
+            <div className="space-y-4">
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-sm font-bold text-gray-700">Application</p>
+                <p className="text-sm text-gray-900">
+                  {resolveApplication(editingAssignment.applicationId)?.projectTitle || editingAssignment.applicationId}
+                </p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-sm font-bold text-gray-700">Committee Member</p>
+                <p className="text-sm text-gray-900">
+                  {resolveCommittee(editingAssignment.committeeId)?.displayName || editingAssignment.committeeId}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Status</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingAssignment.status}
+                  onChange={(e) => setEditingAssignment({ ...editingAssignment, status: e.target.value as Assignment['status'] })}
+                >
+                  <option value="assigned">Assigned</option>
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="rescore">Rescore</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Due Date</label>
+                <input
+                  type="date"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingAssignment.dueDate || ''}
+                  onChange={(e) => setEditingAssignment({ ...editingAssignment, dueDate: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingAssignment(null)}>Cancel</Button>
+                <Button onClick={handleUpdateAssignment}>
+                  <Save size={18} />
+                  Save Changes
                 </Button>
               </div>
             </div>
@@ -2032,6 +2408,17 @@ const AdminConsole: React.FC = () => {
               Users
             </button>
             <button
+              onClick={() => setActiveTab('assignments')}
+              className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
+                activeTab === 'assignments'
+                  ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <ClipboardList size={18} />
+              Assignments
+            </button>
+            <button
               onClick={() => setActiveTab('rounds')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'rounds'
@@ -2083,6 +2470,7 @@ const AdminConsole: React.FC = () => {
           {activeTab === 'overview' && <OverviewTab />}
           {activeTab === 'masterlist' && <MasterListTab />}
           {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'assignments' && <AssignmentsTab />}
           {activeTab === 'rounds' && <RoundsTab />}
           {activeTab === 'documents' && <DocumentsTab />}
           {activeTab === 'logs' && <LogsTab />}
