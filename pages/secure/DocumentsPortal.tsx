@@ -13,6 +13,9 @@ const DocumentsPortal: React.FC = () => {
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Move useMemo to top level - before any conditional returns (fixes React error #310)
+  const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
+
   useEffect(() => {
     const user = DataService.getCurrentUser();
     setCurrentUser(user);
@@ -49,8 +52,6 @@ const DocumentsPortal: React.FC = () => {
     currentUser.role === 'admin' ? UserRole.ADMIN :
     currentUser.role === 'community' ? UserRole.COMMUNITY :
     UserRole.PUBLIC;
-
-  const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
 
   return (
     <SecureLayout userRole={userRole}>
