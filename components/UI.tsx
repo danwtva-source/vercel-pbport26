@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Area } from '../types';
 
-export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost', size?: 'sm' | 'md' | 'lg' }> = ({ children, className = '', variant = 'primary', size = 'md', ...props }) => {
+export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger', size?: 'sm' | 'md' | 'lg' }> = ({ children, className = '', variant = 'primary', size = 'md', ...props }) => {
     const base = "font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2";
     const variants = {
         primary: "bg-brand-purple text-white hover:bg-brand-darkPurple shadow-md hover:shadow-lg hover:-translate-y-0.5",
         secondary: "bg-brand-teal text-white hover:bg-teal-600 shadow-md",
         outline: "border-2 border-brand-purple text-brand-purple hover:bg-purple-50",
-        ghost: "bg-transparent text-gray-600 hover:bg-gray-100"
+        ghost: "bg-transparent text-gray-600 hover:bg-gray-100",
+        danger: "bg-red-600 text-white hover:bg-red-700 shadow-md"
     };
     const sizes = { sm: "px-3 py-1.5 text-xs", md: "px-5 py-2.5 text-sm", lg: "px-8 py-4 text-lg" };
     return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>{children}</button>;
@@ -102,13 +103,19 @@ export const Card: React.FC<{ children: React.ReactNode, className?: string }> =
     <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-6 ${className}`}>{children}</div>
 );
 
-export const Badge: React.FC<{ children: React.ReactNode, variant?: 'default' | 'success' | 'warning' | 'info' | 'draft', className?: string }> = ({ children, variant = 'default', className = '' }) => {
+export const Badge: React.FC<{ children: React.ReactNode, variant?: 'default' | 'success' | 'warning' | 'info' | 'draft' | 'purple' | 'green' | 'gray' | 'amber' | 'blue' | 'red', className?: string }> = ({ children, variant = 'default', className = '' }) => {
     const variants = {
         default: "bg-gray-100 text-gray-600",
         success: "bg-green-100 text-green-700",
         warning: "bg-orange-100 text-orange-700",
         info: "bg-blue-100 text-blue-700",
-        draft: "bg-yellow-100 text-yellow-700 border border-yellow-200"
+        draft: "bg-yellow-100 text-yellow-700 border border-yellow-200",
+        purple: "bg-purple-100 text-purple-700",
+        green: "bg-green-100 text-green-700",
+        gray: "bg-gray-100 text-gray-600",
+        amber: "bg-amber-100 text-amber-700",
+        blue: "bg-blue-100 text-blue-700",
+        red: "bg-red-100 text-red-700"
     };
     
     // Auto-detect variant based on content if not specified
@@ -127,9 +134,9 @@ export const Badge: React.FC<{ children: React.ReactNode, variant?: 'default' | 
     );
 };
 
-export const Modal: React.FC<{ isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode, size?: 'md' | 'lg' | 'xl' }> = ({ isOpen, onClose, title, children, size = 'md' }) => {
+export const Modal: React.FC<{ isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode, size?: 'sm' | 'md' | 'lg' | 'xl' }> = ({ isOpen, onClose, title, children, size = 'md' }) => {
     if (!isOpen) return null;
-    const sizes = { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" };
+    const sizes = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" };
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />

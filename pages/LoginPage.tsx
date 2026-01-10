@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { PublicLayout } from '../components/Layout';
 import { Button, Input, Card } from '../components/UI';
 import { api } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
 import { LogIn, UserPlus, AlertCircle, Loader } from 'lucide-react';
+import { ROUTES } from '../utils';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +18,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [role, setRole] = useState<'applicant' | 'community'>('applicant');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,14 +42,15 @@ export const LoginPage: React.FC = () => {
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters');
         }
-        user = await api.register(email, password, name);
+        user = await api.register(email, password, name, role);
       }
 
       // Store user in localStorage (AuthService pattern)
       localStorage.setItem('pb_user', JSON.stringify(user));
 
-      // Redirect to portal dashboard
-      navigate('/portal/dashboard');
+      await refreshProfile();
+      // Redirect to portal root so role-based redirect handles landing
+      navigate(ROUTES.PORTAL.ROOT);
     } catch (err: any) {
       setError(err.message || `Failed to ${mode === 'login' ? 'sign in' : 'create account'}`);
     } finally {
@@ -96,16 +101,36 @@ export const LoginPage: React.FC = () => {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               {mode === 'register' && (
-                <Input
-                  label="Full Name"
-                  type="text"
-                  placeholder="Enter your full name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  disabled={loading}
-                  autoComplete="name"
-                />
+                <>
+                  <Input
+                    label="Full Name"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    disabled={loading}
+                    autoComplete="name"
+                  />
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Account Type
+                    </label>
+                    <select
+                      value={role}
+                      onChange={(e) => setRole(e.target.value as 'applicant' | 'community')}
+                      disabled={loading}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                    >
+                      <option value="applicant">Applicant - Submit funding applications</option>
+                      <option value="community">Community Member - Receive updates and participate in discussions</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Choose "Applicant" if you plan to submit funding applications. Choose "Community Member" if you want to stay informed and participate in discussions.
+                    </p>
+                  </div>
+                </>
               )}
 
               <Input

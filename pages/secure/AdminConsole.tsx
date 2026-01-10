@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
-import { DataService, exportToCSV } from '../../services/firebase';
-import { UserRole, Application, User, Round, AdminDocument, AuditLog, PortalSettings, Score, Vote } from '../../types';
+import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
+import { formatCurrency, ROUTES } from '../../utils';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
   Eye, Upload, FolderOpen, Calendar, Search, Filter, TrendingUp,
-  UserCheck, FileCheck, Activity, ShieldCheck
+  UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList
 } from 'lucide-react';
 
 // ============================================================================
@@ -36,17 +38,32 @@ import {
 // ============================================================================
 
 const AdminConsole: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
+  // Get current user from auth context
+  const { userProfile: currentUser } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
   const [isScoringMode, setIsScoringMode] = useState(false);
+  const [authCheckRunning, setAuthCheckRunning] = useState(false);
+  const [authCheckResult, setAuthCheckResult] = useState<{
+    missing: User[];
+    errors: { email: string; message: string }[];
+    checked: number;
+  } | null>(null);
+  const [repairingUser, setRepairingUser] = useState<User | null>(null);
+  const [repairPassword, setRepairPassword] = useState('');
+  const [repairSubmitting, setRepairSubmitting] = useState(false);
+  const [normalizingUsers, setNormalizingUsers] = useState(false);
 
   // Data state
   const [applications, setApplications] = useState<Application[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
-  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
     stage1Visible: true,
     stage2Visible: false,
@@ -61,6 +78,21 @@ const AdminConsole: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'app' | 'user' | 'round' | 'document'>('app');
+  const [assignmentCommitteeFilter, setAssignmentCommitteeFilter] = useState<string>('All');
+  const [assignmentRoundFilter, setAssignmentRoundFilter] = useState<string>('All');
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<string>('All');
+  const [newAssignment, setNewAssignment] = useState<{
+    applicationId: string;
+    committeeId: string;
+    dueDate: string;
+    status: Assignment['status'];
+  }>({
+    applicationId: '',
+    committeeId: '',
+    dueDate: '',
+    status: 'assigned'
+  });
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
 
   // Load all data
   useEffect(() => {
@@ -70,15 +102,17 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, assignmentsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
+        DataService.getDocumentFolders(),
         DataService.getDocuments(),
         DataService.getAuditLogs(),
         DataService.getScores(),
         DataService.getPortalSettings(),
-        DataService.getVotes()
+        DataService.getVotes(),
+        DataService.getAssignments()
       ]);
 
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
@@ -103,14 +137,67 @@ const AdminConsole: React.FC = () => {
       setApplications(enrichedApps);
       setUsers(usersData);
       setRounds(roundsData);
+      setDocumentFolders(folderData);
       setDocuments(docsData);
       setAuditLogs(logsData);
       setScores(scoresData);
       setSettings(settingsData);
+      setAssignments(assignmentsData);
+      void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runAuthConsistencyCheck = async (usersData: User[]) => {
+    setAuthCheckRunning(true);
+    try {
+      const result = await DataService.checkAuthConsistency(usersData);
+      setAuthCheckResult(result);
+    } catch (error: any) {
+      setAuthCheckResult({
+        missing: [],
+        errors: [{ email: 'N/A', message: error?.message || 'Failed to check auth consistency' }],
+        checked: usersData.length
+      });
+    } finally {
+      setAuthCheckRunning(false);
+    }
+  };
+
+  const handleNormalizeUsers = async () => {
+    if (!confirm('Normalize roles and uid fields for all users? This updates Firestore records.')) return;
+    setNormalizingUsers(true);
+    try {
+      const result = await DataService.normalizeUsers();
+      alert(`User normalization complete. Updated ${result.updated} records.`);
+      await loadAllData();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to normalize users');
+    } finally {
+      setNormalizingUsers(false);
+    }
+  };
+
+  const handleRepairAuthUser = async () => {
+    if (!repairingUser) return;
+    if (repairPassword.length < 6) {
+      alert('Please enter a temporary password (minimum 6 characters).');
+      return;
+    }
+    setRepairSubmitting(true);
+    try {
+      await DataService.repairAuthUser(repairingUser, repairPassword);
+      alert(`Auth account created for ${repairingUser.email}. Share the temporary password securely.`);
+      setRepairingUser(null);
+      setRepairPassword('');
+      await loadAllData();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to repair auth account');
+    } finally {
+      setRepairSubmitting(false);
     }
   };
 
@@ -124,7 +211,7 @@ const AdminConsole: React.FC = () => {
     const invitedStage2 = applications.filter(a => a.status === 'Invited-Stage2').length;
     const submittedStage2 = applications.filter(a => a.status === 'Submitted-Stage2').length;
     const funded = applications.filter(a => a.status === 'Funded').length;
-    const rejected = applications.filter(a => a.status.includes('Rejected')).length;
+    const rejected = applications.filter(a => (a.status || '').includes('Rejected')).length;
 
     const committeeMembers = users.filter(u => u.role === 'committee').length;
     const adminUsers = users.filter(u => u.role === 'admin').length;
@@ -145,7 +232,7 @@ const AdminConsole: React.FC = () => {
           </div>
           <Button onClick={() => setIsScoringMode(true)} variant="secondary">
             <BarChart3 size={18} className="mr-2" />
-            Enter Scoring Mode
+            Enter Committee Tasks Overview
           </Button>
         </div>
 
@@ -215,7 +302,7 @@ const AdminConsole: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500 font-bold">Total Requested</p>
-                <p className="text-2xl font-bold text-rose-900">£{totalFundingRequested.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-rose-900">{formatCurrency(totalFundingRequested)}</p>
               </div>
               <TrendingUp className="text-rose-500" size={40} />
             </div>
@@ -225,7 +312,7 @@ const AdminConsole: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500 font-bold">Total Funded</p>
-                <p className="text-2xl font-bold text-emerald-900">£{totalFunded.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-emerald-900">{formatCurrency(totalFunded)}</p>
               </div>
               <CheckCircle className="text-emerald-500" size={40} />
             </div>
@@ -333,9 +420,11 @@ const AdminConsole: React.FC = () => {
 
   const MasterListTab = () => {
     const filteredApps = applications.filter(app => {
-      const matchesSearch = app.projectTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           app.orgName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           app.ref.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = (app.projectTitle || '').toLowerCase().includes(searchLower) ||
+                           (app.orgName || '').toLowerCase().includes(searchLower) ||
+                           (app.ref || '').toLowerCase().includes(searchLower) ||
+                           (app.applicantName || '').toLowerCase().includes(searchLower);
       const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -344,7 +433,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateApplication(appId, { status: newStatus as any });
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'APP_STATUS_CHANGE',
           targetId: appId,
           details: { newStatus }
@@ -438,14 +527,14 @@ const AdminConsole: React.FC = () => {
                   const enrichedApp = app as any;
                   return (
                     <tr key={app.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
-                      <td className="p-3 font-mono text-sm font-bold">{app.ref}</td>
+                      <td className="p-3 font-mono text-sm font-bold">{app.ref || '-'}</td>
                       <td className="p-3">
-                        <p className="font-bold text-gray-800">{app.projectTitle}</p>
-                        <p className="text-xs text-gray-500">{app.applicantName}</p>
+                        <p className="font-bold text-gray-800">{app.projectTitle || 'Untitled'}</p>
+                        <p className="text-xs text-gray-500">{app.applicantName || '-'}</p>
                       </td>
-                      <td className="p-3 text-sm">{app.orgName}</td>
-                      <td className="p-3 text-sm">{app.area}</td>
-                      <td className="p-3 text-sm font-bold">£{app.amountRequested.toLocaleString()}</td>
+                      <td className="p-3 text-sm">{app.orgName || '-'}</td>
+                      <td className="p-3 text-sm">{app.area || '-'}</td>
+                      <td className="p-3 text-sm font-bold">{formatCurrency(app.amountRequested || 0)}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 text-xs">
                           <span className="text-green-600 font-bold">{enrichedApp.voteCountYes || 0} Yes</span>
@@ -510,27 +599,34 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const UsersTab = () => {
-    const [newUser, setNewUser] = useState<Partial<User>>({ role: 'applicant' });
+    const [newUser, setNewUser] = useState<Partial<User>>({ role: 'applicant', area: null });
+    const [newPassword, setNewPassword] = useState('');
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
     const handleCreateUser = async () => {
       if (!newUser.email || !newUser.displayName) {
-        alert('Please fill in all required fields');
+        alert('Please fill in email and display name');
+        return;
+      }
+      if (!newPassword || newPassword.length < 6) {
+        alert('Please enter a password (minimum 6 characters)');
         return;
       }
       try {
-        await DataService.adminCreateUser(newUser as User, 'defaultPassword123');
+        await DataService.adminCreateUser(newUser as User, newPassword);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_CREATE',
           targetId: newUser.email,
           details: { role: newUser.role }
         });
-        setNewUser({ role: 'applicant' });
+        setNewUser({ role: 'applicant', area: null });
+        setNewPassword('');
         await loadAllData();
-      } catch (error) {
+        alert('User created successfully');
+      } catch (error: any) {
         console.error('Error creating user:', error);
-        alert('Failed to create user');
+        alert(error.message || 'Failed to create user');
       }
     };
 
@@ -538,7 +634,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updateUser(user);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_UPDATE',
           targetId: user.uid,
           details: { role: user.role }
@@ -556,7 +652,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.deleteUser(uid);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'USER_DELETE',
           targetId: uid
         });
@@ -574,27 +670,93 @@ const AdminConsole: React.FC = () => {
           <p className="text-gray-600">Create, edit, and manage user accounts</p>
         </div>
 
+        <Card>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-purple-900">Auth Consistency Check</h3>
+              <p className="text-sm text-gray-600">
+                Verifies Firestore users against Firebase Auth sign-in methods.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => runAuthConsistencyCheck(users)} disabled={authCheckRunning}>
+                {authCheckRunning ? 'Checking...' : 'Recheck Auth Consistency'}
+              </Button>
+              <Button variant="secondary" onClick={handleNormalizeUsers} disabled={normalizingUsers}>
+                {normalizingUsers ? 'Normalizing...' : 'Normalize Roles & UID'}
+              </Button>
+            </div>
+          </div>
+
+          {authCheckResult && (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                Checked {authCheckResult.checked} users. Missing auth accounts: {authCheckResult.missing.length}.
+              </p>
+              {authCheckResult.errors.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-bold">Auth check warnings</p>
+                  <ul className="list-disc pl-5">
+                    {authCheckResult.errors.map(error => (
+                      <li key={`${error.email}-${error.message}`}>
+                        {error.email}: {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {authCheckResult.missing.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm font-bold text-red-700">Users missing Firebase Auth accounts</p>
+                  <div className="mt-2 space-y-2">
+                    {authCheckResult.missing.map(user => (
+                      <div key={user.uid} className="flex flex-col gap-2 rounded-lg bg-white p-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm font-bold text-gray-800">{user.displayName || user.email}</p>
+                          <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                        <Button variant="outline" onClick={() => setRepairingUser(user)}>
+                          Repair Auth Account
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
         {/* Create User */}
         <Card>
           <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
             <Plus size={24} />
             Create New User
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <input
               type="email"
-              placeholder="Email"
+              placeholder="Email *"
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.email || ''}
               onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
             />
             <input
+              type="password"
+              placeholder="Password * (min 6 chars)"
+              className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <input
               type="text"
-              placeholder="Display Name"
+              placeholder="Display Name *"
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.displayName || ''}
               onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
             />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select
               className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
               value={newUser.role}
@@ -604,6 +766,18 @@ const AdminConsole: React.FC = () => {
               <option value="committee">Committee</option>
               <option value="admin">Admin</option>
             </select>
+            {(newUser.role === 'committee' || newUser.role === 'applicant') && (
+              <select
+                className="px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+                value={newUser.area || ''}
+                onChange={(e) => setNewUser({ ...newUser, area: e.target.value as any || null })}
+              >
+                <option value="">Select Area</option>
+                <option value="Blaenavon">Blaenavon</option>
+                <option value="Thornhill & Upper Cwmbran">Thornhill & Upper Cwmbran</option>
+                <option value="Trevethin, Penygarn & St. Cadocs">Trevethin, Penygarn & St. Cadocs</option>
+              </select>
+            )}
             <Button onClick={handleCreateUser}>
               <Plus size={18} />
               Create User
@@ -687,9 +861,406 @@ const AdminConsole: React.FC = () => {
                   <option value="admin">Admin</option>
                 </select>
               </div>
+              {(editingUser.role === 'committee' || editingUser.role === 'applicant') && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Assigned Area</label>
+                  <select
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                    value={editingUser.area || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, area: e.target.value as any || null })}
+                  >
+                    <option value="">No Area Assigned</option>
+                    <option value="Blaenavon">Blaenavon</option>
+                    <option value="Thornhill & Upper Cwmbran">Thornhill & Upper Cwmbran</option>
+                    <option value="Trevethin, Penygarn & St. Cadocs">Trevethin, Penygarn & St. Cadocs</option>
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setEditingUser(null)}>Cancel</Button>
                 <Button onClick={() => handleUpdateUser(editingUser)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {repairingUser && (
+          <Modal isOpen={true} onClose={() => setRepairingUser(null)} title="Repair Auth Account" size="sm">
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Create a Firebase Auth account for <span className="font-bold">{repairingUser.email}</span>.
+                This will generate a temporary password that you should share securely.
+              </p>
+              <Input
+                label="Temporary Password"
+                type="password"
+                value={repairPassword}
+                onChange={(e) => setRepairPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setRepairingUser(null)}>Cancel</Button>
+                <Button onClick={handleRepairAuthUser} disabled={repairSubmitting}>
+                  {repairSubmitting ? 'Repairing...' : 'Create Auth Account'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================================
+  // TAB: ASSIGNMENTS - COMMITTEE ASSIGNMENTS (CRUD)
+  // ============================================================================
+
+  const AssignmentsTab = () => {
+    const committeeMembers = users.filter(u => u.role === 'committee');
+    const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString() : '—');
+
+    const resolveApplication = (applicationId: string) =>
+      applications.find(app => app.id === applicationId);
+    const resolveCommittee = (committeeId: string) =>
+      committeeMembers.find(member => member.uid === committeeId);
+    const resolveRoundName = (roundId?: string) =>
+      rounds.find(round => round.id === roundId)?.name || 'Unassigned';
+
+    const filteredAssignments = assignments.filter(assignment => {
+      if (assignmentCommitteeFilter !== 'All' && assignment.committeeId !== assignmentCommitteeFilter) {
+        return false;
+      }
+      if (assignmentStatusFilter !== 'All' && assignment.status !== assignmentStatusFilter) {
+        return false;
+      }
+      if (assignmentRoundFilter !== 'All') {
+        const app = resolveApplication(assignment.applicationId);
+        const roundId = app?.roundId || 'unassigned';
+        if (assignmentRoundFilter === 'unassigned') {
+          return roundId === 'unassigned';
+        }
+        if (roundId !== assignmentRoundFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const refreshAssignments = async () => {
+      const assignmentsData = await DataService.getAssignments();
+      setAssignments(assignmentsData);
+    };
+
+    const handleCreateAssignment = async () => {
+      if (!newAssignment.applicationId || !newAssignment.committeeId) {
+        alert('Select an application and committee member.');
+        return;
+      }
+      const assignmentId = `${newAssignment.applicationId}_${newAssignment.committeeId}`;
+      const assignment: Assignment = {
+        id: assignmentId,
+        applicationId: newAssignment.applicationId,
+        committeeId: newAssignment.committeeId,
+        assignedDate: new Date().toISOString(),
+        dueDate: newAssignment.dueDate || undefined,
+        status: newAssignment.status
+      };
+      try {
+        await DataService.createAssignment(assignment);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_CREATE',
+          targetId: assignmentId,
+          details: {
+            applicationId: assignment.applicationId,
+            committeeId: assignment.committeeId,
+            status: assignment.status,
+            dueDate: assignment.dueDate || null
+          }
+        });
+        setNewAssignment({ applicationId: '', committeeId: '', dueDate: '', status: 'assigned' });
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error creating assignment:', error);
+        alert(error?.message || 'Failed to create assignment');
+      }
+    };
+
+    const handleUpdateAssignment = async () => {
+      if (!editingAssignment) return;
+      const assignmentId = `${editingAssignment.applicationId}_${editingAssignment.committeeId}`;
+      try {
+        await DataService.updateAssignment(assignmentId, {
+          status: editingAssignment.status,
+          dueDate: editingAssignment.dueDate || undefined
+        });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_UPDATE',
+          targetId: assignmentId,
+          details: {
+            status: editingAssignment.status,
+            dueDate: editingAssignment.dueDate || null
+          }
+        });
+        setEditingAssignment(null);
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error updating assignment:', error);
+        alert(error?.message || 'Failed to update assignment');
+      }
+    };
+
+    const handleDeleteAssignment = async (assignment: Assignment) => {
+      if (!confirm('Delete this assignment?')) return;
+      const assignmentId = `${assignment.applicationId}_${assignment.committeeId}`;
+      try {
+        await DataService.deleteAssignment(assignmentId);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ASSIGNMENT_DELETE',
+          targetId: assignmentId,
+          details: {
+            applicationId: assignment.applicationId,
+            committeeId: assignment.committeeId,
+            status: assignment.status
+          }
+        });
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Error deleting assignment:', error);
+        alert(error?.message || 'Failed to delete assignment');
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-purple-900 mb-2">Assignments</h2>
+          <p className="text-gray-600">Assign committee members to applications and track scoring status.</p>
+        </div>
+
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <Plus size={24} />
+            Create Assignment
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Application</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.applicationId}
+                onChange={(e) => setNewAssignment({ ...newAssignment, applicationId: e.target.value })}
+              >
+                <option value="">Select application</option>
+                {applications.map(app => (
+                  <option key={app.id} value={app.id}>
+                    {app.ref} • {app.projectTitle}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Committee Member</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.committeeId}
+                onChange={(e) => setNewAssignment({ ...newAssignment, committeeId: e.target.value })}
+              >
+                <option value="">Select committee member</option>
+                {committeeMembers.map(member => (
+                  <option key={member.uid} value={member.uid}>
+                    {member.displayName || member.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Due Date</label>
+              <input
+                type="date"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.dueDate}
+                onChange={(e) => setNewAssignment({ ...newAssignment, dueDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Status</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={newAssignment.status}
+                onChange={(e) => setNewAssignment({ ...newAssignment, status: e.target.value as Assignment['status'] })}
+              >
+                <option value="assigned">Assigned</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="rescore">Rescore</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleCreateAssignment}>
+              <Plus size={18} />
+              Create Assignment
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+            <h3 className="text-xl font-bold text-purple-900">Assignments List ({filteredAssignments.length})</h3>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-gray-500" />
+                <select
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                  value={assignmentCommitteeFilter}
+                  onChange={(e) => setAssignmentCommitteeFilter(e.target.value)}
+                >
+                  <option value="All">All committee members</option>
+                  {committeeMembers.map(member => (
+                    <option key={member.uid} value={member.uid}>
+                      {member.displayName || member.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <select
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                value={assignmentRoundFilter}
+                onChange={(e) => setAssignmentRoundFilter(e.target.value)}
+              >
+                <option value="All">All rounds</option>
+                <option value="unassigned">Unassigned</option>
+                {rounds.map(round => (
+                  <option key={round.id} value={round.id}>
+                    {round.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                value={assignmentStatusFilter}
+                onChange={(e) => setAssignmentStatusFilter(e.target.value)}
+              >
+                <option value="All">All statuses</option>
+                <option value="assigned">Assigned</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="rescore">Rescore</option>
+              </select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Application</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Committee Member</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Round</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Status</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Assigned</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Due</th>
+                  <th className="text-left p-3 font-bold text-sm text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAssignments.map(assignment => {
+                  const app = resolveApplication(assignment.applicationId);
+                  const committee = resolveCommittee(assignment.committeeId);
+                  return (
+                    <tr key={assignment.id} className="border-b border-gray-100 hover:bg-purple-50 transition">
+                      <td className="p-3">
+                        <div>
+                          <p className="font-bold text-gray-900">{app?.projectTitle || assignment.applicationId}</p>
+                          <p className="text-xs text-gray-500">{app?.ref}</p>
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm">{committee?.displayName || committee?.email || assignment.committeeId}</td>
+                      <td className="p-3 text-sm">{resolveRoundName(app?.roundId)}</td>
+                      <td className="p-3">
+                        <Badge variant={assignment.status === 'submitted' ? 'success' : assignment.status === 'rescore' ? 'warning' : 'purple'}>
+                          {assignment.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-sm">{formatDate(assignment.assignedDate)}</td>
+                      <td className="p-3 text-sm">{formatDate(assignment.dueDate)}</td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingAssignment({
+                              ...assignment,
+                              dueDate: assignment.dueDate ? assignment.dueDate.slice(0, 10) : ''
+                            })}
+                            className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700"
+                            title="Edit"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAssignment(assignment)}
+                            className="p-2 hover:bg-red-100 rounded-lg transition text-red-700"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filteredAssignments.length === 0 && (
+              <p className="text-gray-500 text-center py-8">No assignments match the selected filters.</p>
+            )}
+          </div>
+        </Card>
+
+        {editingAssignment && (
+          <Modal isOpen={true} onClose={() => setEditingAssignment(null)} title="Edit Assignment" size="md">
+            <div className="space-y-4">
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-sm font-bold text-gray-700">Application</p>
+                <p className="text-sm text-gray-900">
+                  {resolveApplication(editingAssignment.applicationId)?.projectTitle || editingAssignment.applicationId}
+                </p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-sm font-bold text-gray-700">Committee Member</p>
+                <p className="text-sm text-gray-900">
+                  {resolveCommittee(editingAssignment.committeeId)?.displayName || editingAssignment.committeeId}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Status</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingAssignment.status}
+                  onChange={(e) => setEditingAssignment({ ...editingAssignment, status: e.target.value as Assignment['status'] })}
+                >
+                  <option value="assigned">Assigned</option>
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="rescore">Rescore</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Due Date</label>
+                <input
+                  type="date"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingAssignment.dueDate || ''}
+                  onChange={(e) => setEditingAssignment({ ...editingAssignment, dueDate: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingAssignment(null)}>Cancel</Button>
+                <Button onClick={handleUpdateAssignment}>
                   <Save size={18} />
                   Save Changes
                 </Button>
@@ -715,6 +1286,7 @@ const AdminConsole: React.FC = () => {
       stage2Open: false,
       scoringOpen: false
     });
+    const [editingRound, setEditingRound] = useState<Round | null>(null);
 
     const handleCreateRound = async () => {
       if (!newRound.name || !newRound.startDate || !newRound.endDate) {
@@ -725,7 +1297,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.createRound({ ...newRound, id } as Round);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_CREATE',
           targetId: id,
           details: { name: newRound.name }
@@ -743,7 +1315,7 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.deleteRound(id);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'ROUND_DELETE',
           targetId: id
         });
@@ -751,6 +1323,40 @@ const AdminConsole: React.FC = () => {
       } catch (error) {
         console.error('Error deleting round:', error);
         alert('Failed to delete round');
+      }
+    };
+
+    const handleUpdateRound = async (round: Round) => {
+      try {
+        await DataService.updateRound(round.id, round);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ROUND_UPDATE',
+          targetId: round.id,
+          details: { name: round.name, status: round.status }
+        });
+        setEditingRound(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating round:', error);
+        alert('Failed to update round');
+      }
+    };
+
+    const handleToggleRoundStatus = async (round: Round, field: 'stage1Open' | 'stage2Open' | 'scoringOpen') => {
+      try {
+        const updated = { ...round, [field]: !round[field] };
+        await DataService.updateRound(round.id, { [field]: !round[field] });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ROUND_TOGGLE',
+          targetId: round.id,
+          details: { field, newValue: !round[field] }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error toggling round status:', error);
+        alert('Failed to update round');
       }
     };
 
@@ -819,19 +1425,28 @@ const AdminConsole: React.FC = () => {
                   <span className="font-bold">Period:</span> {round.startDate} to {round.endDate}
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  <Badge variant={round.stage1Open ? 'green' : 'gray'}>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'stage1Open')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.stage1Open ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Stage 1: {round.stage1Open ? 'Open' : 'Closed'}
-                  </Badge>
-                  <Badge variant={round.stage2Open ? 'green' : 'gray'}>
+                  </button>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'stage2Open')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.stage2Open ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Stage 2: {round.stage2Open ? 'Open' : 'Closed'}
-                  </Badge>
-                  <Badge variant={round.scoringOpen ? 'green' : 'gray'}>
+                  </button>
+                  <button
+                    onClick={() => handleToggleRoundStatus(round, 'scoringOpen')}
+                    className={`px-2 py-1 text-xs font-bold rounded-full cursor-pointer transition hover:opacity-80 ${round.scoringOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                  >
                     Scoring: {round.scoringOpen ? 'Open' : 'Closed'}
-                  </Badge>
+                  </button>
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" onClick={() => setEditingRound(round)}>
                   <Edit size={14} />
                   Edit
                 </Button>
@@ -846,6 +1461,60 @@ const AdminConsole: React.FC = () => {
             <p className="text-gray-500 col-span-2 text-center py-8">No funding rounds created yet</p>
           )}
         </div>
+
+        {/* Edit Round Modal */}
+        {editingRound && (
+          <Modal isOpen={true} onClose={() => setEditingRound(null)} title="Edit Round" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Round Name"
+                value={editingRound.name}
+                onChange={(e) => setEditingRound({ ...editingRound, name: e.target.value })}
+              />
+              <Input
+                label="Year"
+                type="number"
+                value={editingRound.year}
+                onChange={(e) => setEditingRound({ ...editingRound, year: parseInt(e.target.value) })}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Start Date"
+                  type="date"
+                  value={editingRound.startDate}
+                  onChange={(e) => setEditingRound({ ...editingRound, startDate: e.target.value })}
+                />
+                <Input
+                  label="End Date"
+                  type="date"
+                  value={editingRound.endDate}
+                  onChange={(e) => setEditingRound({ ...editingRound, endDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Round Status</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingRound.status}
+                  onChange={(e) => setEditingRound({ ...editingRound, status: e.target.value as any })}
+                >
+                  <option value="planning">Planning</option>
+                  <option value="open">Open</option>
+                  <option value="scoring">Scoring</option>
+                  <option value="voting">Voting</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingRound(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateRound(editingRound)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   };
@@ -855,6 +1524,174 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const DocumentsTab = () => {
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [showFolderModal, setShowFolderModal] = useState(false);
+    const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(null);
+    const [editingFolder, setEditingFolder] = useState<DocumentFolder | null>(null);
+    const [newDocument, setNewDocument] = useState<{ name: string; visibility: DocumentVisibility; folderId: string }>({
+      name: '',
+      visibility: 'public',
+      folderId: 'root'
+    });
+    const [newFolder, setNewFolder] = useState<{ name: string; visibility: DocumentVisibility }>({
+      name: '',
+      visibility: 'public'
+    });
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+    const handleUploadDocument = async () => {
+      if (!newDocument.name) {
+        alert('Please provide a document name');
+        return;
+      }
+      if (!uploadFile) {
+        alert('Please select a file to upload');
+        return;
+      }
+      try {
+        const id = 'doc_' + Date.now();
+        let fileUrl: string | undefined;
+
+        // Upload file to Firebase Storage if a file was selected
+        if (uploadFile) {
+          const timestamp = Date.now();
+          const ext = uploadFile.name.split('.').pop();
+          const storagePath = `documents/${id}_${timestamp}.${ext}`;
+          fileUrl = await uploadToStorage(storagePath, uploadFile);
+          const docData: DocumentItem = {
+            id,
+            name: newDocument.name,
+            folderId: newDocument.folderId || 'root',
+            visibility: newDocument.visibility,
+            uploadedBy: currentUser?.uid || 'admin',
+            createdAt: Date.now(),
+            url: fileUrl,
+            filePath: storagePath
+          };
+          await DataService.createDocument(docData);
+          await DataService.logAction({
+            adminId: currentUser?.uid || 'admin',
+            action: 'DOCUMENT_CREATE',
+            targetId: id,
+            details: { name: newDocument.name, visibility: newDocument.visibility, folderId: newDocument.folderId }
+          });
+        };
+        setNewDocument({ name: '', visibility: 'public', folderId: 'root' });
+        setUploadFile(null);
+        setShowUploadModal(false);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error uploading document:', error);
+        alert('Failed to upload document');
+      }
+    };
+
+    const handleCreateFolder = async () => {
+      if (!newFolder.name) {
+        alert('Please provide a folder name');
+        return;
+      }
+      try {
+        const id = 'folder_' + Date.now();
+        const folderData: DocumentFolder = {
+          id,
+          name: newFolder.name,
+          visibility: newFolder.visibility,
+          createdBy: currentUser?.uid || 'admin',
+          createdAt: Date.now(),
+        };
+        await DataService.createDocumentFolder(folderData);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FOLDER_CREATE',
+          targetId: id,
+          details: { name: newFolder.name, visibility: newFolder.visibility }
+        });
+        setNewFolder({ name: '', visibility: 'public' });
+        setShowFolderModal(false);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error creating folder:', error);
+        alert('Failed to create folder');
+      }
+    };
+
+    const handleDeleteFolder = async (folder: DocumentFolder) => {
+      const docsInFolder = documents.filter(doc => doc.folderId === folder.id);
+      const message = docsInFolder.length > 0
+        ? `This folder contains ${docsInFolder.length} document(s). Delete "${folder.name}" anyway?`
+        : `Are you sure you want to delete "${folder.name}"?`;
+      if (!confirm(message)) return;
+      try {
+        await DataService.deleteDocumentFolder(folder.id);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FOLDER_DELETE',
+          targetId: folder.id,
+          details: { name: folder.name }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error deleting folder:', error);
+        alert('Failed to delete folder');
+      }
+    };
+
+    const handleDeleteDocument = async (doc: DocumentItem) => {
+      if (!confirm(`Are you sure you want to delete "${doc.name}"?`)) return;
+      try {
+        await DataService.deleteDocument(doc.id, doc.filePath);
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'DOCUMENT_DELETE',
+          targetId: doc.id,
+          details: { name: doc.name }
+        });
+        await loadAllData();
+      } catch (error) {
+        console.error('Error deleting document:', error);
+        alert('Failed to delete document');
+      }
+    };
+
+    const handleUpdateDocument = async (doc: DocumentItem) => {
+      try {
+        await DataService.updateDocument(doc.id, { name: doc.name, visibility: doc.visibility, folderId: doc.folderId || 'root' });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'DOCUMENT_UPDATE',
+          targetId: doc.id,
+          details: { name: doc.name, visibility: doc.visibility, folderId: doc.folderId }
+        });
+        setEditingDocument(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating document:', error);
+        alert('Failed to update document');
+      }
+    };
+
+    const handleUpdateFolder = async (folder: DocumentFolder) => {
+      try {
+        await DataService.updateDocumentFolder(folder.id, { name: folder.name, visibility: folder.visibility });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FOLDER_UPDATE',
+          targetId: folder.id,
+          details: { name: folder.name, visibility: folder.visibility }
+        });
+        setEditingFolder(null);
+        await loadAllData();
+      } catch (error) {
+        console.error('Error updating folder:', error);
+        alert('Failed to update folder');
+      }
+    };
+
+    const folders = documentFolders;
+    const folderLookup = new Map(documentFolders.map(folder => [folder.id, folder.name]));
+    const files = documents;
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -862,24 +1699,69 @@ const AdminConsole: React.FC = () => {
             <h2 className="text-3xl font-bold text-purple-900 mb-2">Document Management</h2>
             <p className="text-gray-600">Upload and manage resources for committee members</p>
           </div>
-          <Button variant="secondary">
-            <Upload size={18} />
-            Upload Document
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowFolderModal(true)}>
+              <FolderOpen size={18} />
+              New Folder
+            </Button>
+            <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
+              <Upload size={18} />
+              Upload Document
+            </Button>
+          </div>
         </div>
 
+        {/* Folders */}
+        {folders.length > 0 && (
+          <Card>
+            <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+              <FolderOpen size={20} />
+              Folders
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {folders.map(folder => (
+                <div key={folder.id} className="p-4 bg-amber-50 rounded-lg border border-amber-200 hover:border-amber-400 transition cursor-pointer">
+                  <div className="flex items-center gap-3 mb-2">
+                    <FolderOpen className="text-amber-600" size={24} />
+                    <span className="font-bold text-gray-800 truncate">{folder.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <Badge variant="amber">{folder.visibility}</Badge>
+                    <div className="flex gap-1">
+                      <button onClick={() => setEditingFolder(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
+                        <Edit size={14} />
+                      </button>
+                      <button onClick={() => handleDeleteFolder(folder)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Files */}
         <Card>
+          <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <FileText size={20} />
+            Documents ({files.length})
+          </h3>
           <div className="space-y-3">
-            {documents.map(doc => (
-              <div key={doc.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+            {files.map(doc => (
+              <div key={doc.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between hover:border-purple-300 transition">
                 <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${doc.type === 'folder' ? 'bg-amber-100' : 'bg-blue-100'}`}>
-                    {doc.type === 'folder' ? <FolderOpen className="text-amber-600" /> : <FileText className="text-blue-600" />}
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-100">
+                    <FileText className="text-blue-600" />
                   </div>
                   <div>
                     <p className="font-bold text-gray-800">{doc.name}</p>
                     <div className="flex gap-2 mt-1">
-                      <Badge variant="gray">{doc.category}</Badge>
+                      <Badge variant="gray">{doc.visibility}</Badge>
+                      {doc.folderId && doc.folderId !== 'root' && (
+                        <Badge variant="amber">{folderLookup.get(doc.folderId) || 'Folder'}</Badge>
+                      )}
                       <span className="text-xs text-gray-500">
                         {new Date(doc.createdAt).toLocaleDateString()}
                       </span>
@@ -887,20 +1769,191 @@ const AdminConsole: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700">
-                    <Eye size={16} />
+                  {doc.url && (
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-blue-100 rounded-lg transition text-blue-700">
+                      <Eye size={16} />
+                    </a>
+                  )}
+                  <button onClick={() => setEditingDocument(doc)} className="p-2 hover:bg-purple-100 rounded-lg transition text-purple-700">
+                    <Edit size={16} />
                   </button>
-                  <button className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
+                  <button onClick={() => handleDeleteDocument(doc)} className="p-2 hover:bg-red-100 rounded-lg transition text-red-700">
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
             ))}
-            {documents.length === 0 && (
+            {files.length === 0 && (
               <p className="text-gray-500 text-center py-8">No documents uploaded yet</p>
             )}
           </div>
         </Card>
+
+        {/* Upload Modal */}
+        {showUploadModal && (
+          <Modal isOpen={true} onClose={() => setShowUploadModal(false)} title="Upload Document" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Document Name"
+                placeholder="Enter document name"
+                value={newDocument.name}
+                onChange={(e) => setNewDocument({ ...newDocument, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={newDocument.visibility}
+                  onChange={(e) => setNewDocument({ ...newDocument, visibility: e.target.value as DocumentVisibility })}
+                >
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {folders.length > 0 && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Parent Folder</label>
+                  <select
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                    value={newDocument.folderId}
+                    onChange={(e) => setNewDocument({ ...newDocument, folderId: e.target.value })}
+                  >
+                    <option value="root">Root</option>
+                    {folders.map(folder => (
+                      <option key={folder.id} value={folder.id}>{folder.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">File</label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowUploadModal(false)}>Cancel</Button>
+                <Button onClick={handleUploadDocument}>
+                  <Upload size={18} />
+                  Upload
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Folder Modal */}
+        {showFolderModal && (
+          <Modal isOpen={true} onClose={() => setShowFolderModal(false)} title="Create Folder" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Folder Name"
+                placeholder="Enter folder name"
+                value={newFolder.name}
+                onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={newFolder.visibility}
+                  onChange={(e) => setNewFolder({ ...newFolder, visibility: e.target.value as DocumentVisibility })}
+                >
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowFolderModal(false)}>Cancel</Button>
+                <Button onClick={handleCreateFolder}>
+                  <FolderOpen size={18} />
+                  Create Folder
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Edit Document Modal */}
+        {editingDocument && (
+          <Modal isOpen={true} onClose={() => setEditingDocument(null)} title="Edit Document" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Name"
+                value={editingDocument.name}
+                onChange={(e) => setEditingDocument({ ...editingDocument, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingDocument.visibility}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, visibility: e.target.value as DocumentVisibility })}
+                >
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Folder</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingDocument.folderId || 'root'}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, folderId: e.target.value })}
+                >
+                  <option value="root">Root</option>
+                  {folders.map(folder => (
+                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingDocument(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateDocument(editingDocument)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Edit Folder Modal */}
+        {editingFolder && (
+          <Modal isOpen={true} onClose={() => setEditingFolder(null)} title="Edit Folder" size="md">
+            <div className="space-y-4">
+              <Input
+                label="Name"
+                value={editingFolder.name}
+                onChange={(e) => setEditingFolder({ ...editingFolder, name: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
+                <select
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                  value={editingFolder.visibility}
+                  onChange={(e) => setEditingFolder({ ...editingFolder, visibility: e.target.value as DocumentVisibility })}
+                >
+                  <option value="public">Public</option>
+                  <option value="committee">Committee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setEditingFolder(null)}>Cancel</Button>
+                <Button onClick={() => handleUpdateFolder(editingFolder)}>
+                  <Save size={18} />
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   };
@@ -965,10 +2018,10 @@ const AdminConsole: React.FC = () => {
       try {
         await DataService.updatePortalSettings(localSettings);
         await DataService.logAction({
-          adminId: 'current-admin',
+          adminId: currentUser?.uid || 'admin',
           action: 'SETTINGS_UPDATE',
           targetId: 'global',
-          details: localSettings
+          details: localSettings as unknown as Record<string, unknown>
         });
         setSettings(localSettings);
         alert('Settings saved successfully');
@@ -1024,16 +2077,69 @@ const AdminConsole: React.FC = () => {
               <div>
                 <p className="font-bold text-gray-800">Voting Open</p>
                 <p className="text-sm text-gray-600">Enable public voting on applications</p>
+                {(() => {
+                  const fundedApps = applications.filter(app => app.status === 'Funded');
+                  const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+                  if (fundedApps.length > 0 && pendingPacks.length > 0) {
+                    return (
+                      <p className="text-sm text-amber-600 mt-1 flex items-center gap-1">
+                        <AlertCircle size={14} />
+                        Warning: {pendingPacks.length} funded applicant(s) haven't submitted their pack yet
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   className="sr-only peer"
                   checked={localSettings.votingOpen}
-                  onChange={(e) => setLocalSettings({ ...localSettings, votingOpen: e.target.checked })}
+                  onChange={(e) => {
+                    const fundedApps = applications.filter(app => app.status === 'Funded');
+                    const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+
+                    if (e.target.checked && fundedApps.length > 0 && pendingPacks.length > 0) {
+                      const confirmEnable = window.confirm(
+                        `Warning: ${pendingPacks.length} funded applicant(s) have not yet submitted their public vote pack.\n\n` +
+                        `Their projects will not be visible in public voting until packs are complete.\n\n` +
+                        `Are you sure you want to enable public voting now?`
+                      );
+                      if (!confirmEnable) return;
+                    }
+
+                    setLocalSettings({ ...localSettings, votingOpen: e.target.checked });
+                  }}
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
               </label>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Part 2 Results Release</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border-2 border-amber-200">
+              <div>
+                <p className="font-bold text-gray-800">Release Part 2 Results</p>
+                <p className="text-sm text-gray-600">Make scoring results visible to applicants (successful and unsuccessful)</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={localSettings.resultsReleased || false}
+                  onChange={(e) => setLocalSettings({ ...localSettings, resultsReleased: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <p className="text-sm text-blue-800">
+                <strong>Important:</strong> Once released, successful applicants (Funded status) will be prompted to submit their public vote pack (image + blurb). Unsuccessful applicants will receive a notification.
+              </p>
             </div>
           </div>
         </Card>
@@ -1062,6 +2168,124 @@ const AdminConsole: React.FC = () => {
                 Applications must score above this threshold to be considered for funding
               </p>
             </div>
+          </div>
+        </Card>
+
+        {/* Public Vote Pack Tracking */}
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Public Vote Pack Tracking</h3>
+          <div className="space-y-4">
+            {(() => {
+              const fundedApps = applications.filter(app => app.status === 'Funded');
+              const completedPacks = fundedApps.filter(app => app.publicVotePackComplete);
+              const pendingPacks = fundedApps.filter(app => !app.publicVotePackComplete);
+              const allPacksComplete = fundedApps.length > 0 && pendingPacks.length === 0;
+
+              return (
+                <>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-purple-50 rounded-lg p-4 border-2 border-purple-200">
+                      <p className="text-sm font-bold text-purple-600 mb-1">Total Funded</p>
+                      <p className="text-3xl font-bold text-purple-900">{fundedApps.length}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 border-2 border-green-200">
+                      <p className="text-sm font-bold text-green-600 mb-1">Packs Complete</p>
+                      <p className="text-3xl font-bold text-green-900">{completedPacks.length}</p>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-4 border-2 border-amber-200">
+                      <p className="text-sm font-bold text-amber-600 mb-1">Packs Pending</p>
+                      <p className="text-3xl font-bold text-amber-900">{pendingPacks.length}</p>
+                    </div>
+                  </div>
+
+                  {/* Voting Readiness Indicator */}
+                  {fundedApps.length > 0 && (
+                    <div className={`p-4 rounded-lg border-2 ${
+                      allPacksComplete
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-amber-50 border-amber-300'
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        {allPacksComplete ? (
+                          <CheckCircle className="text-green-600 flex-shrink-0" size={24} />
+                        ) : (
+                          <AlertCircle className="text-amber-600 flex-shrink-0" size={24} />
+                        )}
+                        <div className="flex-1">
+                          <p className={`font-bold ${allPacksComplete ? 'text-green-900' : 'text-amber-900'}`}>
+                            {allPacksComplete
+                              ? 'All funded applicants have completed their public vote packs'
+                              : `${pendingPacks.length} funded applicant(s) still need to submit their public vote pack`}
+                          </p>
+                          <p className={`text-sm mt-1 ${allPacksComplete ? 'text-green-700' : 'text-amber-700'}`}>
+                            {allPacksComplete
+                              ? 'Public voting can be safely enabled'
+                              : 'Please ensure all packs are complete before enabling public voting'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pending Packs List */}
+                  {pendingPacks.length > 0 && (
+                    <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <p className="font-bold text-gray-900">Applicants Pending Pack Submission</p>
+                      </div>
+                      <div className="divide-y divide-gray-200">
+                        {pendingPacks.map(app => (
+                          <div key={app.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-900">{app.projectTitle}</p>
+                              <p className="text-sm text-gray-600">{app.orgName} • {app.area}</p>
+                            </div>
+                            <Badge variant="warning">Pending</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed Packs List */}
+                  {completedPacks.length > 0 && (
+                    <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <p className="font-bold text-gray-900">Completed Public Vote Packs</p>
+                      </div>
+                      <div className="divide-y divide-gray-200">
+                        {completedPacks.map(app => (
+                          <div key={app.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-900">{app.projectTitle}</p>
+                              <p className="text-sm text-gray-600">{app.orgName} • {app.area}</p>
+                              <div className="flex gap-3 mt-2">
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={12} />
+                                  Image uploaded
+                                </span>
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <CheckCircle size={12} />
+                                  Blurb submitted
+                                </span>
+                              </div>
+                            </div>
+                            <Badge variant="success">Complete</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {fundedApps.length === 0 && (
+                    <div className="bg-gray-50 rounded-lg p-8 text-center">
+                      <p className="text-gray-600">No funded applications yet. Public vote packs will appear here once results are released.</p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </Card>
 
@@ -1152,6 +2376,17 @@ const AdminConsole: React.FC = () => {
               Users
             </button>
             <button
+              onClick={() => setActiveTab('assignments')}
+              className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
+                activeTab === 'assignments'
+                  ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <ClipboardList size={18} />
+              Assignments
+            </button>
+            <button
               onClick={() => setActiveTab('rounds')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'rounds'
@@ -1203,6 +2438,7 @@ const AdminConsole: React.FC = () => {
           {activeTab === 'overview' && <OverviewTab />}
           {activeTab === 'masterlist' && <MasterListTab />}
           {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'assignments' && <AssignmentsTab />}
           {activeTab === 'rounds' && <RoundsTab />}
           {activeTab === 'documents' && <DocumentsTab />}
           {activeTab === 'logs' && <LogsTab />}
@@ -1228,7 +2464,7 @@ const AdminConsole: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-600">Amount Requested</p>
-                  <p className="text-lg font-bold text-green-700">£{selectedApp.amountRequested.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-green-700">{formatCurrency(selectedApp.amountRequested)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-600">Status</p>

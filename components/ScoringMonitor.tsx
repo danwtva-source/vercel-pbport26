@@ -47,7 +47,7 @@ export const ScoringMonitor: React.FC<ScoringMonitorProps> = ({ onExit }) => {
             {areas.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
           <Button onClick={onExit} variant="secondary">
-            Exit Scoring Mode
+            Exit Committee Tasks Overview
           </Button>
         </div>
       </div>

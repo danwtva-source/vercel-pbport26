@@ -225,7 +225,7 @@ export const ORG_TYPES = [
 // DOCUMENT RESOURCES
 // ============================================================================
 
-// Public Documents - Available to all applicants
+// Public Documents - Temporary seed list for design/dev previews
 export const PUBLIC_DOCS = [
   {
     title: 'PB 1.1 - EOI Form (Part 1)',
@@ -289,7 +289,9 @@ export const COMMITTEE_DOCS = [
 // DEMO MODE DATA
 // ============================================================================
 
-export const DEMO_APPLICATIONS: Application[] = [
+// Note: Demo data uses legacy field names for backwards compatibility
+// These are mapped to canonical fields in firebase.ts when loaded
+export const DEMO_APPLICATIONS: any[] = [
   {
     ref: "DEMO-001",
     applicant: "Blaenavon Blues FC",
@@ -433,11 +435,11 @@ export const DEMO_APPLICATIONS: Application[] = [
 ];
 
 export const DEMO_USERS: User[] = [
-  { uid: 'demo-admin', name: 'Demo Admin', email: 'admin@demo.com', role: UserRole.ADMIN, area: 'Admin' },
-  { uid: 'demo-comm-bl', name: 'Demo Comm (Blaenavon)', email: 'blaenavon@demo.com', role: UserRole.COMMITTEE, area: 'Blaenavon' },
-  { uid: 'demo-comm-th', name: 'Demo Comm (Thornhill)', email: 'thornhill@demo.com', role: UserRole.COMMITTEE, area: 'Thornhill & Upper Cwmbran' },
-  { uid: 'demo-comm-tr', name: 'Demo Comm (Trevethin)', email: 'trevethin@demo.com', role: UserRole.COMMITTEE, area: 'Trevethin, Penygarn & St. Cadocs' },
-  { uid: 'demo-app', name: 'Demo Applicant', email: 'applicant@demo.com', role: UserRole.APPLICANT, area: 'Blaenavon' },
+  { uid: 'demo-admin', displayName: 'Demo Admin', email: 'admin@demo.com', role: 'admin' },
+  { uid: 'demo-comm-bl', displayName: 'Demo Comm (Blaenavon)', email: 'blaenavon@demo.com', role: 'committee', area: 'Blaenavon' },
+  { uid: 'demo-comm-th', displayName: 'Demo Comm (Thornhill)', email: 'thornhill@demo.com', role: 'committee', area: 'Thornhill & Upper Cwmbran' },
+  { uid: 'demo-comm-tr', displayName: 'Demo Comm (Trevethin)', email: 'trevethin@demo.com', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs' },
+  { uid: 'demo-app', displayName: 'Demo Applicant', email: 'applicant@demo.com', role: 'applicant', area: 'Blaenavon' },
 ];
 
 // Legacy export for backward compatibility

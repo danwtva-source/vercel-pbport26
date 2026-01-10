@@ -3,13 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Input } from '../../components/UI';
 import { api } from '../../services/firebase';
-import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
+
+// Helper to check role (case-insensitive)
+const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
+  return toUserRole(role) === targetRole;
+};
 
 const ApplicationsList: React.FC = () => {
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const currentUser = userProfile; // Alias for consistency
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,34 +24,41 @@ const ApplicationsList: React.FC = () => {
   const [filterArea, setFilterArea] = useState<Area | 'All'>('All');
 
   useEffect(() => {
-    loadApplications();
-  }, []);
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void loadApplications();
+  }, [authLoading, userProfile]);
 
   const loadApplications = async () => {
     try {
       setLoading(true);
       let apps: Application[] = [];
 
-      if (!currentUser) {
-        navigate('/login');
+      if (!userProfile) {
+        navigate(ROUTES.PUBLIC.LOGIN);
         return;
       }
 
       // Load applications based on user role
-      if (currentUser.role === UserRole.ADMIN) {
+      if (isRole(userProfile.role, UserRole.ADMIN)) {
         // ADMIN: Get all applications
         apps = await api.getApplications('All');
-      } else if (currentUser.role === UserRole.COMMITTEE) {
+      } else if (isRole(userProfile.role, UserRole.COMMITTEE)) {
         // COMMITTEE: Get applications for their area
-        if (currentUser.area) {
-          apps = await api.getApplications(currentUser.area);
+        if (userProfile.area) {
+          apps = await api.getApplications(userProfile.area);
         } else {
           apps = await api.getApplications('All');
         }
-      } else if (currentUser.role === UserRole.APPLICANT) {
+      } else if (isRole(userProfile.role, UserRole.APPLICANT)) {
         // APPLICANT: Get only their own applications
         const allApps = await api.getApplications('All');
-        apps = allApps.filter(app => app.userId === currentUser.uid);
+        apps = allApps.filter(app => app.userId === userProfile.uid);
       } else {
         apps = [];
       }
@@ -103,11 +117,12 @@ const ApplicationsList: React.FC = () => {
 
   // Filter applications
   const filteredApplications = applications.filter(app => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      app.projectTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.orgName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.ref.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.applicantName.toLowerCase().includes(searchTerm.toLowerCase());
+      (app.projectTitle || '').toLowerCase().includes(searchLower) ||
+      (app.orgName || '').toLowerCase().includes(searchLower) ||
+      (app.ref || '').toLowerCase().includes(searchLower) ||
+      (app.applicantName || '').toLowerCase().includes(searchLower);
 
     const matchesStatus = filterStatus === 'All' || app.status === filterStatus;
     const matchesArea = filterArea === 'All' || app.area === filterArea;
@@ -116,18 +131,18 @@ const ApplicationsList: React.FC = () => {
   });
 
   // Determine permissions
-  const canCreate = currentUser?.role === UserRole.APPLICANT || currentUser?.role === UserRole.ADMIN;
+  const canCreate = isRole(currentUser?.role, UserRole.APPLICANT) || isRole(currentUser?.role, UserRole.ADMIN);
   const canEdit = (app: Application) => {
-    if (currentUser?.role === UserRole.ADMIN) return true;
-    if (currentUser?.role === UserRole.APPLICANT && app.userId === currentUser.uid) {
+    if (isRole(currentUser?.role, UserRole.ADMIN)) return true;
+    if (isRole(currentUser?.role, UserRole.APPLICANT) && app.userId === currentUser?.uid) {
       // Applicants can only edit their own drafts or invited-stage2 applications
       return app.status === 'Draft' || app.status === 'Invited-Stage2';
     }
     return false;
   };
   const canDelete = (app: Application) => {
-    if (currentUser?.role === UserRole.ADMIN) return true;
-    if (currentUser?.role === UserRole.APPLICANT && app.userId === currentUser.uid) {
+    if (isRole(currentUser?.role, UserRole.ADMIN)) return true;
+    if (isRole(currentUser?.role, UserRole.APPLICANT) && app.userId === currentUser?.uid) {
       return app.status === 'Draft';
     }
     return false;
@@ -138,19 +153,19 @@ const ApplicationsList: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={currentUser.role as UserRole}>
+    <SecureLayout userRole={toUserRole(currentUser.role)}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-purple-900 font-display flex items-center gap-3">
               <FileText size={32} className="text-purple-600" />
-              {currentUser.role === UserRole.APPLICANT ? 'My Applications' : 'Applications'}
+              {isRole(currentUser.role, UserRole.APPLICANT) ? 'My Applications' : 'Applications'}
             </h1>
             <p className="text-gray-600 mt-1">
-              {currentUser.role === UserRole.APPLICANT && 'Manage your funding applications'}
-              {currentUser.role === UserRole.COMMITTEE && `Reviewing applications for ${currentUser.area}`}
-              {currentUser.role === UserRole.ADMIN && 'All applications across all areas'}
+              {isRole(currentUser.role, UserRole.APPLICANT) && 'Manage your funding applications'}
+              {isRole(currentUser.role, UserRole.COMMITTEE) && `Reviewing applications for ${currentUser.area}`}
+              {isRole(currentUser.role, UserRole.ADMIN) && 'All applications across all areas'}
             </p>
           </div>
           <div className="flex gap-3">
@@ -161,7 +176,7 @@ const ApplicationsList: React.FC = () => {
               </Button>
             )}
             {canCreate && (
-              <Button variant="primary" size="md" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" size="md" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}>
                 <Plus size={18} />
                 New Application
               </Button>
@@ -198,7 +213,7 @@ const ApplicationsList: React.FC = () => {
               <option value="Not-Funded">Not Funded</option>
             </select>
 
-            {currentUser.role === UserRole.ADMIN && (
+            {isRole(currentUser.role, UserRole.ADMIN) && (
               <select
                 value={filterArea}
                 onChange={(e) => setFilterArea(e.target.value as Area | 'All')}
@@ -255,7 +270,7 @@ const ApplicationsList: React.FC = () => {
                 : 'No applications available yet'}
             </p>
             {canCreate && !searchTerm && filterStatus === 'All' && (
-              <Button variant="primary" onClick={() => navigate('/portal/application/new')}>
+              <Button variant="primary" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}>
                 <Plus size={18} />
                 Create Application
               </Button>
@@ -298,7 +313,7 @@ const ApplicationsList: React.FC = () => {
                     <tr
                       key={app.id}
                       className="hover:bg-purple-50/50 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/portal/application/${app.id}`)}
+                      onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="font-mono text-sm font-bold text-purple-600">{app.ref}</span>
@@ -317,13 +332,13 @@ const ApplicationsList: React.FC = () => {
                         <Badge>{app.status}</Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-bold text-gray-900">£{app.amountRequested.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">of £{app.totalCost.toLocaleString()}</div>
+                        <div className="font-bold text-gray-900">{formatCurrency(app.amountRequested)}</div>
+                        <div className="text-xs text-gray-500">of {formatCurrency(app.totalCost)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => navigate(`/portal/application/${app.id}`)}
+                            onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                             className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
                             title="View"
                           >
@@ -331,7 +346,7 @@ const ApplicationsList: React.FC = () => {
                           </button>
                           {canEdit(app) && (
                             <button
-                              onClick={() => navigate(`/portal/application/${app.id}`)}
+                              onClick={() => navigate(ROUTES.PORTAL.APPLICATION_DETAIL(app.id))}
                               className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                               title="Edit"
                             >

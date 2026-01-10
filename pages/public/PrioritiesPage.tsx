@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { BarChart3, Users, TrendingUp, Info, CheckCircle2 } from 'lucide-react';
 import { PRIORITIES_DATA, AREA_DATA } from '../../constants';
+import { ROUTES } from '../../utils';
 
 const PrioritiesPage: React.FC = () => {
   const [selectedArea, setSelectedArea] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');
@@ -188,12 +190,12 @@ const PrioritiesPage: React.FC = () => {
               >
                 Submit Application for {currentAreaName}
               </a>
-              <a
-                href="/documents"
+              <Link
+                to={ROUTES.PUBLIC.RESOURCES}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold transition-all"
               >
                 View Application Guidance
-              </a>
+              </Link>
             </div>
           </div>
         </div>

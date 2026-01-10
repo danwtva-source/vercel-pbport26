@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, AdminDocument, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus, AuditLog } from '../types';
+import { Application, User, Score, Vote, AREAS, Area, Role, BudgetLine, DocumentItem, PortalSettings, ScoreCriterion, Assignment, Round, ApplicationStatus, AuditLog } from '../types';
 import { SCORING_CRITERIA, MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../constants';
 import { AdminRounds } from './AdminRounds';
 import { api, exportToCSV, seedDatabase, auth, uploadProfileImage, deleteProfileImage, uploadFile } from '../services/firebase';
@@ -115,26 +115,35 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
     const [breakdown, setBreakdown] = useState<Record<string, number>>({});
     const [notes, setNotes] = useState<Record<string, string>>({});
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        let total = 0;
-        let maxTotal = 0;
-        
+    const calculateTotals = () => {
+        let rawTotal = 0;
+        let weightedSum = 0;
+
         SCORING_CRITERIA.forEach(c => {
             const score = breakdown[c.id] || 0;
-            total += score * c.weight;
-            maxTotal += 100 * c.weight;
+            rawTotal += score;
+            const normalizedScore = score / 3;
+            weightedSum += normalizedScore * c.weight;
         });
-        
-        const weightedTotal = Math.round((total / maxTotal) * 100);
+
+        const weightedTotal = Math.round(weightedSum);
+        return { rawTotal, weightedTotal };
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const { weightedTotal } = calculateTotals();
 
         const newScore: Score = {
             id: `${app.id}_${user.uid}`,
             appId: app.id,
+            applicationId: app.id,
             scorerId: user.uid,
+            committeeId: user.uid,
             scorerName: user.displayName,
             weightedTotal,
             breakdown,
+            criterionScores: breakdown,
             notes,
             isFinal: true,
             createdAt: new Date().toISOString()
@@ -145,11 +154,15 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
         onClose();
     };
 
+    const { rawTotal, weightedTotal } = calculateTotals();
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Score: ${app.projectTitle}`} size="lg">
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm">
-                    Please score each criterion from 0-100. The system will automatically calculate the weighted total based on committee priorities.
+                    <p className="font-bold mb-1">Scoring Instructions:</p>
+                    <p>Score each criterion from 0-3 (0 = Not met, 1 = Partially met, 2 = Well met, 3 = Excellently met)</p>
+                    <p className="mt-2">Raw Total: <span className="font-bold">{rawTotal}/30</span> | Weighted Total: <span className="font-bold">{weightedTotal}/100</span></p>
                 </div>
                 
                 {SCORING_CRITERIA.map(criterion => (
@@ -162,13 +175,13 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
                             <Badge>Weight: {criterion.weight}x</Badge>
                         </div>
                         <div className="flex gap-4 items-center">
-                            <input 
-                                type="range" min="0" max="100" step="5" 
+                            <input
+                                type="range" min="0" max="3" step="1"
                                 value={breakdown[criterion.id] || 0}
                                 onChange={e => setBreakdown({ ...breakdown, [criterion.id]: Number(e.target.value) })}
                                 className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-purple"
                             />
-                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}</div>
+                            <div className="w-16 font-bold text-xl text-center">{breakdown[criterion.id] || 0}/3</div>
                         </div>
                         <textarea 
                             placeholder="Optional comments..."
@@ -189,7 +202,7 @@ const ScoringModal: React.FC<{ isOpen: boolean; onClose: () => void; app: Applic
 };
 
 const AdminDocCentre: React.FC = () => {
-    const [docs, setDocs] = useState<AdminDocument[]>([]);
+    const [docs, setDocs] = useState<DocumentItem[]>([]);
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => { api.getDocuments().then(setDocs); }, []);
@@ -197,14 +210,16 @@ const AdminDocCentre: React.FC = () => {
     const handleUpload = async (file: File) => {
         setUploading(true);
         try {
-            const url = await uploadFile(`admin-docs/${Date.now()}_${file.name}`, file);
-            const newDoc: AdminDocument = {
+            const timestamp = Date.now();
+            const storagePath = `documents/${timestamp}_${file.name}`;
+            const url = await uploadFile(storagePath, file);
+            const newDoc: DocumentItem = {
                 id: 'doc_' + Date.now(),
                 name: file.name,
-                type: 'file',
-                parentId: 'root',
+                folderId: 'root',
                 url,
-                category: 'committee-only', 
+                visibility: 'committee',
+                filePath: storagePath,
                 uploadedBy: auth.currentUser?.uid || 'admin',
                 createdAt: Date.now()
             };
@@ -214,10 +229,10 @@ const AdminDocCentre: React.FC = () => {
         setUploading(false);
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (doc: DocumentItem) => {
         if(!confirm("Delete?")) return;
-        await api.deleteDocument(id);
-        setDocs(docs.filter(d => d.id !== id));
+        await api.deleteDocument(doc.id, doc.filePath);
+        setDocs(docs.filter(d => d.id !== doc.id));
     };
 
     return (
@@ -234,7 +249,7 @@ const AdminDocCentre: React.FC = () => {
             <div className="grid md:grid-cols-4 gap-4">
                 {docs.length === 0 && <p className="col-span-4 text-center text-gray-400 italic py-8">No documents uploaded yet.</p>}
                 {docs.map(d => (
-                    <FileCard key={d.id} title={d.name} type={d.type} date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d.id)} onClick={() => window.open(d.url, '_blank')} />
+                    <FileCard key={d.id} title={d.name} type="file" date={new Date(d.createdAt).toLocaleDateString()} onDelete={() => handleDelete(d)} onClick={() => window.open(d.url, '_blank')} />
                 ))}
             </div>
         </div>
@@ -463,9 +478,9 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
                     <h4 className="font-bold text-purple-900 mb-4">Marmot Principles (Select all that apply)</h4>
                     <div className="space-y-2">
                         {MARMOT_PRINCIPLES.map(p => (
-                            <label key={p} className="flex items-center gap-3 cursor-pointer">
-                                <input type="checkbox" checked={(fd.marmotPrinciples || []).includes(p)} onChange={() => up('marmotPrinciples', toggleArray(fd.marmotPrinciples, p))} disabled={readOnly} className="w-5 h-5 accent-brand-purple" />
-                                <span className="text-sm">{p}</span>
+                            <label key={p.id} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.marmotPrinciples || []).includes(p.id)} onChange={() => up('marmotPrinciples', toggleArray(fd.marmotPrinciples, p.id))} disabled={readOnly} className="w-5 h-5 accent-brand-purple" />
+                                <span className="text-sm">{p.label}</span>
                             </label>
                         ))}
                     </div>
@@ -475,9 +490,9 @@ export const DigitalStage1Form: React.FC<{ data: Partial<Application>; onChange:
                     <h4 className="font-bold text-teal-900 mb-4">Well-being of Future Generations Goals</h4>
                     <div className="space-y-2">
                         {WFG_GOALS.map(g => (
-                            <label key={g} className="flex items-center gap-3 cursor-pointer">
-                                <input type="checkbox" checked={(fd.wfgGoals || []).includes(g)} onChange={() => up('wfgGoals', toggleArray(fd.wfgGoals, g))} disabled={readOnly} className="w-5 h-5 accent-brand-teal" />
-                                <span className="text-sm">{g}</span>
+                            <label key={g.id} className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={(fd.wfgGoals || []).includes(g.id)} onChange={() => up('wfgGoals', toggleArray(fd.wfgGoals, g.id))} disabled={readOnly} className="w-5 h-5 accent-brand-teal" />
+                                <span className="text-sm">{g.label}</span>
                             </label>
                         ))}
                     </div>
@@ -735,7 +750,15 @@ export const CommitteeDashboard: React.FC<{ user: User, onUpdateUser: (u:User)=>
     useEffect(() => { refresh(); }, [user.uid, user.area, isAdmin]);
 
     const handleVote = async (appId: string, decision: 'yes'|'no') => {
-        await api.saveVote({ id: `${appId}_${user.uid}`, appId, voterId: user.uid, decision, createdAt: new Date().toISOString() });
+        await api.saveVote({
+            id: `${appId}_${user.uid}`,
+            appId,
+            applicationId: appId,
+            voterId: user.uid,
+            committeeId: user.uid,
+            decision,
+            createdAt: new Date().toISOString()
+        });
         refresh();
     };
 

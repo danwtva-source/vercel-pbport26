@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Badge } from '../../components/UI';
-import { api, api as AuthService } from '../../services/firebase';
-import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS } from '../../types';
+import { api } from '../../services/firebase';
+import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS, Round, PortalSettings } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
+import { useAuth } from '../../context/AuthContext';
+import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 
 const ApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
   const isNew = id === 'new';
 
   const [loading, setLoading] = useState(!isNew);
@@ -18,6 +20,8 @@ const ApplicationForm: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [formStage, setFormStage] = useState<'eoi' | 'part2'>('eoi');
+  const [activeRound, setActiveRound] = useState<Round | null>(null);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
   // Application state
   const [application, setApplication] = useState<Partial<Application>>({
@@ -34,10 +38,34 @@ const ApplicationForm: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/login');
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!userProfile) {
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
+
+    // Load round and settings data
+    const loadRoundData = async () => {
+      try {
+        const [rounds, settings] = await Promise.all([
+          api.getRounds(),
+          api.getPortalSettings()
+        ]);
+        // Find active/open round
+        const active = rounds.find(r => r.status === 'open') || rounds[0] || null;
+        setActiveRound(active);
+        setPortalSettings(settings);
+      } catch (err) {
+        console.error('Error loading round data:', err);
+      }
+    };
+    loadRoundData();
 
     if (!isNew && id) {
       loadApplication(id);
@@ -45,17 +73,17 @@ const ApplicationForm: React.FC = () => {
       // Set default user info for new applications
       setApplication(prev => ({
         ...prev,
-        userId: currentUser.uid,
-        applicantName: currentUser.displayName || '',
+        userId: userProfile.uid,
+        applicantName: userProfile.displayName || '',
         formData: {
           ...prev.formData,
-          contactEmail: currentUser.email || '',
-          declarationName: currentUser.displayName || ''
+          contactEmail: userProfile.email || '',
+          declarationName: userProfile.displayName || ''
         }
       }));
       setLoading(false);
     }
-  }, [id, isNew]);
+  }, [authLoading, id, isNew, userProfile, navigate]);
 
   const loadApplication = async (appId: string) => {
     try {
@@ -65,14 +93,14 @@ const ApplicationForm: React.FC = () => {
 
       if (!app) {
         setError('Application not found');
-        setTimeout(() => navigate('/portal/applications'), 2000);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
       }
 
-      // Check permissions
-      if (currentUser?.role === UserRole.APPLICANT && app.userId !== currentUser.uid) {
+      // Check permissions - applicants can only view their own applications
+      if (toUserRole(userProfile?.role) === UserRole.APPLICANT && app.userId !== userProfile?.uid) {
         setError('You do not have permission to view this application');
-        setTimeout(() => navigate('/portal/applications'), 2000);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
       }
 
@@ -214,12 +242,24 @@ const ApplicationForm: React.FC = () => {
       setSuccess('');
 
       const now = Date.now();
+
+      // Determine the correct status for draft save:
+      // - For new applications, status is 'Draft'
+      // - For existing applications that are 'Invited-Stage2', preserve that status
+      //   (they are editing their Stage 2 submission)
+      // - For existing applications in 'Draft' status, keep as 'Draft'
+      let statusToSave: ApplicationStatus = 'Draft';
+      if (!isNew && application.status === 'Invited-Stage2') {
+        // Preserve Invited-Stage2 status when editing Stage 2 application
+        statusToSave = 'Invited-Stage2';
+      }
+
       const appData: Application = {
         ...application,
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
-        userId: currentUser?.uid || '',
-        status: 'Draft',
+        userId: userProfile?.uid || '',
+        status: statusToSave,
         createdAt: application.createdAt || now,
         updatedAt: now
       } as Application;
@@ -227,7 +267,7 @@ const ApplicationForm: React.FC = () => {
       if (isNew) {
         await api.createApplication(appData);
         setSuccess('Draft saved successfully!');
-        setTimeout(() => navigate('/portal/applications'), 1500);
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 1500);
       } else {
         await api.updateApplication(appData.id, appData);
         setSuccess('Draft updated successfully!');
@@ -240,10 +280,48 @@ const ApplicationForm: React.FC = () => {
     }
   };
 
+  // Check if submission is allowed based on round settings
+  const isSubmissionAllowed = (): { allowed: boolean; reason?: string } => {
+    const isAdmin = toUserRole(userProfile?.role) === UserRole.ADMIN;
+
+    // Admin can always submit (override)
+    if (isAdmin) return { allowed: true };
+
+    // Check portal settings first
+    if (portalSettings) {
+      if (formStage === 'eoi' && !portalSettings.stage1Visible) {
+        return { allowed: false, reason: 'Stage 1 applications are currently closed.' };
+      }
+      if (formStage === 'part2' && !portalSettings.stage2Visible) {
+        return { allowed: false, reason: 'Stage 2 applications are currently closed.' };
+      }
+    }
+
+    // Check active round settings
+    if (activeRound) {
+      if (formStage === 'eoi' && !activeRound.stage1Open) {
+        return { allowed: false, reason: 'Stage 1 submissions are closed for the current round.' };
+      }
+      if (formStage === 'part2' && !activeRound.stage2Open) {
+        return { allowed: false, reason: 'Stage 2 submissions are closed for the current round.' };
+      }
+    }
+
+    return { allowed: true };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // Check round-based availability
+    const submissionCheck = isSubmissionAllowed();
+    if (!submissionCheck.allowed) {
+      setError(submissionCheck.reason || 'Submissions are currently closed.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -260,7 +338,8 @@ const ApplicationForm: React.FC = () => {
         ...application,
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
-        userId: currentUser?.uid || '',
+        userId: userProfile?.uid || '',
+        roundId: activeRound?.id, // Link application to active round
         status,
         createdAt: application.createdAt || now,
         updatedAt: now
@@ -274,7 +353,7 @@ const ApplicationForm: React.FC = () => {
         setSuccess(`${formStage === 'eoi' ? 'Expression of Interest' : 'Full Application'} submitted successfully!`);
       }
 
-      setTimeout(() => navigate('/portal/applications'), 2000);
+      setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
     } catch (err) {
       console.error('Error submitting application:', err);
       setError('Failed to submit application. Please try again.');
@@ -286,9 +365,10 @@ const ApplicationForm: React.FC = () => {
 
   // Determine if form is read-only
   const isReadOnly = () => {
-    if (currentUser?.role === UserRole.ADMIN) return false;
-    if (currentUser?.role === UserRole.COMMITTEE) return true;
-    if (currentUser?.role === UserRole.APPLICANT) {
+    const userRole = toUserRole(userProfile?.role);
+    if (userRole === UserRole.ADMIN) return false;
+    if (userRole === UserRole.COMMITTEE) return true;
+    if (userRole === UserRole.APPLICANT) {
       if (application.status === 'Draft') return false;
       if (application.status === 'Invited-Stage2' && formStage === 'part2') return false;
       return true;
@@ -298,13 +378,13 @@ const ApplicationForm: React.FC = () => {
 
   const readOnly = isReadOnly();
 
-  if (!currentUser) {
+  if (!userProfile) {
     return null;
   }
 
   if (loading) {
     return (
-      <SecureLayout userRole={currentUser.role as UserRole}>
+      <SecureLayout userRole={toUserRole(userProfile.role)}>
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600 font-bold">Loading application...</p>
@@ -314,11 +394,11 @@ const ApplicationForm: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={currentUser.role as UserRole}>
+    <SecureLayout userRole={toUserRole(userProfile.role)}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => navigate('/portal/applications')}>
+          <Button variant="outline" size="sm" onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS)}>
             <ArrowLeft size={18} />
             Back to Applications
           </Button>
@@ -379,7 +459,7 @@ const ApplicationForm: React.FC = () => {
         {readOnly && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
             <p className="text-sm text-blue-800 font-medium">
-              This application is in read-only mode. {currentUser.role === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
+              This application is in read-only mode. {toUserRole(userProfile.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
             </p>
           </div>
         )}
@@ -977,7 +1057,7 @@ const ApplicationForm: React.FC = () => {
                 </div>
 
                 <div className="text-right font-bold text-xl mb-4">
-                  Total: £{application.totalCost?.toLocaleString() || 0}
+                  Total: {formatCurrency(application.totalCost || 0)}
                 </div>
 
                 <textarea

@@ -1,0 +1,428 @@
+Communities’ Choice Participatory ‎Budgeting Portal 
+Final Product Requirements ‎Document (PRD)‎
+Version: FINAL (v6) 
+Date: 2026-02-20 
+Owner: Torfaen Voluntary Alliance (TVA) – Communities’ Choice Team
+
+Document status	Final / implementation-ready
+Target branch	final/production-merge-admin
+Primary stack	React + TypeScript + Tailwind CSS + Firebase (Auth, Firestore, ‎Storage) + Vercel
+Non-negotiables	No re-scaffold; preserve working features & design; integrate ‎changes into existing code; UK English
+
+‎0. How to use this document (for AI implementers)‎
+This PRD is written so that an AI engineer can implement the portal end-to-end without ‎guessing. Every requirement includes explicit behaviour, data fields, and acceptance criteria. ‎Implement exactly as specified unless a codebase constraint makes it impossible; if so, ‎implement the closest equivalent and document the deviation.‎
+•	Do not replace the app with a new scaffold. Modify the existing repository only.‎
+•	Do not remove existing working features; changes must be additive or corrective.‎
+•	All internal navigation must use React Router (no internal <a href> / window.location).‎
+•	Use canonical ROUTES constants and canonical data models defined in this PRD.‎
+•	Implement role + area scoping and stage gating exactly as specified.‎
+•	After every change: build must pass and core smoke tests must pass.‎
+
+‎0.1 Current implementation alignment (v6 audit)‎
+This section documents how the repository currently implements the PRD so new work can confirm alignment and avoid regressions:
+•	Routing uses React Router with a HashRouter wrapper in App.tsx; PortalRedirect and ProtectedRoute apply role-based redirects using toUserRole from utils.ts.‎
+•	Role normalisation helpers live in utils.ts (toUserRole, toStoredRole, isStoredRole) and are referenced throughout secure pages.‎
+•	Firebase is configured in services/firebase.ts with USE_DEMO_MODE=false; pb_user is mirrored in localStorage for compatibility and used by DataService.getCurrentUser.‎
+•	Public Documents use a live Firestore-backed collection with fallback to PUBLIC_DOCS in constants.ts; folder visibility is filtered in pages/public/DocumentsPage.tsx.‎
+•	Service worker registration in index.html expects /sw.js to be served as a static asset (served from public/).‎
+•	Build output directory is dist (Vite) per vercel.json and package.json build script.‎
+If any of these change, update this section to keep the PRD truthful.
+
+‎0.2 Release readiness checklist (pilot gating)‎
+Before declaring the weekend pilot-ready release:
+•	Vercel build succeeds (npm run build) with no console errors in production preview.‎
+•	Admin, committee, applicant, and public user journeys succeed end-to-end (Section 14).‎
+•	Firebase rules and data mappings are validated against Section 6 canonical fields.‎
+•	Broken link count is zero and portal redirects never send authenticated users to /login.‎
+•	All external document links resolve and document visibility matches the folder rules.‎
+
+‎1. Executive summary‎
+The Communities’ Choice PB Portal is a single web application that supports: (1) a branded ‎public site; (2) a secure portal for applicants to submit Stage 1 Expressions of Interest (EOI) ‎and Stage 2 full proposals; (3) a secure portal for People’s Committee members to vote (Stage ‎‎1) and score (Stage 2) using a weighted matrix; and (4) an admin console for TVA staff to ‎manage rounds, users, assignments, documents, scoring/voting data, settings, and exports.‎
+This final PRD consolidates the full scope and adds specific fixes required for production: ‎navigation and session stability, correct role comparisons, correct routing for applicant actions, ‎GBP formatting, removal of duplicated committee navigation, correct scoring scale (0–3) and ‎totals, area scoping, proper admin area assignment, real document folders (CRUD), and ‎elimination of broken application links.‎
+‎2. Goals and success metrics‎
+‎2.1 Goals‎
+•	Single production-ready portal combining strong public UX + full secure functionality for all ‎roles.‎
+•	End-to-end PB cycle support: Stage 1 submit → committee vote → shortlist → Stage 2 ‎submit → committee score → admin decision support.‎
+•	Admin can operate the programme without direct Firestore editing.‎
+•	Security and privacy by default with least-privilege rules and auditable changes.‎
+•	Stable navigation + persistent sessions; no forced login redirects due to role/guard bugs.‎
+‎2.2 Success metrics (release)‎
+•	‎0 known broken internal links (public and secure).‎
+•	‎0 instances of being redirected to login while already authenticated (unless session ‎expired).‎
+•	‎100% of acceptance tests in Section 14 pass on staging before production release.‎
+•	Admin can create/manage rounds, users, assignments, documents; committee can ‎complete all tasks; applicants can complete full journey.‎
+‎3. Constraints and assumptions‎
+•	Portal uses Firebase Auth + Firestore + Storage; Vercel hosts the web frontend.‎
+•	Primary language is UK British English.‎
+•	Areas are: Blaenavon (BLN), Thornhill & Upper Cwmbran (TUC), Trevethin-Penygarn-St ‎Cadocs (TPS).‎
+•	Committee members are scoped to one area; admin can view all areas.‎
+•	Assignments are the primary mechanism for committee workload. If no assignments exist, ‎committee dashboard shows an empty state.‎
+•	If a 'demo mode' exists in code (DEMO_USERS), it must be clearly separated from ‎production configuration.‎
+‎4. Users, roles, and permissions‎
+‎4.1 Roles (canonical)‎
+Canonical role values stored in Firestore and local state:‎
+Role key	Description	Default landing route	Notes
+admin	TVA administrators and staff ‎operating the portal	‎/portal/admin‎	Admins may access ‎committee views for ‎monitoring if ‎permitted (see Guard ‎rules).‎
+committee	People’s Committee members ‎voting and scoring ‎applications	‎/portal/dashboard‎	Scoped by assigned ‎area and ‎assignments.‎
+applicant	Applicants submitting Stage 1 ‎and Stage 2 applications	‎/portal/applicant‎	Scoped to own ‎applications only.‎
+
+‎4.2 Permission matrix (hard rules)‎
+Permission rules are enforced BOTH in UI and via Firestore/Storage security rules.‎
+Domain	Applicant	Committee	Admin
+Read rounds	No	Yes (read-only ‎visibility flags)‎	Yes (CRUD)‎
+Write rounds	No	No	Yes
+Read applications	Own only	Assigned only + ‎own area	All
+Write applications	Own only (within ‎stage windows)‎	No	Yes (status + admin ‎edits)‎
+Write votes	No	Yes (self only)‎	No (unless ‎explicitly ‎implemented as ‎override)‎
+Write scores	No	Yes (self only)‎	No (monitor only)‎
+Read assignments	No	Own only	All (CRUD)‎
+Read committee docs	Public only	Committee + public	All (CRUD)‎
+Portal settings	No	No	Yes
+Audit logs	No	No	Yes
+
+‎5. Information architecture and routes (canonical)‎
+All routes below are canonical. Implement a single route registry (ROUTES) and update all ‎navigation (sidebar buttons, CTAs, cards, tables) to use it.‎
+Area	Route	Access	Purpose
+Public	‎/‎	All	Home
+Public	‎/priorities‎	All	Priorities page
+Public	‎/voting‎	All	Voting Zone ‎‎(placeholder or live)‎
+Public	‎/resources‎	All	Public resources and ‎guidance
+Auth	‎/login‎	All	Login / Register modal ‎or page
+Secure	‎/portal‎	Auth required	Secure shell redirects ‎to role landing
+Applicant	‎/portal/applicant‎	applicant/admin	Applicant dashboard
+Applicant	‎/portal/applications/new‎	applicant/admin	Create new Stage 1 ‎application
+Applicant	‎/portal/applications/:id‎	owner/applicant/admin	Application detail; ‎Stage 1 and Stage 2 ‎forms with gating
+Committee	‎/portal/dashboard‎	committee/admin	Committee dashboard ‎‎(tasks)‎
+Committee	‎/portal/scoring‎	committee/admin	Committee ‎scoring/voting ‎workspace (if ‎separate)‎
+Admin	‎/portal/admin‎	admin	Admin console
+
+‎5.1 Navigation reliability (non-negotiable)‎
+•	All internal navigation must use React Router (<Link> / useNavigate).‎
+•	No internal navigation may use <a href> or window.location for app routes.‎
+•	Application cards/rows MUST link to /portal/applications/:id and never to the public ‎landing page.‎
+•	If an authenticated user hits an unauthorised route, redirect to their correct dashboard ‎‎(NOT to /login). Only unauthenticated users go to /login.‎
+•	Role value must be normalised before guard comparisons (e.g., handle 'admin' vs ‎‎'ADMIN').‎
+‎6. Data model (Firestore) – canonical collections and fields
+Field names and types below are canonical. If code uses different names, implement ‎backward-compatible mapping in the service layer, then migrate gradually.‎
+‎6.1 users/{uid}‎
+Field	Type	Required	Description
+uid	string	Yes	Firebase Auth UID (usually ‎equals document ID)‎
+displayName	string	Yes	User display name
+email	string	Yes	Email address
+role	‎'admin'|'committee'|'applicant‎‎'‎	Yes	Canonical lowercase role
+areaId	‎'BLN'|'TUC'|'TPS'|null‎	Role-‎dependent	Required for committee; ‎optional for applicant; ‎admin null
+photoURL	string|null	No	Profile photo URL
+isActive	boolean	Yes	Account activation toggle
+createdAt	timestamp	Yes	Created timestamp
+updatedAt	timestamp	Yes	Last updated timestamp
+
+‎6.2 rounds/{roundId}‎
+Field	Type	Required	Description
+name	string	Yes	Round name ‎‎(e.g., ‎Communities’ ‎Choice 2026)‎
+year	number	Yes	Calendar year
+status	‎'planning'|'open'|'scoring'|'voting'|'close‎d'‎	Yes	High-level ‎lifecycle state
+startDate	ISO string	Yes	Operational start ‎date
+endDate	ISO string	Yes	Operational end ‎date
+areas	array of areaId	Yes	Areas covered by ‎this round
+stage1Open	boolean	Yes	Stage 1 form ‎availability
+stage2Open	boolean	Yes	Stage 2 form ‎availability
+scoringOpen	boolean	Yes	Committee ‎scoring ‎availability
+scoringThreshold	number	Yes	Weighted score ‎threshold used in ‎admin monitoring ‎‎(default: 0 if ‎unused)‎
+scoringCriteria	array	Yes	‎10 criteria ‎definitions incl. ‎weights (see ‎Section 10)‎
+createdAt	timestamp	Yes	Created ‎timestamp
+
+‎6.3 applications/{appId}‎
+Field	Type	Required	Description
+roundId	string	Yes	Which round this application ‎belongs to
+applicantId	string	Yes	UID of applicant user
+organisationName	string	Yes	Organisation/project name
+areaId	areaId	Yes	Application area (admin can ‎set/change if required)‎
+stage	‎'stage1'|'stage2'‎	Yes	Current stage
+status	string	Yes	See Section 9 (statuses)‎
+requestedFunding	number	No	GBP amount requested (Stage 2 ‎typical)‎
+stage1‎	object	Yes	EOI fields
+stage2‎	object|null	No	Full proposal fields
+attachments	array	No	Storage file refs
+createdAt	timestamp	Yes	Created timestamp
+updatedAt	timestamp	Yes	Updated timestamp
+
+‎6.4 assignments/{assignmentId}‎
+Field	Type	Required	Description
+applicationId	string	Yes	Application document ‎ID
+committeeId	string	Yes	Committee user UID
+roundId	string	Yes	Round ID for filtering
+assignedDate	ISO string	Yes	When assigned
+dueDate	ISO string|null	No	Optional due date
+status	‎'assigned'|'draft'|'submitted'|'rescor‎e'‎	Yes	Assignment state
+
+‎6.5 votes/{voteId}‎
+Field	Type	Required	Description
+applicationId	string	Yes	Application ID
+committeeId	string	Yes	Committee UID
+roundId	string	Yes	Round ID
+value	‎'yes'|'no'‎	Yes	Vote value
+timestamp	timestamp	Yes	When saved
+
+‎6.6 scores/{scoreId}‎
+Field	Type	Required	Description
+applicationId	string	Yes	Application ID
+committeeId	string	Yes	Committee UID
+roundId	string	Yes	Round ID
+criterionScores	object	Yes	Map criterionId → 0..3‎
+rawTotal	number	Yes	‎0..30‎
+weightedTotal	number	Yes	‎0..100 (recommended scale)‎
+timestamp	timestamp	Yes	When saved
+
+‎6.7 documents/{docId} and documentFolders/{folderId}‎
+Folders must be real (not UI-only). Implement either documentFolders collection OR admin-‎editable folder list in portal settings. Canonical approach below uses documentFolders.‎
+Entity	Field	Type	Required	Description
+documentFolders	id	string	Yes	Document ID (matches document ID)
+documentFolders	name	string	Yes	Folder display ‎name
+documentFolders	slug	string	Yes	Stable key for ‎routing/filtering
+documentFolders	visibility	‎'public'|'committee'|'admin‎‎'‎	Yes	Who can read
+documentFolders	createdAt	timestamp	Yes	Created ‎timestamp
+documentFolders	createdBy	string	Yes	Admin UID
+documents	id	string	Yes	Document ID (matches document ID)
+documents	name	string	Yes	Document title
+documents	url	string	No	Public download URL (if stored)
+documents	filePath	string	Yes	Storage path
+documents	folderId	string	Yes	Folder reference (or 'root'/null for unfiled)
+documents	visibility	‎'public'|'committee'|'admin‎‎'‎	Yes	Who can read
+documents	uploadedBy	string	Yes	Admin UID
+documents	createdAt	timestamp	Yes	Created ‎timestamp
+
+‎6.8 portalSettings/{id='global'}‎
+Field	Type	Required	Description
+defaultScoringThreshold	number	Yes	Fallback threshold if round-‎specific missing
+currency	‎'GBP'‎	Yes	Must be GBP
+areas	array	Yes	Area config list (code, name, ‎colour)‎
+uiText	object	No	Editable UI copy (admin labels) if ‎implemented
+updatedAt	timestamp	Yes	Updated timestamp
+
+‎6.9 auditLogs/{logId}‎
+Field	Type	Required	Description
+actorId	string	Yes	Admin UID
+action	string	Yes	Short action name
+targetType	string	Yes	e.g., 'round', 'user', 'application', ‎‎'document', 'assignment', 'settings'‎
+targetId	string|null	No	Entity ID
+details	object	No	Safe before/after or metadata
+timestamp	timestamp	Yes	When logged
+
+‎7. Public site requirements‎
+•	Public header includes: logo (public logo), navigation (Home, Priorities, Voting Zone, ‎Resources), CTA button ‘Secure Portal’.‎
+•	Public site content uses UK English and Communities’ Choice branding.‎
+•	Resources page must support a curated list of public documents/links; if documents are ‎served via the document module, only 'public' visibility documents are shown. If no public ‎documents exist yet, the page uses the seeded public documents list as a temporary fallback ‎(flag for removal once the live public documents collection is populated).‎
+•	Voting Zone: either (a) placeholder explaining voting dates; or (b) live voting (if already ‎implemented). Do not remove existing capability.‎
+‎8. Authentication, sessions, and profile‎
+‎8.1 Authentication‎
+•	Email/password sign in and registration.‎
+•	On registration: create user profile document in users/{uid} with role 'applicant' by default ‎unless admin-created.‎
+•	Sign out is explicit via sign-out button only. No navigation action may call signOut.‎
+‎8.2 Session persistence‎
+•	Firebase Auth persistence must be browserLocalPersistence.‎
+•	On refresh or direct navigation: app must restore auth state and fetch user profile before ‎routing.‎
+•	If user is authenticated but profile missing, show a blocking error with guidance (admin ‎action required).‎
+‎8.3 Profile / Account settings (fix)‎
+•	Applicant ‘Account settings’ must open a profile page within secure portal (not redirect to ‎landing).‎
+•	Profile page must allow editing display name and any configured contact fields.‎
+•	Profile photo upload is supported for all roles; stored in Storage under ‎‎/profiles/{uid}/photo and saved to users.photoURL.‎
+‎9. Application lifecycle and statuses (canonical)‎
+Statuses must be consistent across applicant, committee and admin UIs.‎
+Status key	Meaning	Who sets it	UI effects
+draft	Applicant is editing ‎but not submitted	Applicant	Editable; visible to ‎applicant; hidden from ‎committee/admin lists ‎unless admin views drafts.‎
+submitted_stage1‎	Stage 1 submitted	Applicant	Stage 1 locked; available ‎for committee vote when ‎stage1Open/voting ‎window allows.‎
+under_review_stage1‎	Being ‎reviewed/voted	System/Admin	Committee can vote; ‎admin monitors.‎
+shortlisted	Eligible for Stage 2‎	Admin (based on ‎votes/threshold ‎policy)‎	Stage 2 becomes available ‎to applicant when ‎round.stage2Open.‎
+rejected_stage1‎	Not shortlisted	Admin	Stage 2 locked; applicant ‎sees outcome.‎
+draft_stage2‎	Stage 2 started but ‎not submitted	Applicant	Stage 2 editable while ‎open.‎
+submitted_stage2‎	Stage 2 submitted	Applicant	Stage 2 locked; available ‎for committee scoring ‎when scoringOpen.‎
+scoring_in_progress	Committee scoring ‎underway	System/Admin	Committee can score; ‎admin monitor progress.‎
+scored	All required scores ‎submitted	System	Admin sees completion; ‎eligible for decision.‎
+funded	Awarded	Admin	Applicant sees funded ‎status; admin exports.‎
+rejected_stage2‎	Not funded	Admin	Applicant sees outcome.‎
+
+‎10. Committee voting and scoring specification‎
+‎10.1 Stage 1 voting‎
+•	Committee members cast a single yes/no vote per application.‎
+•	Voting is enabled only when round.stage1Open is true (or a separate voting flag if ‎implemented).‎
+•	Vote writes: only committee members can write votes where committeeId == auth.uid.‎
+•	Admin does not vote; admin monitors totals and exports.‎
+‎10.2 Stage 2 scoring matrix (fix: 0–3 scale)‎
+Scoring matrix must use exactly 10 criteria. Each criterion score is an integer 0–3.‎
+•	Allowed values per criterion: 0, 1, 2, 3 only. UI must enforce (buttons/radio).‎
+•	Raw total = sum of 10 criterion scores. Max raw total = 30.‎
+•	Weighted total must be computed deterministically using criteria weights. Recommended ‎scale: 0–100.‎
+•	Threshold comparison uses weightedTotal against round.scoringThreshold (or global ‎default).‎
+•	Score save: store criterionScores, rawTotal, weightedTotal, timestamp.‎
+‎10.3 Canonical scoring criteria object‎
+Each round has scoringCriteria with 10 entries:‎
+criterion = { id: string, label: string, weight: number }‎
+Rules:‎
+•	Exactly 10 criteria per round.‎
+•	Weights must sum to 1.0 (or 100). If stored as percentages, convert accordingly.‎
+•	If round.scoringCriteria missing, fall back to constants SCORING_CRITERIA.‎
+‎10.4 Weighted scoring formula (canonical)‎
+Let score_i be 0..3 for criterion i, weight_i be normalised (sum=1). Normalised_i = score_i / 3. ‎weightedTotal = round( 100 * Σ(normalised_i * weight_i), 2 ).‎
+Threshold evaluation:‎
+•	passedThreshold = weightedTotal >= scoringThreshold
+•	scoringThreshold source: round.scoringThreshold if present else ‎portalSettings.defaultScoringThreshold
+‎11. Area scoping and assignments (fix: no committee area toggle)‎
+‎11.1 Committee scoping‎
+•	Committee users are assigned exactly one areaId (BLN/TUC/TPS) in users.areaId.‎
+•	Committee UI must not allow selecting/toggling areas. Any area filter UI must be hidden ‎for committee users.‎
+•	Committee users see applications only if (a) application.areaId == user.areaId AND (b) an ‎assignment exists linking applicationId to committeeId, unless the portal explicitly supports ‎‎'area-wide' assignment mode.‎
+•	If no assignments exist, show an empty state: 'No tasks assigned yet'.‎
+‎11.2 Admin scoping‎
+•	Admins can view all areas and filter by area.‎
+•	Admin user management must allow setting areaId for committee members and ‎optionally for applicants (for reporting).‎
+•	Admin application management must allow setting/changing application.areaId where ‎required (with audit log).‎
+‎11.3 Assignments CRUD‎
+•	Admin can create/update/delete assignments.‎
+•	Assignment screen must support: assign application to committee member, set due date ‎‎(optional), set status.‎
+•	Deleting an assignment removes it from committee task list immediately.‎
+‎12. Documents and folders (fix: real folders + CRUD)‎
+•	Admin can create/rename/delete document folders (documentFolders).‎
+•	Admin can upload documents, set title, folder, visibility (public/committee/admin), and ‎delete documents.‎
+•	Documents must persist: metadata in Firestore, file in Storage.‎
+•	Visibility filters are applied per view: public resources = visibility 'public' only; committee ‎views = visibility in ['public','committee']; admin views = all documents or filtered by ‎selected visibility.‎
+•	Committee sees only committee/public documents; applicant sees only public documents.‎
+•	Folder delete behaviour (chosen): prevent deletion when a folder contains documents. Show ‎UI copy: “This folder contains documents. Move them to another folder before deleting.”‎
+‎13. Formatting, UI copy, and branding (fixes)‎
+‎13.1 Currency formatting (GBP only)‎
+•	All monetary values must render in GBP (£) using Intl.NumberFormat('en-GB', { style: ‎‎'currency', currency: 'GBP' }).‎
+•	No '$' symbols anywhere in UI.‎
+•	Store numeric amounts in Firestore as numbers (pounds). Format only for display.‎
+‎13.2 Admin wording changes‎
+•	Replace 'Enter Scoring Mode' / 'Exit Scoring Mode' in admin with 'Enter Committee Tasks ‎Overview' / 'Exit Committee Tasks Overview'.‎
+•	Remove any 'scored by you' phrasing in admin views; admin is monitoring, not scoring.‎
+‎13.3 Branding rules‎
+•	Public pages use the public-facing logo asset (as previously agreed).‎
+•	Secure portal (committee/admin dashboards and login) uses the secure portal logo asset ‎‎(as previously agreed).‎
+•	Heading font is DynaPuff Bold where configured; keep consistent across dashboards.‎
+•	Area colours: BLN = yellow, TUC = green, TPS = blue (use existing theme constants).‎
+‎14. Admin console – detailed requirements
+Admin console includes modules and behaviours below. All changes must write audit logs ‎where state changes occur.‎
+‎14.1 Admin Dashboard KPIs‎
+•	Total Applications: count of applications for selected round and/or all rounds ‎‎(configurable).‎
+•	Total Funding Requested: sum of requestedFunding (GBP) where present.‎
+•	Active Users: count of users.isActive == true.‎
+•	Success Rate: funded / total applications (or funded / eligible) – define clearly in UI tooltip.‎
+•	Charts must not show NaN; handle empty sets gracefully (show 0).‎
+‎14.2 Applications master list‎
+•	List all applications with filters: round, area, stage, status.‎
+•	Row click opens application detail route /portal/applications/:id.‎
+•	Admin can change status (with confirmation) and the change is logged.‎
+•	CSV export exports current filtered view.‎
+‎14.3 Rounds management‎
+•	Full CRUD for rounds with fields as per Section 6.2.‎
+•	Stage toggles (stage1Open, stage2Open, scoringOpen) control UI gating for ‎applicants/committee.‎
+•	Round status is informational; toggles are enforcement switches.‎
+‎14.4 User management‎
+•	List users with role, areaId, isActive.‎
+•	Admin can create a user profile record; if creating Auth users is implemented, it must be ‎secure (Admin SDK recommended).‎
+•	Admin can update role and areaId (for committee and optionally applicant) and isActive.‎
+•	All changes logged in auditLogs.‎
+‎14.5 Assignments manager‎
+•	Create assignments linking applicationId to committeeId and roundId.‎
+•	Bulk assignment optional: assign multiple applications to one committee member or ‎multiple members to one application.‎
+•	Assignment filtering: by committee member, by round, by area.‎
+‎14.6 Scoring monitor‎
+•	Real-time progress: number of required assignments vs number of submitted scores.‎
+•	Per-application view: show which committee members have submitted scores; show ‎average weighted score across submitted scores.‎
+•	Threshold view: show passedThreshold based on average weighted score (or another ‎defined aggregation). Canonical aggregation: average weightedTotal across all submitted ‎committee scores for that application.‎
+•	Avoid NaN: when no scores, average shows 0 and 'No scores yet'.‎
+‎14.7 Documents centre‎
+•	Upload document, set folder, set visibility.‎
+•	Delete document removes metadata + file from Storage. If a filePath is not supplied to the ‎delete action, resolve it from the documents/{docId} record first; if Storage deletion fails, log ‎a warning and still delete Firestore metadata.‎
+•	Folder manager present (create/rename/delete).‎
+‎14.8 Portal settings‎
+•	Admin can set default scoring threshold and confirm currency=GBP.‎
+•	Settings changes logged in auditLogs.‎
+‎14.9 Audit logs‎
+•	Append-only log view sorted newest first.‎
+•	Show actor, action, target type/id, timestamp, and summary details.‎
+•	Limit to last N records (e.g., 100) with pagination optional.‎
+‎15. Committee portal – detailed requirements
+‎15.1 Committee dashboard (tasks)‎
+•	Shows assigned applications only.‎
+•	Separates tasks by type: Stage 1 votes due / Stage 2 scoring due.‎
+•	Shows completion status per assignment (assigned/draft/submitted/rescore).‎
+•	No area toggle. Area displayed as read-only badge.‎
+‎15.2 Voting UI‎
+•	For each Stage 1 application: show summary fields + Yes/No vote buttons.‎
+•	After vote save: show confirmation and allow edit only if policy allows (default: allow ‎overwrite until stage closes).‎
+‎15.3 Scoring UI‎
+•	For each Stage 2 application: show criteria list (10) with 0–3 selection and descriptions.‎
+•	Show live raw total (0–30) and weighted total (0–100).‎
+•	Save drafts optional; final submit marks assignment status submitted and records ‎timestamp.‎
+‎16. Applicant portal – detailed requirements
+‎16.1 Applicant dashboard‎
+•	Primary CTA: New application → /portal/applications/new and opens Stage 1 form.‎
+•	List of user’s applications with status badges. Row click opens /portal/applications/:id.‎
+•	Account settings link opens /portal/profile (or equivalent) profile editor page within portal.‎
+‎16.2 Stage 1 EOI form‎
+•	Create as draft; save; submit only when round.stage1Open is true.‎
+•	Upon submit: status becomes submitted_stage1; show submitted timestamp; lock Stage 1 ‎fields unless admin returns to draft.‎
+‎16.3 Stage 2 full proposal form‎
+•	Visible only if application is shortlisted AND round.stage2Open is true.‎
+•	Save drafts; submit; on submit: status submitted_stage2; lock fields.‎
+•	Support attachments as required (budget template etc).‎
+‎17. Security rules (Firestore + Storage) – explicit requirements
+‎17.1 Firestore rules – principles
+•	Default deny. Explicitly allow by role and ownership.‎
+•	Applicants can read/write only their own user profile and their own applications.‎
+•	Committee can read their own profile, their assignments, assigned applications, ‎committee/public documents; write votes/scores only for self.‎
+•	Admin full access; admin writes must create audit log entries (UI responsibility).‎
+‎17.2 Storage rules – principles
+•	Profiles: /profiles/{uid}/... readable by that user and admin; writable by that user.‎
+•	Application attachments: /applications/{appId}/{uid}/... writable by application owner; ‎readable by owner and admin; committee read only if assigned (optional).‎
+•	Documents: /documents/{docId}/... writable by admin only; read based on ‎documents.visibility.‎
+‎18. Error handling and observability‎
+•	No blank screens: all async views must handle loading and error states.‎
+•	If Firestore query fails due to missing index, show a human-readable admin error with ‎instruction (and log console error).‎
+•	Avoid NaN in UI by guarding divisions and empty arrays.‎
+•	Log unexpected errors to console; optional integration with error tracking (future).‎
+‎19. Performance and maintainability‎
+•	Avoid repeated fetching loops; cache user profile in state and localStorage where safe.‎
+•	Split large monolithic views into components (especially Secure.tsx) without changing ‎UI/behaviour.‎
+•	Prefer typed service layer calls; no ad-hoc Firestore queries in components beyond the ‎service layer.‎
+‎20. Acceptance test pack (must pass before production)‎
+‎20.1 Navigation and session stability‎
+•	Admin: clicking 'Matrix Evaluation' and 'Master Console' does not redirect to login; stays ‎authenticated.‎
+•	Committee: clicking scoring and dashboard does not redirect to login.‎
+•	Any application card/row opens /portal/applications/:id correctly.‎
+•	Refreshing any secure route preserves session and routes to correct dashboard.‎
+‎20.2 Applicant tests‎
+•	New application opens Stage 1 EOI form and creates a draft application.‎
+•	Account settings opens profile page and photo upload works.‎
+•	Stage 1 submit works only when stage1Open true; status changes and is visible.‎
+•	Shortlisted application exposes Stage 2 only when stage2Open true.‎
+•	All money displays are GBP (£).‎
+‎20.3 Committee tests‎
+•	Committee cannot toggle area; only sees assigned area and applications.‎
+•	Voting yes/no saves and reflects in UI; overwriting policy matches config.‎
+•	Scoring enforces 0–3 per criterion; raw total max 30; weighted total computes correctly; ‎submission persists.‎
+‎20.4 Admin tests‎
+•	User management: set area for committee members and (if enabled) applicants; persists ‎and affects scoping.‎
+•	Applications master list row click opens application detail.‎
+•	Rounds CRUD works; stage toggles affect applicant and committee gating.‎
+•	Document folders CRUD works; documents CRUD works; visibility respected.‎
+•	Scoring monitor shows correct completion and averages; no NaN values.‎
+•	All amounts display as GBP (£); no $ anywhere.‎
+•	Audit logs record admin actions.‎
+‎21. Release plan and definition of done‎
+‎21.1 Release checklist‎
+•	Build passes (npm run build) with no TypeScript errors.‎
+•	Firestore rules + indexes deployed and verified on staging project.‎
+•	Vercel environment variables configured for staging and production.‎
+•	UAT checklist completed and signed off.‎
+•	No demo-only data paths enabled in production unless explicitly approved.‎
+‎21.2 Definition of done‎
+•	All acceptance tests in Section 20 pass.‎
+•	No P0/P1 bugs open (broken navigation, auth loops, data loss, security issues).‎
+•	Admin can operate full programme cycle without manual DB edits.‎
+•	Documentation updated: README includes setup steps, env vars, and deployment notes.‎
+Appendix A. Copy/paste execution brief for Claude/Copilot
+Implement this PRD in the existing repository. Do NOT re-scaffold. Prioritise: (1) ‎navigation/session stability; (2) role normalisation in route guards; (3) applicant dashboard ‎action routing; (4) committee scoring scale 0–3 with 10 criteria and weighted totals; (5) ‎committee area scoping; (6) admin area assignment for users/applications; (7) documents + ‎real folders CRUD; (8) GBP formatting everywhere; (9) eliminate broken application links and ‎landing redirects; (10) admin wording fixes.‎
+For every change: provide commit-ready edits, keep UI consistent, and ensure npm run build ‎passes.‎
+End of document.‎

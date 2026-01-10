@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
-import { Application, Score, UserRole, User } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { Application, Score, UserRole, User, Round, PortalSettings } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
-import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText } from 'lucide-react';
+import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock } from 'lucide-react';
+import { isStoredRole, toUserRole, ROUTES } from '../../utils';
 
 interface CriterionScore {
   score: number;
@@ -27,65 +29,72 @@ const ScoringMatrix: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<ApplicationWithScores | null>(null);
   const [scoringData, setScoringData] = useState<Record<string, CriterionScore>>({});
   const [saving, setSaving] = useState(false);
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
+  const [activeRound, setActiveRound] = useState<Round | null>(null);
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
 
-  // Get current user on mount
+  // Determine role flags (safe to compute even with null user)
+  // Note: Role values are lowercase strings ('admin', 'committee', 'applicant')
+  const isAdmin = currentUser?.role === 'admin';
+  const isCommittee = currentUser?.role === 'committee';
+
+  // Check if scoring is allowed based on round/portal settings
+  const isScoringAllowed = (): { allowed: boolean; reason?: string } => {
+    // Check if there's an active round with scoring enabled
+    if (activeRound && activeRound.scoringOpen === false) {
+      return { allowed: false, reason: 'Scoring is currently closed for this funding round.' };
+    }
+
+    return { allowed: true };
+  };
+
   useEffect(() => {
-    const user = DataService.getCurrentUser();
-    if (!user) {
-      navigate('/login');
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  // Get current user on mount - MUST be before any conditional returns
+  useEffect(() => {
+    if (authLoading) return;
+    if (!userProfile) {
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
-    setCurrentUser(user);
-  }, [navigate]);
+    setCurrentUser(userProfile);
+  }, [authLoading, userProfile, navigate]);
 
-  const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === 'admin';
-  const isCommittee = currentUser?.role === UserRole.COMMITTEE || currentUser?.role === 'committee' || isAdmin;
-
-  // Access control - CRITICAL: Committee and Admin only
-  if (!currentUser) {
-    return (
-      <SecureLayout userRole={UserRole.PUBLIC}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-        </div>
-      </SecureLayout>
-    );
-  }
-
-  if (!isCommittee) {
-    return (
-      <SecureLayout userRole={currentUser.role as UserRole}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Card className="max-w-md text-center">
-            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-            <p className="text-gray-600">
-              This scoring interface is only accessible to Committee Members and Administrators.
-            </p>
-          </Card>
-        </div>
-      </SecureLayout>
-    );
-  }
-
+  // Load data when user is available - MUST be before any conditional returns
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && isCommittee) {
       loadData();
     }
-  }, [currentUser]);
+  }, [currentUser, isCommittee]);
 
   const loadData = async () => {
+    if (!currentUser) return;
     setLoading(true);
     try {
-      // Fetch applications - filter by area for committee members
-      const area = isAdmin ? undefined : currentUser.area;
-      const apps = await DataService.getApplications(area);
+      // Fetch portal settings and rounds
+      const [settings, rounds, assignments] = await Promise.all([
+        DataService.getPortalSettings(),
+        DataService.getRounds(),
+        DataService.getAssignments(currentUser.uid)
+      ]);
+      setPortalSettings(settings);
 
-      // Only show Part 2 (Stage 2) applications that are submitted
+      // Find the active round (status 'scoring' or 'open')
+      const active = rounds.find(r => r.status === 'scoring' || r.status === 'open');
+      setActiveRound(active || null);
+
+      // Fetch applications based on assignments
+      const assignedAppIds = new Set(assignments.map(assignment => assignment.applicationId));
+      const apps = await DataService.getApplications();
+
+      // Only show Stage 2 applications that are ready for scoring
       const eligibleApps = apps.filter(
-        app => app.stage === 'Part 2' &&
-        (app.status === 'Submitted' || app.status === 'Scored')
+        app => assignedAppIds.has(app.id) && (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2')
       );
 
       // Fetch all scores
@@ -113,7 +122,42 @@ const ScoringMatrix: React.FC = () => {
     }
   };
 
+  // Access control - render loading or access denied AFTER all hooks
+  if (!currentUser) {
+    return (
+      <SecureLayout userRole={UserRole.PUBLIC}>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </SecureLayout>
+    );
+  }
+
+  if (!isCommittee) {
+    return (
+      <SecureLayout userRole={toUserRole(currentUser.role)}>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Card className="max-w-md text-center">
+            <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
+            <p className="text-gray-600">
+              This scoring interface is only accessible to Committee Members.
+            </p>
+          </Card>
+        </div>
+      </SecureLayout>
+    );
+  }
+
+  const scoringStatus = isScoringAllowed();
+
   const openScoringModal = (app: ApplicationWithScores) => {
+    // Check if scoring is allowed (admins bypass this check)
+    if (!scoringStatus.allowed) {
+      alert(scoringStatus.reason || 'Scoring is currently not available.');
+      return;
+    }
+
     setSelectedApp(app);
 
     // Initialize scoring data from existing score or defaults
@@ -129,12 +173,14 @@ const ScoringMatrix: React.FC = () => {
 
   const calculateWeightedTotal = (): number => {
     let total = 0;
+    let maxTotal = 0;
     SCORING_CRITERIA.forEach(criterion => {
       const rawScore = scoringData[criterion.id]?.score || 0;
-      const weightedScore = (rawScore / 100) * criterion.weight;
-      total += weightedScore;
+      total += rawScore * criterion.weight;
+      maxTotal += 3 * criterion.weight;
     });
-    return Math.round(total * 10) / 10; // Round to 1 decimal place
+    // Return as percentage (0-100)
+    return maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
   };
 
   const handleScoreChange = (criterionId: string, score: number) => {
@@ -142,7 +188,7 @@ const ScoringMatrix: React.FC = () => {
       ...prev,
       [criterionId]: {
         ...prev[criterionId],
-        score: Math.max(0, Math.min(100, score))
+        score: Math.max(0, Math.min(3, score))
       }
     }));
   };
@@ -173,10 +219,13 @@ const ScoringMatrix: React.FC = () => {
       const score: Score = {
         id: `${selectedApp.id}_${currentUser.uid}`,
         appId: selectedApp.id,
+        applicationId: selectedApp.id,
         scorerId: currentUser.uid,
-        scorerName: currentUser.name,
+        committeeId: currentUser.uid,
+        scorerName: currentUser.displayName || currentUser.username || currentUser.email,
         weightedTotal: calculateWeightedTotal(),
         breakdown,
+        criterionScores: breakdown,
         notes,
         isFinal: true,
         createdAt: new Date().toISOString()
@@ -209,7 +258,7 @@ const ScoringMatrix: React.FC = () => {
 
   if (loading) {
     return (
-      <SecureLayout userRole={currentUser.role}>
+      <SecureLayout userRole={toUserRole(currentUser.role)}>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
@@ -221,7 +270,7 @@ const ScoringMatrix: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={currentUser.role}>
+    <SecureLayout userRole={toUserRole(currentUser.role)}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -238,6 +287,18 @@ const ScoringMatrix: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Scoring Closed Banner */}
+        {!scoringStatus.allowed && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <Lock className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-bold text-amber-800">Scoring Currently Closed</p>
+              <p className="text-sm text-amber-700">{scoringStatus.reason}</p>
+              <p className="text-xs text-amber-600 mt-1">You can view applications but cannot submit new scores at this time.</p>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -341,7 +402,7 @@ const ScoringMatrix: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-gray-500 font-bold">Applicant:</span>{' '}
-                        <span className="text-gray-900">{app.applicant}</span>
+                        <span className="text-gray-900">{app.applicantName || app.orgName}</span>
                       </div>
                       <div>
                         <span className="text-gray-500 font-bold">Area:</span>{' '}
@@ -349,7 +410,7 @@ const ScoringMatrix: React.FC = () => {
                       </div>
                     </div>
 
-                    <p className="text-gray-600 mt-2 line-clamp-2">{app.projectSummary}</p>
+                    <p className="text-gray-600 mt-2 line-clamp-2">{app.summary}</p>
 
                     {app.isScored && app.myScore && (
                       <div className="mt-3 pt-3 border-t border-gray-100">
@@ -410,13 +471,13 @@ const ScoringMatrix: React.FC = () => {
                     <span className="text-purple-700 font-bold">Reference:</span> {selectedApp.ref}
                   </div>
                   <div>
-                    <span className="text-purple-700 font-bold">Applicant:</span> {selectedApp.applicant}
+                    <span className="text-purple-700 font-bold">Applicant:</span> {selectedApp.applicantName || selectedApp.orgName}
                   </div>
                   <div>
                     <span className="text-purple-700 font-bold">Area:</span> {selectedApp.area}
                   </div>
                   <div>
-                    <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequest?.toLocaleString()}
+                    <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequested?.toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -463,25 +524,25 @@ const ScoringMatrix: React.FC = () => {
                       {/* Score Slider */}
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm font-bold text-gray-700">Score (0-100)</label>
+                          <label className="text-sm font-bold text-gray-700">Score (0-3)</label>
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
                               min="0"
-                              max="100"
+                              max="3"
                               value={currentScore}
                               onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value) || 0)}
                               className="w-20 px-3 py-1 border border-gray-300 rounded-lg text-center font-bold"
                             />
                             <span className="text-sm text-gray-500">
-                              = {((currentScore / 100) * criterion.weight).toFixed(1)} weighted
+                              = {((currentScore / 3) * criterion.weight).toFixed(1)} weighted
                             </span>
                           </div>
                         </div>
                         <input
                           type="range"
                           min="0"
-                          max="100"
+                          max="3"
                           step="1"
                           value={currentScore}
                           onChange={(e) => handleScoreChange(criterion.id, parseInt(e.target.value))}
@@ -489,10 +550,9 @@ const ScoringMatrix: React.FC = () => {
                         />
                         <div className="flex justify-between text-xs text-gray-400 mt-1">
                           <span>0</span>
-                          <span>25</span>
-                          <span>50</span>
-                          <span>75</span>
-                          <span>100</span>
+                          <span>1</span>
+                          <span>2</span>
+                          <span>3</span>
                         </div>
                       </div>
 

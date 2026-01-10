@@ -1,0 +1,211 @@
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { PublicLayout } from '../../components/Layout';
+import { Vote as VoteIcon, Users, MapPin, DollarSign, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
+import { DataService } from '../../services/firebase';
+import { Application, PortalSettings } from '../../types';
+import { ROUTES } from '../../utils';
+
+const PublicVotingPage: React.FC = () => {
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [settings, setSettings] = useState<PortalSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedArea, setSelectedArea] = useState<string>('All');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [appsData, settingsData] = await Promise.all([
+        DataService.getApplications(),
+        DataService.getPortalSettings()
+      ]);
+
+      // Filter for funded applications with public vote pack complete
+      const votableApps = appsData.filter(
+        app => app.status === 'Funded' && app.publicVotePackComplete
+      );
+
+      setApplications(votableApps);
+      setSettings(settingsData);
+    } catch (error) {
+      console.error('Error loading public voting data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const votingOpen = settings?.votingOpen || false;
+  const areas = ['All', ...Array.from(new Set(applications.map(app => app.area)))];
+  const filteredApps = selectedArea === 'All'
+    ? applications
+    : applications.filter(app => app.area === selectedArea);
+
+  if (loading) {
+    return (
+      <PublicLayout>
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (!votingOpen) {
+    return (
+      <PublicLayout>
+        <div className="max-w-4xl mx-auto text-center py-20">
+          <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Clock size={40} className="text-purple-600" />
+          </div>
+          <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Public Voting Not Yet Live</h1>
+          <p className="text-lg text-purple-700 mb-8">
+            Public voting will open soon. Please check back later or sign up for updates.
+          </p>
+          <Link
+            to={ROUTES.PUBLIC.HOME}
+            className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-bold transition-all"
+          >
+            <ArrowRight size={20} />
+            Back to Home
+          </Link>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  return (
+    <PublicLayout>
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 bg-purple-100 rounded-full px-4 py-2 mb-4">
+            <VoteIcon size={18} className="text-purple-600" />
+            <span className="text-sm font-bold text-purple-800">Public Voting Now Open</span>
+          </div>
+
+          <h1 className="text-4xl md:text-5xl font-bold text-purple-900 mb-4 font-display">
+            Vote for Your Favourite Projects
+          </h1>
+
+          <p className="text-lg text-purple-700 max-w-3xl mx-auto leading-relaxed">
+            Browse the shortlisted projects and cast your vote for those that matter most to your community. Your voice counts in deciding how local funding is allocated.
+          </p>
+        </div>
+
+        {/* Area Filter */}
+        {areas.length > 2 && (
+          <div className="mb-8">
+            <div className="flex flex-wrap gap-3 justify-center">
+              {areas.map(area => (
+                <button
+                  key={area}
+                  onClick={() => setSelectedArea(area)}
+                  className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                    selectedArea === area
+                      ? 'bg-purple-600 text-white shadow-lg'
+                      : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
+                  }`}
+                >
+                  {area}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Projects Grid */}
+        {filteredApps.length === 0 ? (
+          <div className="text-center py-20 bg-gray-50 rounded-2xl">
+            <Users size={64} className="mx-auto text-gray-400 mb-4" />
+            <h3 className="text-xl font-bold text-gray-700 mb-2">No Projects Available</h3>
+            <p className="text-gray-500">
+              {selectedArea === 'All'
+                ? 'No projects are currently available for voting.'
+                : `No projects available in ${selectedArea}.`}
+            </p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredApps.map(app => (
+              <div
+                key={app.id}
+                className="bg-white border-2 border-purple-200 rounded-2xl overflow-hidden hover:border-purple-400 hover:shadow-xl transition-all"
+              >
+                {/* Project Image */}
+                {app.publicVoteImage && (
+                  <div className="relative h-48 bg-gray-100">
+                    <img
+                      src={app.publicVoteImage}
+                      alt={app.projectTitle}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+
+                <div className="p-6">
+                  {/* Area Badge */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <MapPin size={16} className="text-purple-600" />
+                    <span className="text-sm font-bold text-purple-600">{app.area}</span>
+                  </div>
+
+                  {/* Project Title */}
+                  <h3 className="text-xl font-bold text-purple-900 mb-2 font-display">
+                    {app.projectTitle}
+                  </h3>
+
+                  {/* Organisation */}
+                  <p className="text-sm text-gray-600 mb-3">
+                    <strong>By:</strong> {app.orgName}
+                  </p>
+
+                  {/* Project Blurb */}
+                  <p className="text-gray-700 mb-4 leading-relaxed line-clamp-4">
+                    {app.publicVoteBlurb || app.summary}
+                  </p>
+
+                  {/* Funding Amount */}
+                  <div className="flex items-center gap-2 mb-4 p-3 bg-teal-50 rounded-lg">
+                    <DollarSign size={20} className="text-teal-600" />
+                    <span className="font-bold text-teal-900">
+                      £{app.amountRequested.toLocaleString()} requested
+                    </span>
+                  </div>
+
+                  {/* Vote Button */}
+                  <button className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
+                    <VoteIcon size={20} />
+                    Vote for This Project
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Info Banner */}
+        <div className="mt-12 bg-blue-50 border-2 border-blue-200 rounded-2xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 className="text-white" size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-blue-900 mb-2">How Public Voting Works</h3>
+              <ul className="text-blue-800 space-y-2">
+                <li>• Browse all shortlisted projects in your area</li>
+                <li>• Vote for the projects that align with community priorities</li>
+                <li>• Projects with the most votes receive funding</li>
+                <li>• Voting is open to all residents in participating areas</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </PublicLayout>
+  );
+};
+
+export default PublicVotingPage;
