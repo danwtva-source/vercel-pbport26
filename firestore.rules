@@ -27,8 +27,11 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function committeeAreaMatches(area) {
-      return getUserData().area == area || area == 'Cross-Area';
+    function committeeAreaMatches(area, areaId) {
+      return (area != null && getUserData().area == area) ||
+             (areaId != null && getUserData().areaId == areaId) ||
+             area == 'Cross-Area' ||
+             areaId == 'cross-area';
     }
 
     function getApplicantId(data) {
@@ -91,7 +94,7 @@ service cloud.firestore {
 
       // Committee members can read assigned applications in their area
       allow read: if isCommittee() &&
-                     committeeAreaMatches(resource.data.area) &&
+                     committeeAreaMatches(resource.data.area, resource.data.areaId) &&
                      hasAssignment(appId);
 
       // Admins can do everything with applications
@@ -106,7 +109,10 @@ service cloud.firestore {
       // Committee members can create votes for applications in their area
       allow create: if isCommittee() &&
                        getVoterId(request.resource.data) == request.auth.uid &&
-                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
+                       committeeAreaMatches(
+                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area,
+                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.areaId
+                       );
 
       // Committee members can update their own votes
       allow update: if isCommittee() &&
@@ -124,7 +130,10 @@ service cloud.firestore {
       // Committee members can create scores for applications in their area
       allow create: if isCommittee() &&
                        getScorerId(request.resource.data) == request.auth.uid &&
-                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
+                       committeeAreaMatches(
+                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area,
+                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.areaId
+                       );
 
       // Committee members can update their own scores (if not final)
       allow update: if isCommittee() &&
