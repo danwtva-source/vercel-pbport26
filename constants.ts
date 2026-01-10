@@ -225,7 +225,7 @@ export const ORG_TYPES = [
 // DOCUMENT RESOURCES
 // ============================================================================
 
-// Public Documents - Available to all applicants
+// Public Documents - Temporary seed list for design/dev previews
 export const PUBLIC_DOCS = [
   {
     title: 'PB 1.1 - EOI Form (Part 1)',
