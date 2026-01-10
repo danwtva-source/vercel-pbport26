@@ -4,7 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
-import { ROUTES } from '../../utils';
+import { ROUTES, isStoredRole, toUserRole } from '../../utils';
 import {
   Plus,
   FileText,
