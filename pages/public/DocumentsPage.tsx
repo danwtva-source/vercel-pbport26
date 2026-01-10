@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
 import { PUBLIC_DOCS } from '../../constants';
@@ -9,7 +9,9 @@ import { DocumentFolder, DocumentItem } from '../../types';
 type CategoryFilter = 'All' | 'Part 1' | 'Part 2';
 
 const DocumentsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
+  const [selectedFolderSlug, setSelectedFolderSlug] = useState(() => searchParams.get('folder') ?? '');
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,12 +42,26 @@ const DocumentsPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setSelectedFolderSlug(searchParams.get('folder') ?? '');
+  }, [searchParams]);
+
   const usingFallback = documents.length === 0;
+  const folderById = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
+  const folderBySlug = useMemo(
+    () => new Map(folders.filter(folder => folder.slug).map(folder => [folder.slug, folder])),
+    [folders]
+  );
+  const selectedFolder = selectedFolderSlug ? folderBySlug.get(selectedFolderSlug) : undefined;
   const filteredDocs = usingFallback
     ? (selectedCategory === 'All'
       ? PUBLIC_DOCS
       : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory))
-    : documents;
+    : documents.filter((doc) => {
+      if (!selectedFolderSlug) return true;
+      if (!selectedFolder) return false;
+      return doc.folderId === selectedFolder.id;
+    });
 
   const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
 
@@ -54,7 +70,16 @@ const DocumentsPage: React.FC = () => {
     return PUBLIC_DOCS.filter(doc => doc.category === category).length;
   };
 
-  const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
+  const handleFolderFilterChange = (slug: string) => {
+    setSelectedFolderSlug(slug);
+    const nextParams = new URLSearchParams(searchParams);
+    if (slug) {
+      nextParams.set('folder', slug);
+    } else {
+      nextParams.delete('folder');
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const isSeedDoc = (doc: DocumentItem | (typeof PUBLIC_DOCS)[number]): doc is (typeof PUBLIC_DOCS)[number] => {
     return (doc as (typeof PUBLIC_DOCS)[number]).title !== undefined;
@@ -144,6 +169,35 @@ const DocumentsPage: React.FC = () => {
           </div>
         )}
 
+        {!usingFallback && folders.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Filter size={20} className="text-purple-600" />
+              <h2 className="text-lg font-bold text-purple-900">Filter by Folder</h2>
+            </div>
+            <div className="max-w-md">
+              <label className="block text-sm font-bold text-purple-800 mb-2">Folder</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border-2 border-purple-200 focus:border-purple-500 outline-none bg-white text-purple-900"
+                value={selectedFolderSlug}
+                onChange={(event) => handleFolderFilterChange(event.target.value)}
+              >
+                <option value="">All folders</option>
+                {folders.filter(folder => folder.slug).map(folder => (
+                  <option key={folder.id} value={folder.slug}>
+                    {folder.name}{folder.slug ? ` (${folder.slug})` : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedFolder?.slug && (
+                <p className="text-xs text-purple-600 mt-2">
+                  Slug: <span className="font-semibold">{selectedFolder.slug}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Documents Grid */}
         <div className="space-y-4 mb-12">
           {loading ? (
@@ -162,16 +216,20 @@ const DocumentsPage: React.FC = () => {
                 const isSeed = isSeedDoc(doc as DocumentItem | (typeof PUBLIC_DOCS)[number]);
                 const title = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).title : (doc as DocumentItem).name;
                 const url = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).url : (doc as DocumentItem).url;
+                const folderMeta = !isSeed && (doc as DocumentItem).folderId
+                  ? folderById.get((doc as DocumentItem).folderId || '')
+                  : undefined;
                 const description = isSeed
                   ? (doc as (typeof PUBLIC_DOCS)[number]).desc
-                  : ((doc as DocumentItem).folderId && folderLookup.get((doc as DocumentItem).folderId || ''))
-                    ? `Folder: ${folderLookup.get((doc as DocumentItem).folderId || '')}`
+                  : folderMeta?.name
+                    ? `Folder: ${folderMeta.name}`
                     : 'Shared document';
                 const badgeLabel = isSeed
                   ? (doc as (typeof PUBLIC_DOCS)[number]).category
-                  : ((doc as DocumentItem).folderId && folderLookup.get((doc as DocumentItem).folderId || ''))
-                    ? folderLookup.get((doc as DocumentItem).folderId || '')
+                  : folderMeta?.name
+                    ? folderMeta.name
                     : 'General';
+                const badgeSlug = !isSeed ? folderMeta?.slug : undefined;
                 const badgeClass = isSeed && (doc as (typeof PUBLIC_DOCS)[number]).category === 'Part 1'
                   ? 'bg-purple-100 text-purple-700'
                   : 'bg-teal-100 text-teal-700';
@@ -204,10 +262,16 @@ const DocumentsPage: React.FC = () => {
                           {description}
                         </p>
                         <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${
                             badgeClass
-                          }`}>
+                            }`}
+                            title={badgeSlug ? `Slug: ${badgeSlug}` : undefined}
+                          >
                             {badgeLabel}
+                            {badgeSlug && (
+                              <span className="text-[10px] font-semibold opacity-80">/{badgeSlug}</span>
+                            )}
                           </span>
                         </div>
                       </div>
