@@ -668,30 +668,50 @@ class AuthService {
         console.warn('Firestore not initialized, returning empty document folders');
         return [];
       }
-      const ref = collection(db, 'documentFolders');
-      const q = visibility
-        ? query(ref, where('visibility', Array.isArray(visibility) ? 'in' : '==', visibility))
-        : ref;
-      const snap = await getDocs(q);
-      return snap.docs.map(d => d.data() as DocumentFolder);
+      try {
+        const ref = collection(db, 'documentFolders');
+        const q = visibility
+          ? query(ref, where('visibility', Array.isArray(visibility) ? 'in' : '==', visibility))
+          : ref;
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ ...d.data(), id: d.id } as DocumentFolder));
+      } catch (error) {
+        console.error('Error fetching document folders:', error);
+        throw new Error('Failed to load document folders. Please check your permissions.');
+      }
   }
 
   async createDocumentFolder(folderData: DocumentFolder): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateDocumentFolder(folderData);
       if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'documentFolders', folderData.id), folderData);
+      try {
+        await setDoc(doc(db, 'documentFolders', folderData.id), folderData);
+      } catch (error) {
+        console.error('Error creating document folder:', error);
+        throw new Error('Failed to create folder. Please check your permissions.');
+      }
   }
 
   async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
       if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
+      try {
+        await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
+      } catch (error) {
+        console.error('Error updating document folder:', error);
+        throw new Error('Failed to update folder. Please check your permissions.');
+      }
   }
 
   async deleteDocumentFolder(id: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockDeleteDocumentFolder(id);
       if (!db) throw new Error('Firestore not initialized');
-      await deleteDoc(doc(db, 'documentFolders', id));
+      try {
+        await deleteDoc(doc(db, 'documentFolders', id));
+      } catch (error) {
+        console.error('Error deleting document folder:', error);
+        throw new Error('Failed to delete folder. Please check your permissions.');
+      }
   }
 
   async getDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
@@ -700,49 +720,69 @@ class AuthService {
         console.warn('Firestore not initialized, returning empty documents');
         return [];
       }
-      const ref = collection(db, 'documents');
-      const constraints = [];
-      if (options?.visibility) {
-        constraints.push(where('visibility', Array.isArray(options.visibility) ? 'in' : '==', options.visibility));
+      try {
+        const ref = collection(db, 'documents');
+        const constraints = [];
+        if (options?.visibility) {
+          constraints.push(where('visibility', Array.isArray(options.visibility) ? 'in' : '==', options.visibility));
+        }
+        if (options?.folderId && options.folderId !== 'root') {
+          constraints.push(where('folderId', '==', options.folderId));
+        }
+        const q = constraints.length ? query(ref, ...constraints) : ref;
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ ...d.data(), id: d.id } as DocumentItem));
+      } catch (error) {
+        console.error('Error fetching documents:', error);
+        throw new Error('Failed to load documents. Please check your permissions.');
       }
-      if (options?.folderId && options.folderId !== 'root') {
-        constraints.push(where('folderId', '==', options.folderId));
-      }
-      const q = constraints.length ? query(ref, ...constraints) : ref;
-      const snap = await getDocs(q);
-      return snap.docs.map(d => d.data() as DocumentItem);
   }
 
   async createDocument(docData: DocumentItem): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateDocument(docData);
       if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'documents', docData.id), docData);
+      try {
+        await setDoc(doc(db, 'documents', docData.id), docData);
+      } catch (error) {
+        console.error('Error creating document:', error);
+        throw new Error('Failed to upload document. Please check your permissions.');
+      }
   }
 
   async deleteDocument(id: string, filePath?: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockDeleteDocument(id);
       if (!db) throw new Error('Firestore not initialized');
-      let resolvedPath = filePath;
-      if (!resolvedPath) {
-        const snap = await getDoc(doc(db, 'documents', id));
-        if (snap.exists()) {
-          resolvedPath = (snap.data() as DocumentItem).filePath;
+      try {
+        let resolvedPath = filePath;
+        if (!resolvedPath) {
+          const snap = await getDoc(doc(db, 'documents', id));
+          if (snap.exists()) {
+            resolvedPath = (snap.data() as DocumentItem).filePath;
+          }
         }
-      }
-      if (resolvedPath && storage) {
-        try {
-          await deleteObject(ref(storage, resolvedPath));
-        } catch (error) {
-          console.warn('Failed to delete storage file:', error);
+        if (resolvedPath && storage) {
+          try {
+            await deleteObject(ref(storage, resolvedPath));
+          } catch (storageError) {
+            console.warn('Failed to delete storage file:', storageError);
+          }
         }
+        await deleteDoc(doc(db, 'documents', id));
+      } catch (error) {
+        console.error('Error deleting document:', error);
+        throw new Error('Failed to delete document. Please check your permissions.');
       }
-      await deleteDoc(doc(db, 'documents', id));
   }
 
   async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocument(id, updates);
       if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'documents', id), updates, { merge: true });
+      try {
+        await setDoc(doc(db, 'documents', id), updates, { merge: true });
+      } catch (error) {
+        console.error('Error updating document:', error);
+        throw new Error('Failed to update document. Please check your permissions.');
+      }
   }
 
   // --- PASSWORD MANAGEMENT ---

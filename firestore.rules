@@ -168,20 +168,32 @@ service cloud.firestore {
     }
 
     function canReadVisibility(visibility) {
-      return visibility == 'public'
-        || (visibility == 'committee' && (isCommittee() || isAdmin()))
-        || (visibility == 'admin' && isAdmin());
+      return isAdmin()
+        || visibility == 'public'
+        || (visibility == 'committee' && isCommittee());
     }
 
     // Document Folders collection
     match /documentFolders/{folderId} {
-      allow read: if canReadVisibility(resource.data.visibility);
+      // Admins can read all folders
+      allow read: if isAdmin();
+      // Committee can read public and committee folders
+      allow read: if isCommittee() && (resource.data.visibility == 'public' || resource.data.visibility == 'committee');
+      // Anyone authenticated can read public folders
+      allow read: if isAuthenticated() && resource.data.visibility == 'public';
+      // Only admins can write
       allow create, update, delete: if isAdmin();
     }
 
     // Documents collection (guidelines, resources, etc.)
     match /documents/{docId} {
-      allow read: if canReadVisibility(resource.data.visibility);
+      // Admins can read all documents
+      allow read: if isAdmin();
+      // Committee can read public and committee documents
+      allow read: if isCommittee() && (resource.data.visibility == 'public' || resource.data.visibility == 'committee');
+      // Anyone authenticated can read public documents
+      allow read: if isAuthenticated() && resource.data.visibility == 'public';
+      // Only admins can write
       allow create, update, delete: if isAdmin();
     }
 

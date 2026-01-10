@@ -33,26 +33,39 @@ const DocumentsPortal: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        // Fetch public and committee documents separately to avoid Firestore security rule issues
-        // The 'in' operator with arrays doesn't work well with field-level security rules
-        const [publicDocs, committeeDocs, publicFolders, committeeFolders] = await Promise.all([
-          DataService.getDocuments({ visibility: 'public' }),
-          DataService.getDocuments({ visibility: 'committee' }),
-          DataService.getDocumentFolders('public'),
-          DataService.getDocumentFolders('committee')
-        ]);
-        
-        // Combine results and deduplicate by id
-        const allDocs = [...publicDocs, ...committeeDocs];
-        const uniqueDocs = Array.from(new Map(allDocs.map(doc => [doc.id, doc])).values());
-        
-        const allFolders = [...publicFolders, ...committeeFolders];
-        const uniqueFolders = Array.from(new Map(allFolders.map(folder => [folder.id, folder])).values());
-        
-        setDocuments(uniqueDocs);
-        setFolders(uniqueFolders);
+        const userRole = toUserRole(userProfile.role);
+        const isAdminUser = userRole === UserRole.ADMIN;
+
+        // Admins can see all documents, committee can see public + committee
+        if (isAdminUser) {
+          // For admins, fetch all documents without visibility filter
+          const [allDocs, allFolders] = await Promise.all([
+            DataService.getDocuments(),
+            DataService.getDocumentFolders()
+          ]);
+          setDocuments(allDocs);
+          setFolders(allFolders);
+        } else {
+          // For committee members, fetch public and committee documents separately
+          const [publicDocs, committeeDocs, publicFolders, committeeFolders] = await Promise.all([
+            DataService.getDocuments({ visibility: 'public' }),
+            DataService.getDocuments({ visibility: 'committee' }),
+            DataService.getDocumentFolders('public'),
+            DataService.getDocumentFolders('committee')
+          ]);
+
+          // Combine results and deduplicate by id
+          const allDocs = [...publicDocs, ...committeeDocs];
+          const uniqueDocs = Array.from(new Map(allDocs.map(doc => [doc.id, doc])).values());
+
+          const allFolders = [...publicFolders, ...committeeFolders];
+          const uniqueFolders = Array.from(new Map(allFolders.map(folder => [folder.id, folder])).values());
+
+          setDocuments(uniqueDocs);
+          setFolders(uniqueFolders);
+        }
       } catch (error) {
-        console.error('Error loading committee documents:', error);
+        console.error('Error loading documents:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to load documents';
         setError(errorMessage);
       } finally {
