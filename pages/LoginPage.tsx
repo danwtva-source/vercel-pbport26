@@ -36,7 +36,9 @@ export const LoginPage: React.FC = () => {
         if (!name.trim()) {
           throw new Error('Please enter your full name');
         }
-        if (!email.includes('@')) {
+        // Validate email format with proper regex
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
           throw new Error('Please enter a valid email address');
         }
         if (password.length < 6) {

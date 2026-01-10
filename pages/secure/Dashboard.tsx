@@ -41,6 +41,7 @@ const Dashboard: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
   const { userProfile, loading: authLoading } = useAuth();
 
@@ -58,6 +59,7 @@ const Dashboard: React.FC = () => {
 
   const loadData = async (user: User) => {
     setLoading(true);
+    setError(null);
     try {
       const [appsData, votesData, scoresData, assignmentsData, usersData, settings] = await Promise.all([
         DataService.getApplications(),
@@ -85,8 +87,9 @@ const Dashboard: React.FC = () => {
       } else {
         setApplications(appsData);
       }
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -99,6 +102,29 @@ const Dashboard: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600 font-bold">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if data loading failed
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle size={20} />
+              <p className="font-bold">Error Loading Dashboard</p>
+            </div>
+            <p className="text-sm">{error}</p>
+          </div>
+          <button
+            onClick={() => loadData(currentUser)}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold transition"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );

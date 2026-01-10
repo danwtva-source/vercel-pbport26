@@ -42,7 +42,12 @@ export const PublicLayout: React.FC<LayoutProps> = ({ children }) => {
             <Link to={ROUTES.PUBLIC.LOGIN} className="ml-4 bg-purple-600 hover:bg-purple-800 text-white px-6 py-2 rounded-xl font-bold font-display transition shadow-lg">Secure Portal</Link>
           </nav>
 
-          <button className="md:hidden text-purple-800 p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <button
+            className="md:hidden text-purple-800 p-2"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileMenuOpen}
+          >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
@@ -162,7 +167,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
       {/* Mobile Nav */}
       <div className="md:hidden bg-purple-900 text-white p-4 flex justify-between items-center sticky top-0 z-40 shadow-lg">
          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="p-1"><Menu size={24} /></button>
+            <button onClick={() => setSidebarOpen(true)} className="p-1" aria-label="Open navigation menu"><Menu size={24} /></button>
             <img src="/logo-secure.png" alt="Logo" className="h-8 w-8" />
          </div>
          <span className="text-sm font-bold font-display">Committee Portal</span>
@@ -174,7 +179,7 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
           <div className="relative bg-purple-900 text-white w-64 h-full shadow-2xl animate-slide-in">
              <div className="p-6 flex justify-between items-center border-b border-purple-800">
                <span className="font-bold font-display">Secure Menu</span>
-               <button onClick={() => setSidebarOpen(false)}><X size={24}/></button>
+               <button onClick={() => setSidebarOpen(false)} aria-label="Close navigation menu"><X size={24}/></button>
              </div>
              <nav className="p-4 space-y-1">
                <NavLinks />

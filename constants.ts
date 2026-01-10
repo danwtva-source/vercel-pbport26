@@ -459,7 +459,7 @@ export const DEMO_DOCUMENTS = [
     url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.3%20-%20Application%20Guidance.pdf',
     filePath: 'documents/scoring-guide.pdf',
     createdAt: Date.now() - 86400000,
-    createdBy: 'demo-admin'
+    uploadedBy: 'demo-admin'
   },
   {
     id: 'doc-2',
@@ -469,7 +469,7 @@ export const DEMO_DOCUMENTS = [
     url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.2%20-%20Our%20Priorities%20Report.pdf',
     filePath: 'documents/minutes-jan-2025.pdf',
     createdAt: Date.now() - 172800000,
-    createdBy: 'demo-admin'
+    uploadedBy: 'demo-admin'
   },
   {
     id: 'doc-3',
@@ -479,7 +479,7 @@ export const DEMO_DOCUMENTS = [
     url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.3%20-%20Application%20Guidance.pdf',
     filePath: 'documents/application-guidelines.pdf',
     createdAt: Date.now() - 259200000,
-    createdBy: 'demo-admin'
+    uploadedBy: 'demo-admin'
   },
   {
     id: 'doc-4',
@@ -489,7 +489,7 @@ export const DEMO_DOCUMENTS = [
     url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.2%20-%20Our%20Priorities%20Report.pdf',
     filePath: 'documents/priorities-report-2024.pdf',
     createdAt: Date.now() - 345600000,
-    createdBy: 'demo-admin'
+    uploadedBy: 'demo-admin'
   },
 ];
 
