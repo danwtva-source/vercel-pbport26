@@ -664,6 +664,10 @@ class AuthService {
   // --- DOCUMENTS ---
   async getDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
       if (USE_DEMO_MODE) return this.mockGetDocumentFolders(visibility);
+      if (!db) {
+        console.warn('Firestore not initialized, returning empty document folders');
+        return [];
+      }
       const ref = collection(db, 'documentFolders');
       const q = visibility
         ? query(ref, where('visibility', Array.isArray(visibility) ? 'in' : '==', visibility))
@@ -674,21 +678,28 @@ class AuthService {
 
   async createDocumentFolder(folderData: DocumentFolder): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateDocumentFolder(folderData);
+      if (!db) throw new Error('Firestore not initialized');
       await setDoc(doc(db, 'documentFolders', folderData.id), folderData);
   }
 
   async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
+      if (!db) throw new Error('Firestore not initialized');
       await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
   }
 
   async deleteDocumentFolder(id: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockDeleteDocumentFolder(id);
+      if (!db) throw new Error('Firestore not initialized');
       await deleteDoc(doc(db, 'documentFolders', id));
   }
 
   async getDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
       if (USE_DEMO_MODE) return this.mockGetDocuments(options);
+      if (!db) {
+        console.warn('Firestore not initialized, returning empty documents');
+        return [];
+      }
       const ref = collection(db, 'documents');
       const constraints = [];
       if (options?.visibility) {
@@ -704,11 +715,13 @@ class AuthService {
 
   async createDocument(docData: DocumentItem): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateDocument(docData);
+      if (!db) throw new Error('Firestore not initialized');
       await setDoc(doc(db, 'documents', docData.id), docData);
   }
 
   async deleteDocument(id: string, filePath?: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockDeleteDocument(id);
+      if (!db) throw new Error('Firestore not initialized');
       let resolvedPath = filePath;
       if (!resolvedPath) {
         const snap = await getDoc(doc(db, 'documents', id));
@@ -728,6 +741,7 @@ class AuthService {
 
   async updateDocument(id: string, updates: Partial<DocumentItem>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocument(id, updates);
+      if (!db) throw new Error('Firestore not initialized');
       await setDoc(doc(db, 'documents', id), updates, { merge: true });
   }
 
