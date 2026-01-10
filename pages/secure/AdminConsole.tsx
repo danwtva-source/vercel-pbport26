@@ -1627,10 +1627,11 @@ const AdminConsole: React.FC = () => {
 
     const handleDeleteFolder = async (folder: DocumentFolder) => {
       const docsInFolder = documents.filter(doc => doc.folderId === folder.id);
-      const message = docsInFolder.length > 0
-        ? `This folder contains ${docsInFolder.length} document(s). Delete "${folder.name}" anyway?`
-        : `Are you sure you want to delete "${folder.name}"?`;
-      if (!confirm(message)) return;
+      if (docsInFolder.length > 0) {
+        alert(`"${folder.name}" contains ${docsInFolder.length} document(s). Move documents to another folder before deleting.`);
+        return;
+      }
+      if (!confirm(`Are you sure you want to delete "${folder.name}"?`)) return;
       try {
         await DataService.deleteDocumentFolder(folder.id);
         await DataService.logAction({

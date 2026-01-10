@@ -262,7 +262,7 @@ Threshold evaluation:‎
 •	Admin can upload documents, set title, folder, visibility (public/committee/admin), and ‎delete documents.‎
 •	Documents must persist: metadata in Firestore, file in Storage.‎
 •	Committee sees only committee/public documents; applicant sees only public documents.‎
-•	Folder delete behaviour: if folder contains documents, either (a) prevent deletion and ‎prompt to move docs, or (b) cascade by moving docs to an 'Unfiled' folder. Choose one; ‎default is prevent deletion.‎
+•	Folder delete behaviour (chosen): prevent deletion when a folder contains documents. Show ‎UI copy: “This folder contains documents. Move them to another folder before deleting.”‎
 ‎13. Formatting, UI copy, and branding (fixes)‎
 ‎13.1 Currency formatting (GBP only)‎
 •	All monetary values must render in GBP (£) using Intl.NumberFormat('en-GB', { style: ‎‎'currency', currency: 'GBP' }).‎
