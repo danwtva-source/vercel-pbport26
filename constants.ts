@@ -442,5 +442,56 @@ export const DEMO_USERS: User[] = [
   { uid: 'demo-app', displayName: 'Demo Applicant', email: 'applicant@demo.com', role: 'applicant', area: 'Blaenavon' },
 ];
 
+// Demo Document Folders for demo mode
+export const DEMO_DOCUMENT_FOLDERS = [
+  { id: 'folder-committee', name: 'Committee Resources', visibility: 'committee' as const, createdAt: Date.now() - 86400000, createdBy: 'demo-admin' },
+  { id: 'folder-public', name: 'Public Information', visibility: 'public' as const, createdAt: Date.now() - 172800000, createdBy: 'demo-admin' },
+  { id: 'folder-admin', name: 'Admin Documents', visibility: 'admin' as const, createdAt: Date.now() - 259200000, createdBy: 'demo-admin' },
+];
+
+// Demo Documents for demo mode
+export const DEMO_DOCUMENTS = [
+  {
+    id: 'doc-1',
+    name: 'Scoring Matrix Guide',
+    folderId: 'folder-committee',
+    visibility: 'committee' as const,
+    url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.3%20-%20Application%20Guidance.pdf',
+    filePath: 'documents/scoring-guide.pdf',
+    createdAt: Date.now() - 86400000,
+    createdBy: 'demo-admin'
+  },
+  {
+    id: 'doc-2',
+    name: 'Committee Meeting Minutes - January 2025',
+    folderId: 'folder-committee',
+    visibility: 'committee' as const,
+    url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.2%20-%20Our%20Priorities%20Report.pdf',
+    filePath: 'documents/minutes-jan-2025.pdf',
+    createdAt: Date.now() - 172800000,
+    createdBy: 'demo-admin'
+  },
+  {
+    id: 'doc-3',
+    name: 'Application Guidelines',
+    folderId: 'folder-public',
+    visibility: 'public' as const,
+    url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.3%20-%20Application%20Guidance.pdf',
+    filePath: 'documents/application-guidelines.pdf',
+    createdAt: Date.now() - 259200000,
+    createdBy: 'demo-admin'
+  },
+  {
+    id: 'doc-4',
+    name: 'Community Priorities Report 2024',
+    folderId: 'folder-public',
+    visibility: 'public' as const,
+    url: 'https://github.com/DanWTVA-Source/pdf-host/raw/main/PB%201.2%20-%20Our%20Priorities%20Report.pdf',
+    filePath: 'documents/priorities-report-2024.pdf',
+    createdAt: Date.now() - 345600000,
+    createdBy: 'demo-admin'
+  },
+];
+
 // Legacy export for backward compatibility
 export const DEMO_APPS = DEMO_APPLICATIONS;

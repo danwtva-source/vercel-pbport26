@@ -1,6 +1,6 @@
 // services/firebase.ts
 import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area } from '../types';
-import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
+import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
@@ -969,7 +969,12 @@ class AuthService {
   }
 
   mockGetDocumentFolders(visibility?: DocumentVisibility | DocumentVisibility[]): Promise<DocumentFolder[]> {
-    const folders = this.getLocal<DocumentFolder>('documentFolders');
+    let folders = this.getLocal<DocumentFolder>('documentFolders');
+    // Seed demo data if empty
+    if (folders.length === 0) {
+      this.setLocal('documentFolders', DEMO_DOCUMENT_FOLDERS);
+      folders = DEMO_DOCUMENT_FOLDERS;
+    }
     if (!visibility) return Promise.resolve(folders);
     const values = Array.isArray(visibility) ? visibility : [visibility];
     return Promise.resolve(folders.filter(folder => values.includes(folder.visibility)));
@@ -994,6 +999,11 @@ class AuthService {
 
   mockGetDocuments(options?: { visibility?: DocumentVisibility | DocumentVisibility[]; folderId?: string | null; }): Promise<DocumentItem[]> {
     let docs = this.getLocal<DocumentItem>('documents');
+    // Seed demo data if empty
+    if (docs.length === 0) {
+      this.setLocal('documents', DEMO_DOCUMENTS);
+      docs = DEMO_DOCUMENTS;
+    }
     if (options?.visibility) {
       const values = Array.isArray(options.visibility) ? options.visibility : [options.visibility];
       docs = docs.filter(doc => values.includes(doc.visibility));
