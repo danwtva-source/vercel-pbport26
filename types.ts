@@ -46,7 +46,7 @@ export interface User {
   role: Role;
   area?: Area | null;  // Area assignment (required for committee members)
   /**
-   * Canonical PRD field: areaId (BLN/TUC/TPS). Legacy "area" name is retained for UI.
+   * Canonical PRD field: areaId (slug). Legacy "area" name is retained for UI.
    * Mapping strategy: services/firebase.ts maps area <-> areaId on read/write.
    */
   areaId?: string | null;
@@ -313,7 +313,6 @@ export type DocumentVisibility = 'public' | 'committee' | 'admin';
 export interface DocumentFolder {
   id: string;
   name: string;
-  slug: string;
   visibility: DocumentVisibility;
   createdAt: number;
   createdBy: string;

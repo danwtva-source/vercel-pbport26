@@ -3,7 +3,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import {
@@ -102,7 +102,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, assignmentsData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -1528,20 +1528,13 @@ const AdminConsole: React.FC = () => {
     const [showFolderModal, setShowFolderModal] = useState(false);
     const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(null);
     const [editingFolder, setEditingFolder] = useState<DocumentFolder | null>(null);
-    const slugify = (value: string) => value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-');
     const [newDocument, setNewDocument] = useState<{ name: string; visibility: DocumentVisibility; folderId: string }>({
       name: '',
       visibility: 'public',
       folderId: 'root'
     });
-    const [newFolder, setNewFolder] = useState<{ name: string; slug: string; visibility: DocumentVisibility }>({
+    const [newFolder, setNewFolder] = useState<{ name: string; visibility: DocumentVisibility }>({
       name: '',
-      slug: '',
       visibility: 'public'
     });
     const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -1600,11 +1593,9 @@ const AdminConsole: React.FC = () => {
       }
       try {
         const id = 'folder_' + Date.now();
-        const slug = newFolder.slug.trim() || slugify(newFolder.name);
         const folderData: DocumentFolder = {
           id,
           name: newFolder.name,
-          slug,
           visibility: newFolder.visibility,
           createdBy: currentUser?.uid || 'admin',
           createdAt: Date.now(),
@@ -1614,9 +1605,9 @@ const AdminConsole: React.FC = () => {
           adminId: currentUser?.uid || 'admin',
           action: 'FOLDER_CREATE',
           targetId: id,
-          details: { name: newFolder.name, slug, visibility: newFolder.visibility }
+          details: { name: newFolder.name, visibility: newFolder.visibility }
         });
-        setNewFolder({ name: '', slug: '', visibility: 'public' });
+        setNewFolder({ name: '', visibility: 'public' });
         setShowFolderModal(false);
         await loadAllData();
       } catch (error) {
@@ -1682,13 +1673,12 @@ const AdminConsole: React.FC = () => {
 
     const handleUpdateFolder = async (folder: DocumentFolder) => {
       try {
-        const slug = folder.slug.trim() || slugify(folder.name);
-        await DataService.updateDocumentFolder(folder.id, { name: folder.name, slug, visibility: folder.visibility });
+        await DataService.updateDocumentFolder(folder.id, { name: folder.name, visibility: folder.visibility });
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'FOLDER_UPDATE',
           targetId: folder.id,
-          details: { name: folder.name, slug, visibility: folder.visibility }
+          details: { name: folder.name, visibility: folder.visibility }
         });
         setEditingFolder(null);
         await loadAllData();
@@ -1738,7 +1728,7 @@ const AdminConsole: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <Badge variant="amber">{folder.visibility}</Badge>
                     <div className="flex gap-1">
-                      <button onClick={() => setEditingFolder({ ...folder, slug: folder.slug || '' })} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
+                      <button onClick={() => setEditingFolder(folder)} className="p-1 hover:bg-amber-100 rounded transition text-amber-700">
                         <Edit size={14} />
                       </button>
                       <button onClick={() => handleDeleteFolder(folder)} className="p-1 hover:bg-red-100 rounded transition text-red-700">
@@ -1863,17 +1853,7 @@ const AdminConsole: React.FC = () => {
                 label="Folder Name"
                 placeholder="Enter folder name"
                 value={newFolder.name}
-                onChange={(e) => setNewFolder((prev) => {
-                  const name = e.target.value;
-                  const slug = prev.slug ? prev.slug : slugify(name);
-                  return { ...prev, name, slug };
-                })}
-              />
-              <Input
-                label="Slug"
-                placeholder="auto-generated-from-name"
-                value={newFolder.slug}
-                onChange={(e) => setNewFolder({ ...newFolder, slug: e.target.value })}
+                onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
               />
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
@@ -1950,19 +1930,7 @@ const AdminConsole: React.FC = () => {
               <Input
                 label="Name"
                 value={editingFolder.name}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  setEditingFolder((current) => current ? {
-                    ...current,
-                    name,
-                    slug: current.slug ? current.slug : slugify(name)
-                  } : current);
-                }}
-              />
-              <Input
-                label="Slug"
-                value={editingFolder.slug || ''}
-                onChange={(e) => setEditingFolder((current) => current ? { ...current, slug: e.target.value } : current)}
+                onChange={(e) => setEditingFolder({ ...editingFolder, name: e.target.value })}
               />
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Visibility</label>
