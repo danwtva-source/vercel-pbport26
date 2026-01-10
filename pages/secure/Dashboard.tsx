@@ -21,7 +21,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   AlertCircle,
-  DollarSign,
+  Coins,
   Target,
   Activity,
   Calendar,
@@ -426,7 +426,7 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
           bgColor="bg-green-50"
         />
         <StatCard
-          icon={<DollarSign className="text-teal-600" size={24} />}
+          icon={<Coins className="text-teal-600" size={24} />}
           label="Total Requested"
           value={`£${applications.reduce((sum, app) => sum + app.amountRequested, 0).toLocaleString()}`}
           bgColor="bg-teal-50"
@@ -858,7 +858,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ applications, votes, sc
           subtitle={`${stage1Apps.length} Stage 1 • ${stage2Apps.length} Stage 2`}
         />
         <StatCard
-          icon={<DollarSign className="text-green-600" size={24} />}
+          icon={<Coins className="text-green-600" size={24} />}
           label="Total Funding Requested"
           value={`£${totalFunding.toLocaleString()}`}
           bgColor="bg-green-50"

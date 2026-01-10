@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
-import { Vote as VoteIcon, Users, MapPin, DollarSign, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
+import { Vote as VoteIcon, Users, MapPin, Coins, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
 import { DataService } from '../../services/firebase';
 import { Application, PortalSettings } from '../../types';
 import { ROUTES } from '../../utils';
@@ -169,7 +169,7 @@ const PublicVotingPage: React.FC = () => {
 
                   {/* Funding Amount */}
                   <div className="flex items-center gap-2 mb-4 p-3 bg-teal-50 rounded-lg">
-                    <DollarSign size={20} className="text-teal-600" />
+                    <Coins size={20} className="text-teal-600" />
                     <span className="font-bold text-teal-900">
                       £{app.amountRequested.toLocaleString()} requested
                     </span>

@@ -138,12 +138,12 @@ export const Modal: React.FC<{ isOpen: boolean, onClose: () => void, title: stri
     if (!isOpen) return null;
     const sizes = { sm: "max-w-sm", md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" };
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} aria-hidden="true" />
             <div className={`bg-white rounded-[2rem] shadow-2xl w-full ${sizes[size]} relative z-10 flex flex-col max-h-[90vh] animate-scale-up`}>
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 className="text-xl font-bold font-dynapuff text-gray-900">{title}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">✕</button>
+                    <h3 id="modal-title" className="text-xl font-bold font-dynapuff text-gray-900">{title}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors" aria-label="Close modal">✕</button>
                 </div>
                 <div className="p-6 overflow-y-auto custom-scrollbar">{children}</div>
             </div>
