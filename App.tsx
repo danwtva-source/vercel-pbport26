@@ -199,11 +199,11 @@ const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* Committee & Admin Only */}
+      {/* Committee Only */}
       <Route
         path={ROUTES.PORTAL.SCORING}
         element={
-          <ProtectedRoute requiredRole={[UserRole.COMMITTEE, UserRole.ADMIN]}>
+          <ProtectedRoute requiredRole={UserRole.COMMITTEE}>
             <ScoringMatrix />
           </ProtectedRoute>
         }

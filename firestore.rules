@@ -27,8 +27,32 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function committeeAreaMatches(area) {
-      return getUserData().area == area || area == 'Cross-Area';
+    function committeeAreaMatches(area, areaId) {
+      return (area != null && getUserData().area == area) ||
+             (areaId != null && getUserData().areaId == areaId) ||
+             area == 'Cross-Area' ||
+             areaId == 'cross-area';
+    }
+
+    function getApplicantId(data) {
+      return data.applicantId != null ? data.applicantId : data.userId;
+    }
+
+    function getCommitteeId(data) {
+      return data.committeeId != null ? data.committeeId : data.userId;
+    }
+
+    function getVoterId(data) {
+      return data.voterId != null ? data.voterId : data.userId;
+    }
+
+    function getScorerId(data) {
+      return data.scorerId != null ? data.scorerId : data.userId;
+    }
+
+    function hasAssignment(appId) {
+      return exists(/databases/$(database)/documents/assignments/$(appId + '_' + request.auth.uid)) ||
+             exists(/databases/$(database)/documents/assignments/$(request.auth.uid + '_' + appId));
     }
 
     function getApplicantId(data) {

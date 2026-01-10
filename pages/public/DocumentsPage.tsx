@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
 import { PUBLIC_DOCS } from '../../constants';
@@ -47,11 +47,30 @@ const DocumentsPage: React.FC = () => {
       : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory))
     : documents;
 
-  const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
+  const hasDocuments = documents.length > 0;
+  const folderById = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
+  const folderBySlug = useMemo(
+    () => new Map(folders.filter(folder => folder.slug).map(folder => [folder.slug, folder])),
+    [folders]
+  );
+  const selectedFolder = selectedFolderSlug ? folderBySlug.get(selectedFolderSlug) : undefined;
+  const filteredDocs = hasDocuments
+    ? documents.filter((doc) => {
+      if (!selectedFolderSlug) return true;
+      if (!selectedFolder) return false;
+      return doc.folderId === selectedFolder.id;
+    })
+    : [];
 
-  const getCategoryCount = (category: CategoryFilter) => {
-    if (category === 'All') return PUBLIC_DOCS.length;
-    return PUBLIC_DOCS.filter(doc => doc.category === category).length;
+  const handleFolderFilterChange = (slug: string) => {
+    setSelectedFolderSlug(slug);
+    const nextParams = new URLSearchParams(searchParams);
+    if (slug) {
+      nextParams.set('folder', slug);
+    } else {
+      nextParams.delete('folder');
+    }
+    setSearchParams(nextParams, { replace: true });
   };
 
   const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
@@ -154,7 +173,32 @@ const DocumentsPage: React.FC = () => {
           ) : filteredDocs.length === 0 ? (
             <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
               <FileText size={48} className="text-purple-300 mx-auto mb-4" />
-              <p className="text-purple-600 font-semibold">No documents found in this category</p>
+              <p className="text-purple-600 font-semibold">Loading documents...</p>
+            </div>
+          ) : !hasDocuments ? (
+            <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
+              <FileText size={48} className="text-purple-300 mx-auto mb-4" />
+              <p className="text-purple-700 font-semibold text-lg mb-2">No public documents yet</p>
+              <p className="text-purple-600 text-sm max-w-xl mx-auto">
+                {isAdmin
+                  ? 'Upload public guidance in the Documents area of the secure portal to make them available here.'
+                  : 'Check back soon for application forms and guidance.'}
+              </p>
+              {isAdmin && (
+                <div className="mt-4">
+                  <Link
+                    to={ROUTES.PORTAL.DOCUMENTS}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-purple-700"
+                  >
+                    Go to Documents
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
+              <FileText size={48} className="text-purple-300 mx-auto mb-4" />
+              <p className="text-purple-600 font-semibold">No documents found in this folder</p>
             </div>
           ) : (
             filteredDocs.map((doc, index) => (

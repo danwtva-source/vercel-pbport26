@@ -557,6 +557,51 @@ class AuthService {
       return { updated };
   }
 
+  /**
+   * One-time normalization to migrate legacy slug-based areaId values to PRD codes.
+   * Keeps existing area display names intact while updating areaId fields.
+   */
+  async normalizeAreaIds(): Promise<{ usersUpdated: number; applicationsUpdated: number }> {
+      if (USE_DEMO_MODE) return { usersUpdated: 0, applicationsUpdated: 0 };
+      if (!db) throw new Error('Firebase not initialized');
+
+      const normalizeCollection = async (collectionName: 'users' | 'applications') => {
+        const snap = await getDocs(collection(db, collectionName));
+        let batch = writeBatch(db);
+        let updated = 0;
+        let batchCount = 0;
+
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data() as User | Application;
+          const areaId = resolveAreaId(data.area || undefined, data.areaId || undefined);
+          const areaName = resolveAreaName(data.area || null, areaId || null);
+          const updates: Partial<User | Application> = {};
+
+          if (areaId && data.areaId !== areaId) updates.areaId = areaId;
+          if (areaName && data.area !== areaName) updates.area = areaName;
+
+          if (Object.keys(updates).length > 0) {
+            batch.set(doc(db, collectionName, docSnap.id), updates, { merge: true });
+            updated += 1;
+            batchCount += 1;
+          }
+
+          if (batchCount >= 450) {
+            await batch.commit();
+            batch = writeBatch(db);
+            batchCount = 0;
+          }
+        }
+
+        if (batchCount > 0) await batch.commit();
+        return updated;
+      };
+
+      const usersUpdated = await normalizeCollection('users');
+      const applicationsUpdated = await normalizeCollection('applications');
+      return { usersUpdated, applicationsUpdated };
+  }
+
   async checkAuthConsistency(users: User[]): Promise<{ missing: User[]; errors: { email: string; message: string }[]; checked: number }> {
       if (USE_DEMO_MODE) return { missing: [], errors: [], checked: users.length };
       if (!auth) throw new Error('Firebase auth not initialized');
@@ -732,7 +777,8 @@ class AuthService {
 
   async createAssignment(assignment: Assignment): Promise<void> {
       if (USE_DEMO_MODE) return this.mockCreateAssignment(assignment);
-      await setDoc(doc(db, 'assignments', assignment.id), assignment);
+      const id = buildAssignmentId(assignment);
+      await setDoc(doc(db, 'assignments', id), { ...assignment, id });
   }
 
   async updateAssignment(id: string, updates: Partial<Assignment>): Promise<void> {
@@ -983,7 +1029,8 @@ class AuthService {
   }
 
   mockCreateAssignment(assignment: Assignment): Promise<void> {
-    this.setLocal('assignments', [...this.getLocal('assignments'), assignment]);
+    const id = buildAssignmentId(assignment);
+    this.setLocal('assignments', [...this.getLocal('assignments'), { ...assignment, id }]);
     return Promise.resolve();
   }
 
