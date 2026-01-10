@@ -68,10 +68,17 @@ const DEFAULT_SETTINGS: PortalSettings = {
 };
 
 const AREA_NAME_TO_ID: Record<Area, string> = {
-  'Blaenavon': 'blaenavon',
-  'Thornhill & Upper Cwmbran': 'thornhill-upper-cwmbran',
-  'Trevethin, Penygarn & St. Cadocs': 'trevethin-penygarn-st-cadocs',
+  'Blaenavon': 'BLN',
+  'Thornhill & Upper Cwmbran': 'TUC',
+  'Trevethin, Penygarn & St. Cadocs': 'TPS',
   'Cross-Area': 'cross-area'
+};
+
+const LEGACY_AREA_ID_TO_PRD: Record<string, string> = {
+  'blaenavon': 'BLN',
+  'thornhill-upper-cwmbran': 'TUC',
+  'trevethin-penygarn-st-cadocs': 'TPS',
+  'cross-area': 'cross-area'
 };
 
 const AREA_ID_TO_NAME: Record<string, Area> = Object.entries(AREA_NAME_TO_ID).reduce(
@@ -82,12 +89,24 @@ const AREA_ID_TO_NAME: Record<string, Area> = Object.entries(AREA_NAME_TO_ID).re
   {} as Record<string, Area>
 );
 
+const normalizeAreaId = (areaId?: string | null): string | undefined => {
+  if (!areaId) return undefined;
+  const trimmed = areaId.trim();
+  const legacyMatch = LEGACY_AREA_ID_TO_PRD[trimmed] || LEGACY_AREA_ID_TO_PRD[trimmed.toLowerCase()];
+  if (legacyMatch) return legacyMatch;
+  if (AREA_ID_TO_NAME[trimmed]) return trimmed;
+  const upper = trimmed.toUpperCase();
+  if (AREA_ID_TO_NAME[upper]) return upper;
+  return undefined;
+};
+
 const resolveAreaId = (area?: Area | null, areaId?: string | null): string | undefined => {
-  return areaId || (area ? AREA_NAME_TO_ID[area] : undefined);
+  return normalizeAreaId(areaId) || (area ? AREA_NAME_TO_ID[area] : undefined);
 };
 
 const resolveAreaName = (area?: Area | null, areaId?: string | null): Area | null => {
-  return area || (areaId ? AREA_ID_TO_NAME[areaId] || null : null);
+  const normalizedAreaId = normalizeAreaId(areaId);
+  return area || (normalizedAreaId ? AREA_ID_TO_NAME[normalizedAreaId] || null : null);
 };
 
 const mapUserFromFirestore = (data: Partial<User>, docId: string): User => {
@@ -559,6 +578,51 @@ class AuthService {
 
       if (updated > 0) await batch.commit();
       return { updated };
+  }
+
+  /**
+   * One-time normalization to migrate legacy slug-based areaId values to PRD codes.
+   * Keeps existing area display names intact while updating areaId fields.
+   */
+  async normalizeAreaIds(): Promise<{ usersUpdated: number; applicationsUpdated: number }> {
+      if (USE_DEMO_MODE) return { usersUpdated: 0, applicationsUpdated: 0 };
+      if (!db) throw new Error('Firebase not initialized');
+
+      const normalizeCollection = async (collectionName: 'users' | 'applications') => {
+        const snap = await getDocs(collection(db, collectionName));
+        let batch = writeBatch(db);
+        let updated = 0;
+        let batchCount = 0;
+
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data() as User | Application;
+          const areaId = resolveAreaId(data.area || undefined, data.areaId || undefined);
+          const areaName = resolveAreaName(data.area || null, areaId || null);
+          const updates: Partial<User | Application> = {};
+
+          if (areaId && data.areaId !== areaId) updates.areaId = areaId;
+          if (areaName && data.area !== areaName) updates.area = areaName;
+
+          if (Object.keys(updates).length > 0) {
+            batch.set(doc(db, collectionName, docSnap.id), updates, { merge: true });
+            updated += 1;
+            batchCount += 1;
+          }
+
+          if (batchCount >= 450) {
+            await batch.commit();
+            batch = writeBatch(db);
+            batchCount = 0;
+          }
+        }
+
+        if (batchCount > 0) await batch.commit();
+        return updated;
+      };
+
+      const usersUpdated = await normalizeCollection('users');
+      const applicationsUpdated = await normalizeCollection('applications');
+      return { usersUpdated, applicationsUpdated };
   }
 
   async checkAuthConsistency(users: User[]): Promise<{ missing: User[]; errors: { email: string; message: string }[]; checked: number }> {
