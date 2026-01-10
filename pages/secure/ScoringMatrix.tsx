@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Modal } from '../../components/UI';
 import { DataService } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 import { Application, Score, UserRole, User, Round, PortalSettings } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
 import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock } from 'lucide-react';
-import { isStoredRole, toUserRole } from '../../utils';
+import { isStoredRole, toUserRole, ROUTES } from '../../utils';
 
 interface CriterionScore {
   score: number;
@@ -28,6 +29,7 @@ const ScoringMatrix: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<ApplicationWithScores | null>(null);
   const [scoringData, setScoringData] = useState<Record<string, CriterionScore>>({});
   const [saving, setSaving] = useState(false);
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
   const [activeRound, setActiveRound] = useState<Round | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
@@ -46,15 +48,21 @@ const ScoringMatrix: React.FC = () => {
     return { allowed: true };
   };
 
+  useEffect(() => {
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
   // Get current user on mount - MUST be before any conditional returns
   useEffect(() => {
-    const user = DataService.getCurrentUser();
-    if (!user) {
-      navigate('/login');
+    if (authLoading) return;
+    if (!userProfile) {
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
-    setCurrentUser(user);
-  }, [navigate]);
+    setCurrentUser(userProfile);
+  }, [authLoading, userProfile, navigate]);
 
   // Load data when user is available - MUST be before any conditional returns
   useEffect(() => {

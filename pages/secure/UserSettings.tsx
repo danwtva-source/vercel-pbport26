@@ -4,7 +4,8 @@ import { SecureLayout } from '../../components/Layout';
 import { Card, Button, Input, Badge } from '../../components/UI';
 import { DataService, uploadProfileImage, deleteProfileImage } from '../../services/firebase';
 import { User, UserRole } from '../../types';
-import { toUserRole } from '../../utils';
+import { useAuth } from '../../context/AuthContext';
+import { ROUTES, toUserRole } from '../../utils';
 import {
   User as UserIcon,
   Camera,
@@ -26,6 +27,7 @@ const UserSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
 
   // Form state
   const [profile, setProfile] = useState({
@@ -45,21 +47,27 @@ const UserSettings: React.FC = () => {
   const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
-    const user = DataService.getCurrentUser();
-    if (!user) {
-      navigate('/login');
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!userProfile) {
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
-    setCurrentUser(user);
+    setCurrentUser(userProfile);
     setProfile({
-      displayName: user.displayName || user.username || '',
-      bio: user.bio || '',
-      phone: user.phone || '',
-      address: user.address || '',
-      photoUrl: user.photoUrl || ''
+      displayName: userProfile.displayName || userProfile.username || '',
+      bio: userProfile.bio || '',
+      phone: userProfile.phone || '',
+      address: userProfile.address || '',
+      photoUrl: userProfile.photoUrl || ''
     });
     setLoading(false);
-  }, [navigate]);
+  }, [authLoading, userProfile, navigate]);
 
   const handleSaveProfile = async () => {
     if (!currentUser) return;
