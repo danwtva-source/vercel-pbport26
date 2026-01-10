@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -68,17 +68,10 @@ const DEFAULT_SETTINGS: PortalSettings = {
 };
 
 const AREA_NAME_TO_ID: Record<Area, string> = {
-  'Blaenavon': 'BLN',
-  'Thornhill & Upper Cwmbran': 'TUC',
-  'Trevethin, Penygarn & St. Cadocs': 'TPS',
+  'Blaenavon': 'blaenavon',
+  'Thornhill & Upper Cwmbran': 'thornhill-upper-cwmbran',
+  'Trevethin, Penygarn & St. Cadocs': 'trevethin-penygarn-st-cadocs',
   'Cross-Area': 'cross-area'
-};
-
-const LEGACY_AREA_ID_TO_PRD: Record<string, string> = {
-  'blaenavon': 'BLN',
-  'thornhill-upper-cwmbran': 'TUC',
-  'trevethin-penygarn-st-cadocs': 'TPS',
-  'cross-area': 'cross-area'
 };
 
 const AREA_ID_TO_NAME: Record<string, Area> = Object.entries(AREA_NAME_TO_ID).reduce(
@@ -89,24 +82,12 @@ const AREA_ID_TO_NAME: Record<string, Area> = Object.entries(AREA_NAME_TO_ID).re
   {} as Record<string, Area>
 );
 
-const normalizeAreaId = (areaId?: string | null): string | undefined => {
-  if (!areaId) return undefined;
-  const trimmed = areaId.trim();
-  const legacyMatch = LEGACY_AREA_ID_TO_PRD[trimmed] || LEGACY_AREA_ID_TO_PRD[trimmed.toLowerCase()];
-  if (legacyMatch) return legacyMatch;
-  if (AREA_ID_TO_NAME[trimmed]) return trimmed;
-  const upper = trimmed.toUpperCase();
-  if (AREA_ID_TO_NAME[upper]) return upper;
-  return undefined;
-};
-
 const resolveAreaId = (area?: Area | null, areaId?: string | null): string | undefined => {
-  return normalizeAreaId(areaId) || (area ? AREA_NAME_TO_ID[area] : undefined);
+  return areaId || (area ? AREA_NAME_TO_ID[area] : undefined);
 };
 
 const resolveAreaName = (area?: Area | null, areaId?: string | null): Area | null => {
-  const normalizedAreaId = normalizeAreaId(areaId);
-  return area || (normalizedAreaId ? AREA_ID_TO_NAME[normalizedAreaId] || null : null);
+  return area || (areaId ? AREA_ID_TO_NAME[areaId] || null : null);
 };
 
 const mapUserFromFirestore = (data: Partial<User>, docId: string): User => {
@@ -219,10 +200,6 @@ const mapScoreToFirestore = (score: Score): Partial<Score> => {
     breakdown: score.breakdown || criterionScores,
     criterionScores
   };
-};
-
-const buildAssignmentId = (assignment: Pick<Assignment, 'applicationId' | 'committeeId'>): string => {
-  return `${assignment.applicationId}_${assignment.committeeId}`;
 };
 
 // --- HELPER: CSV Export ---
@@ -697,10 +674,7 @@ class AuthService {
 
   async updateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateDocumentFolder(id, updates);
-      const sanitizedUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, value]) => value !== undefined)
-      );
-      await setDoc(doc(db, 'documentFolders', id), sanitizedUpdates, { merge: true });
+      await setDoc(doc(db, 'documentFolders', id), updates, { merge: true });
   }
 
   async deleteDocumentFolder(id: string): Promise<void> {
@@ -995,13 +969,7 @@ class AuthService {
   mockUpdateDocumentFolder(id: string, updates: Partial<DocumentFolder>): Promise<void> {
     const folders = this.getLocal<DocumentFolder>('documentFolders');
     const i = folders.findIndex(folder => folder.id === id);
-    if (i >= 0) {
-      const sanitizedUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, value]) => value !== undefined)
-      );
-      folders[i] = { ...folders[i], ...sanitizedUpdates };
-      this.setLocal('documentFolders', folders);
-    }
+    if (i >= 0) { folders[i] = { ...folders[i], ...updates }; this.setLocal('documentFolders', folders); }
     return Promise.resolve();
   }
 
