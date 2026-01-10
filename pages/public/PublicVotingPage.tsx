@@ -4,6 +4,7 @@ import { PublicLayout } from '../../components/Layout';
 import { Vote as VoteIcon, Users, MapPin, DollarSign, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
 import { DataService } from '../../services/firebase';
 import { Application, PortalSettings } from '../../types';
+import { ROUTES } from '../../utils';
 
 const PublicVotingPage: React.FC = () => {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -64,7 +65,7 @@ const PublicVotingPage: React.FC = () => {
             Public voting will open soon. Please check back later or sign up for updates.
           </p>
           <Link
-            to="/"
+            to={ROUTES.PUBLIC.HOME}
             className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-bold transition-all"
           >
             <ArrowRight size={20} />

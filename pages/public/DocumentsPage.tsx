@@ -332,14 +332,14 @@ const DocumentsPage: React.FC = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              to="/priorities"
+              to={ROUTES.PUBLIC.PRIORITIES}
               className="bg-teal-500 hover:bg-teal-400 text-purple-950 px-8 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl inline-flex items-center justify-center gap-2"
             >
               <BookOpen size={20} />
               View Community Priorities
             </Link>
             <Link
-              to="/"
+              to={ROUTES.PUBLIC.HOME}
               className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold transition-all inline-flex items-center justify-center gap-2"
             >
               Back to Home
