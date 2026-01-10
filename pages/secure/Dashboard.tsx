@@ -42,16 +42,12 @@ const Dashboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
-  useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
+
     if (userProfile) {
       setCurrentUser(userProfile);
       loadData(userProfile);
@@ -96,22 +92,20 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  if (!currentUser) {
-    return null;
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || !currentUser || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   // Determine user role from enum or string
   const userRole = toUserRole(currentUser.role);
-
-  if (loading) {
-    return (
-      <SecureLayout userRole={userRole}>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-        </div>
-      </SecureLayout>
-    );
-  }
 
   return (
     <SecureLayout userRole={userRole}>

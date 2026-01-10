@@ -12,7 +12,7 @@ import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } fro
 const ApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const isNew = id === 'new';
 
   const [loading, setLoading] = useState(!isNew);
@@ -38,12 +38,7 @@ const ApplicationForm: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
-  useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
     if (!userProfile) {
       navigate(ROUTES.PUBLIC.LOGIN);
@@ -378,18 +373,15 @@ const ApplicationForm: React.FC = () => {
 
   const readOnly = isReadOnly();
 
-  if (!userProfile) {
-    return null;
-  }
-
-  if (loading) {
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || !userProfile || loading) {
     return (
-      <SecureLayout userRole={toUserRole(userProfile.role)}>
-        <div className="text-center py-12">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600 font-bold">Loading application...</p>
         </div>
-      </SecureLayout>
+      </div>
     );
   }
 

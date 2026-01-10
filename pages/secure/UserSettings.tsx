@@ -27,7 +27,7 @@ const UserSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
 
   // Form state
   const [profile, setProfile] = useState({
@@ -47,12 +47,7 @@ const UserSettings: React.FC = () => {
   const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
-  useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
     if (!userProfile) {
       navigate(ROUTES.PUBLIC.LOGIN);
@@ -175,13 +170,15 @@ const UserSettings: React.FC = () => {
     }
   };
 
-  if (loading || !currentUser) {
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || loading || !currentUser) {
     return (
-      <SecureLayout userRole={UserRole.PUBLIC}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading settings...</p>
         </div>
-      </SecureLayout>
+      </div>
     );
   }
 

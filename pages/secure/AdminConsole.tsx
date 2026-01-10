@@ -39,7 +39,7 @@ import {
 
 const AdminConsole: React.FC = () => {
   // Get current user from auth context
-  const { userProfile: currentUser } = useAuth();
+  const { userProfile: currentUser, loading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
   const [loading, setLoading] = useState(true);
@@ -2303,16 +2303,15 @@ const AdminConsole: React.FC = () => {
   // MAIN RENDER
   // ============================================================================
 
-  if (loading) {
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || loading) {
     return (
-      <SecureLayout userRole={UserRole.ADMIN}>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-700 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading admin console...</p>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading admin console...</p>
         </div>
-      </SecureLayout>
+      </div>
     );
   }
 

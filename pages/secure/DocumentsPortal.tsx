@@ -14,21 +14,18 @@ const DocumentsPortal: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
-  useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
-    setCurrentUser(userProfile);
+
     if (!userProfile) {
       navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
+
+    setCurrentUser(userProfile);
 
     const loadDocuments = async () => {
       setLoading(true);
@@ -49,11 +46,19 @@ const DocumentsPortal: React.FC = () => {
     void loadDocuments();
   }, [authLoading, userProfile, navigate]);
 
-  if (!currentUser) {
-    return null;
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || !currentUser || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading documents...</p>
+        </div>
+      </div>
+    );
   }
 
-  const userRole = toUserRole(currentUser?.role);
+  const userRole = toUserRole(currentUser.role);
 
   const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
 
@@ -65,14 +70,11 @@ const DocumentsPortal: React.FC = () => {
           <p className="text-gray-600">Access committee-only and public resources in one place.</p>
         </div>
 
-        {loading ? (
-          <Card className="p-8 text-center text-gray-500">Loading documents...</Card>
-        ) : (
-          <Card>
-            <div className="space-y-4">
-              {documents.length === 0 && (
-                <div className="text-center text-gray-500 py-8">No documents available yet.</div>
-              )}
+        <Card>
+          <div className="space-y-4">
+            {documents.length === 0 && (
+              <div className="text-center text-gray-500 py-8">No documents available yet.</div>
+            )}
               {documents.map(doc => (
                 <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-purple-300 transition">
                   <div className="flex items-center gap-3">
@@ -108,9 +110,8 @@ const DocumentsPortal: React.FC = () => {
                   )}
                 </div>
               ))}
-            </div>
-          </Card>
-        )}
+          </div>
+        </Card>
       </div>
     </SecureLayout>
   );

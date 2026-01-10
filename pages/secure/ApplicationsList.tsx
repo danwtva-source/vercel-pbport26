@@ -15,7 +15,7 @@ const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
 
 const ApplicationsList: React.FC = () => {
   const navigate = useNavigate();
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const currentUser = userProfile; // Alias for consistency
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,12 +24,7 @@ const ApplicationsList: React.FC = () => {
   const [filterArea, setFilterArea] = useState<Area | 'All'>('All');
 
   useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
-  useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
     void loadApplications();
   }, [authLoading, userProfile]);
@@ -148,8 +143,16 @@ const ApplicationsList: React.FC = () => {
     return false;
   };
 
-  if (!currentUser) {
-    return null;
+  // Show loading state while auth is resolving or data is loading
+  if (authLoading || !currentUser || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading applications...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

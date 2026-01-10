@@ -29,7 +29,7 @@ const ScoringMatrix: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<ApplicationWithScores | null>(null);
   const [scoringData, setScoringData] = useState<Record<string, CriterionScore>>({});
   const [saving, setSaving] = useState(false);
-  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const [filterStatus, setFilterStatus] = useState<'all' | 'scored' | 'unscored'>('unscored');
   const [activeRound, setActiveRound] = useState<Round | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
@@ -49,14 +49,9 @@ const ScoringMatrix: React.FC = () => {
     return { allowed: true };
   };
 
-  useEffect(() => {
-    if (!authLoading) {
-      void refreshProfile();
-    }
-  }, [authLoading, refreshProfile]);
-
   // Get current user on mount - MUST be before any conditional returns
   useEffect(() => {
+    // Wait for auth to finish loading
     if (authLoading) return;
     if (!userProfile) {
       navigate(ROUTES.PUBLIC.LOGIN);
@@ -123,13 +118,14 @@ const ScoringMatrix: React.FC = () => {
   };
 
   // Access control - render loading or access denied AFTER all hooks
-  if (!currentUser) {
+  if (authLoading || !currentUser) {
     return (
-      <SecureLayout userRole={UserRole.PUBLIC}>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-bold">Loading...</p>
         </div>
-      </SecureLayout>
+      </div>
     );
   }
 
