@@ -55,6 +55,27 @@ service cloud.firestore {
              exists(/databases/$(database)/documents/assignments/$(request.auth.uid + '_' + appId));
     }
 
+    function getApplicantId(data) {
+      return data.applicantId != null ? data.applicantId : data.userId;
+    }
+
+    function getCommitteeId(data) {
+      return data.committeeId != null ? data.committeeId : data.userId;
+    }
+
+    function getVoterId(data) {
+      return data.voterId != null ? data.voterId : data.userId;
+    }
+
+    function getScorerId(data) {
+      return data.scorerId != null ? data.scorerId : data.userId;
+    }
+
+    function hasAssignment(appId) {
+      return exists(/databases/$(database)/documents/assignments/$(appId + '_' + request.auth.uid)) ||
+             exists(/databases/$(database)/documents/assignments/$(request.auth.uid + '_' + appId));
+    }
+
     // Users collection
     match /users/{userId} {
       // Anyone can read user profiles (needed for displaying names, etc.)
@@ -94,7 +115,7 @@ service cloud.firestore {
 
       // Committee members can read assigned applications in their area
       allow read: if isCommittee() &&
-                     committeeAreaMatches(resource.data.area, resource.data.areaId) &&
+                     committeeAreaMatches(resource.data.area) &&
                      hasAssignment(appId);
 
       // Admins can do everything with applications
@@ -109,10 +130,7 @@ service cloud.firestore {
       // Committee members can create votes for applications in their area
       allow create: if isCommittee() &&
                        getVoterId(request.resource.data) == request.auth.uid &&
-                       committeeAreaMatches(
-                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area,
-                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.areaId
-                       );
+                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
 
       // Committee members can update their own votes
       allow update: if isCommittee() &&
@@ -130,10 +148,7 @@ service cloud.firestore {
       // Committee members can create scores for applications in their area
       allow create: if isCommittee() &&
                        getScorerId(request.resource.data) == request.auth.uid &&
-                       committeeAreaMatches(
-                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area,
-                         get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.areaId
-                       );
+                       committeeAreaMatches(get(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.area);
 
       // Committee members can update their own scores (if not final)
       allow update: if isCommittee() &&
@@ -188,6 +203,15 @@ service cloud.firestore {
     // Documents collection (guidelines, resources, etc.)
     match /documents/{docId} {
       allow read: if canReadVisibility(resource.data.visibility);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Document folders collection
+    match /documentFolders/{folderId} {
+      // Folder lists are readable for navigation
+      allow read: if true;
+
+      // Only admins can manage folders
       allow create, update, delete: if isAdmin();
     }
 

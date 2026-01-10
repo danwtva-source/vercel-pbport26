@@ -1,7 +1,7 @@
 Communities’ Choice Participatory ‎Budgeting Portal 
 Final Product Requirements ‎Document (PRD)‎
 Version: FINAL (v5) 
-Date: 2026-01-01 
+Date: 2026-02-14 
 Owner: Torfaen Voluntary Alliance (TVA) – Communities’ Choice Team
 
 Document status	Final / implementation-ready
@@ -158,15 +158,20 @@ timestamp	timestamp	Yes	When saved
 ‎6.7 documents/{docId} and documentFolders/{folderId}‎
 Folders must be real (not UI-only). Implement either documentFolders collection OR admin-‎editable folder list in portal settings. Canonical approach below uses documentFolders.‎
 Entity	Field	Type	Required	Description
+documentFolders	id	string	Yes	Document ID (matches document ID)
 documentFolders	name	string	Yes	Folder display ‎name
 documentFolders	slug	string	Yes	Stable key for ‎routing/filtering
+documentFolders	visibility	‎'public'|'committee'|'admin‎‎'‎	Yes	Who can read
 documentFolders	createdAt	timestamp	Yes	Created ‎timestamp
-documents	title	string	Yes	Document title
-documents	folderId	string	Yes	Folder reference
-documents	visibility	‎'public'|'committee'|'admin‎‎'‎	Yes	Who can read
+documentFolders	createdBy	string	Yes	Admin UID
+documents	id	string	Yes	Document ID (matches document ID)
+documents	name	string	Yes	Document title
+documents	url	string	No	Public download URL (if stored)
 documents	filePath	string	Yes	Storage path
+documents	folderId	string	Yes	Folder reference (or 'root'/null for unfiled)
+documents	visibility	‎'public'|'committee'|'admin‎‎'‎	Yes	Who can read
 documents	uploadedBy	string	Yes	Admin UID
-documents	uploadedAt	timestamp	Yes	Upload ‎timestamp
+documents	createdAt	timestamp	Yes	Created ‎timestamp
 
 ‎6.8 portalSettings/{id='global'}‎
 Field	Type	Required	Description
@@ -188,8 +193,7 @@ timestamp	timestamp	Yes	When logged
 ‎7. Public site requirements‎
 •	Public header includes: logo (public logo), navigation (Home, Priorities, Voting Zone, ‎Resources), CTA button ‘Secure Portal’.‎
 •	Public site content uses UK English and Communities’ Choice branding.‎
-•	Resources page must support a curated list of public documents/links; if documents are ‎served via the document module, only 'public' visibility documents are shown.‎
-•	Seed content (PUBLIC_DOCS) is a temporary placeholder for design/testing only. In production, all roles see Firestore-backed documents. If no public documents exist, the public Resources page shows an explicit empty state. Admins see guidance with a CTA to upload public documents in the secure Documents area; applicants/committee/public visitors see a “no documents yet” message. This keeps the public UX clear while prompting admins to populate content.‎
+•	Resources page must support a curated list of public documents/links; if documents are ‎served via the document module, only 'public' visibility documents are shown. If no public ‎documents exist yet, the page uses the seeded public documents list as a temporary fallback ‎(flag for removal once the live public documents collection is populated).‎
 •	Voting Zone: either (a) placeholder explaining voting dates; or (b) live voting (if already ‎implemented). Do not remove existing capability.‎
 ‎8. Authentication, sessions, and profile‎
 ‎8.1 Authentication‎
@@ -262,8 +266,9 @@ Threshold evaluation:‎
 •	Admin can create/rename/delete document folders (documentFolders).‎
 •	Admin can upload documents, set title, folder, visibility (public/committee/admin), and ‎delete documents.‎
 •	Documents must persist: metadata in Firestore, file in Storage.‎
+•	Visibility filters are applied per view: public resources = visibility 'public' only; committee ‎views = visibility in ['public','committee']; admin views = all documents or filtered by ‎selected visibility.‎
 •	Committee sees only committee/public documents; applicant sees only public documents.‎
-•	Folder delete behaviour: if folder contains documents, either (a) prevent deletion and ‎prompt to move docs, or (b) cascade by moving docs to an 'Unfiled' folder. Choose one; ‎default is prevent deletion.‎
+•	Folder delete behaviour (chosen): prevent deletion when a folder contains documents. Show ‎UI copy: “This folder contains documents. Move them to another folder before deleting.”‎
 ‎13. Formatting, UI copy, and branding (fixes)‎
 ‎13.1 Currency formatting (GBP only)‎
 •	All monetary values must render in GBP (£) using Intl.NumberFormat('en-GB', { style: ‎‎'currency', currency: 'GBP' }).‎
@@ -310,7 +315,7 @@ Admin console includes modules and behaviours below. All changes must write audi
 •	Avoid NaN: when no scores, average shows 0 and 'No scores yet'.‎
 ‎14.7 Documents centre‎
 •	Upload document, set folder, set visibility.‎
-•	Delete document removes metadata + file from Storage.‎
+•	Delete document removes metadata + file from Storage. If a filePath is not supplied to the ‎delete action, resolve it from the documents/{docId} record first; if Storage deletion fails, log ‎a warning and still delete Firestore metadata.‎
 •	Folder manager present (create/rename/delete).‎
 ‎14.8 Portal settings‎
 •	Admin can set default scoring threshold and confirm currency=GBP.‎
