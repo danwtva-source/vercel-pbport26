@@ -2,19 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
-import { PUBLIC_DOCS } from '../../constants';
 import { DataService } from '../../services/firebase';
 import { DocumentFolder, DocumentItem } from '../../types';
-
-type CategoryFilter = 'All' | 'Part 1' | 'Part 2';
+import { ROUTES, toStoredRole } from '../../utils';
+import { useAuth } from '../../context/AuthContext';
 
 const DocumentsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
   const [selectedFolderSlug, setSelectedFolderSlug] = useState(() => searchParams.get('folder') ?? '');
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const { userProfile } = useAuth();
+  const isAdmin = toStoredRole(userProfile?.role) === 'admin';
 
   useEffect(() => {
     let isMounted = true;
@@ -46,29 +46,20 @@ const DocumentsPage: React.FC = () => {
     setSelectedFolderSlug(searchParams.get('folder') ?? '');
   }, [searchParams]);
 
-  const usingFallback = documents.length === 0;
+  const hasDocuments = documents.length > 0;
   const folderById = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
   const folderBySlug = useMemo(
     () => new Map(folders.filter(folder => folder.slug).map(folder => [folder.slug, folder])),
     [folders]
   );
   const selectedFolder = selectedFolderSlug ? folderBySlug.get(selectedFolderSlug) : undefined;
-  const filteredDocs = usingFallback
-    ? (selectedCategory === 'All'
-      ? PUBLIC_DOCS
-      : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory))
-    : documents.filter((doc) => {
+  const filteredDocs = hasDocuments
+    ? documents.filter((doc) => {
       if (!selectedFolderSlug) return true;
       if (!selectedFolder) return false;
       return doc.folderId === selectedFolder.id;
-    });
-
-  const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
-
-  const getCategoryCount = (category: CategoryFilter) => {
-    if (category === 'All') return PUBLIC_DOCS.length;
-    return PUBLIC_DOCS.filter(doc => doc.category === category).length;
-  };
+    })
+    : [];
 
   const handleFolderFilterChange = (slug: string) => {
     setSelectedFolderSlug(slug);
@@ -79,10 +70,6 @@ const DocumentsPage: React.FC = () => {
       nextParams.delete('folder');
     }
     setSearchParams(nextParams, { replace: true });
-  };
-
-  const isSeedDoc = (doc: DocumentItem | (typeof PUBLIC_DOCS)[number]): doc is (typeof PUBLIC_DOCS)[number] => {
-    return (doc as (typeof PUBLIC_DOCS)[number]).title !== undefined;
   };
 
   return (
@@ -135,41 +122,7 @@ const DocumentsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Filter */}
-        {usingFallback && (
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <Filter size={20} className="text-purple-600" />
-              <h2 className="text-lg font-bold text-purple-900">Filter by Stage</h2>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              {categories.map((category) => {
-                const isSelected = selectedCategory === category;
-                const count = getCategoryCount(category);
-
-                return (
-                  <button
-                    key={category}
-                    onClick={() => setSelectedCategory(category)}
-                    className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                      isSelected
-                        ? 'bg-purple-600 text-white shadow-lg'
-                        : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
-                    }`}
-                  >
-                    {category}
-                    <span className={`ml-2 text-sm ${isSelected ? 'text-purple-200' : 'text-purple-500'}`}>
-                      ({count})
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {!usingFallback && folders.length > 0 && (
+        {hasDocuments && folders.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
               <Filter size={20} className="text-purple-600" />
@@ -205,49 +158,55 @@ const DocumentsPage: React.FC = () => {
               <FileText size={48} className="text-purple-300 mx-auto mb-4" />
               <p className="text-purple-600 font-semibold">Loading documents...</p>
             </div>
+          ) : !hasDocuments ? (
+            <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
+              <FileText size={48} className="text-purple-300 mx-auto mb-4" />
+              <p className="text-purple-700 font-semibold text-lg mb-2">No public documents yet</p>
+              <p className="text-purple-600 text-sm max-w-xl mx-auto">
+                {isAdmin
+                  ? 'Upload public guidance in the Documents area of the secure portal to make them available here.'
+                  : 'Check back soon for application forms and guidance.'}
+              </p>
+              {isAdmin && (
+                <div className="mt-4">
+                  <Link
+                    to={ROUTES.PORTAL.DOCUMENTS}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-purple-700"
+                  >
+                    Go to Documents
+                  </Link>
+                </div>
+              )}
+            </div>
           ) : filteredDocs.length === 0 ? (
             <div className="text-center py-12 bg-purple-50 rounded-xl border-2 border-purple-200">
               <FileText size={48} className="text-purple-300 mx-auto mb-4" />
-              <p className="text-purple-600 font-semibold">No documents found in this category</p>
+              <p className="text-purple-600 font-semibold">No documents found in this folder</p>
             </div>
           ) : (
-            filteredDocs.map((doc, index) => (
-              (() => {
-                const isSeed = isSeedDoc(doc as DocumentItem | (typeof PUBLIC_DOCS)[number]);
-                const title = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).title : (doc as DocumentItem).name;
-                const url = isSeed ? (doc as (typeof PUBLIC_DOCS)[number]).url : (doc as DocumentItem).url;
-                const folderMeta = !isSeed && (doc as DocumentItem).folderId
-                  ? folderById.get((doc as DocumentItem).folderId || '')
-                  : undefined;
-                const description = isSeed
-                  ? (doc as (typeof PUBLIC_DOCS)[number]).desc
-                  : folderMeta?.name
-                    ? `Folder: ${folderMeta.name}`
-                    : 'Shared document';
-                const badgeLabel = isSeed
-                  ? (doc as (typeof PUBLIC_DOCS)[number]).category
-                  : folderMeta?.name
-                    ? folderMeta.name
-                    : 'General';
-                const badgeSlug = !isSeed ? folderMeta?.slug : undefined;
-                const badgeClass = isSeed && (doc as (typeof PUBLIC_DOCS)[number]).category === 'Part 1'
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'bg-teal-100 text-teal-700';
+            filteredDocs.map((doc, index) => {
+              const title = doc.name;
+              const url = doc.url;
+              const folderMeta = doc.folderId ? folderById.get(doc.folderId || '') : undefined;
+              const description = folderMeta?.name
+                ? `Folder: ${folderMeta.name}`
+                : 'Shared document';
+              const badgeLabel = folderMeta?.name ? folderMeta.name : 'General';
+              const badgeSlug = folderMeta?.slug;
+              const badgeClass = folderMeta?.name ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700';
 
-                if (!url) {
-                  return null;
-                }
+              if (!url) {
+                return null;
+              }
 
-                return (
+              return (
               <div
                 key={index}
                 className="bg-white border-2 border-purple-200 hover:border-purple-400 rounded-xl p-6 transition-all hover:shadow-lg group"
               >
                 <div className="flex items-start gap-4">
                   <div className={`flex-shrink-0 w-14 h-14 rounded-lg flex items-center justify-center ${
-                    isSeed && (doc as (typeof PUBLIC_DOCS)[number]).category === 'Part 1'
-                      ? 'bg-purple-100 text-purple-600'
-                      : 'bg-teal-100 text-teal-600'
+                    folderMeta?.name ? 'bg-purple-100 text-purple-600' : 'bg-teal-100 text-teal-600'
                   }`}>
                     <FileText size={28} />
                   </div>
@@ -290,9 +249,8 @@ const DocumentsPage: React.FC = () => {
                   </a>
                 </div>
               </div>
-                );
-              })()
-            ))
+              );
+            })
           )}
         </div>
 
