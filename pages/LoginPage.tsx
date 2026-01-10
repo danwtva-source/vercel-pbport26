@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { PublicLayout } from '../components/Layout';
 import { Button, Input, Card } from '../components/UI';
 import { api } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
 import { LogIn, UserPlus, AlertCircle, Loader } from 'lucide-react';
+import { ROUTES } from '../utils';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,8 +48,9 @@ export const LoginPage: React.FC = () => {
       // Store user in localStorage (AuthService pattern)
       localStorage.setItem('pb_user', JSON.stringify(user));
 
-      // Redirect to portal dashboard
-      navigate('/portal/dashboard');
+      await refreshProfile();
+      // Redirect to portal root so role-based redirect handles landing
+      navigate(ROUTES.PORTAL.ROOT);
     } catch (err: any) {
       setError(err.message || `Failed to ${mode === 'login' ? 'sign in' : 'create account'}`);
     } finally {

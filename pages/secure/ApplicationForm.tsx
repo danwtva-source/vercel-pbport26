@@ -2,16 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Badge } from '../../components/UI';
-import { api, api as AuthService } from '../../services/firebase';
+import { api } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus, BudgetLine, AREAS, Round, PortalSettings } from '../../types';
 import { MARMOT_PRINCIPLES, WFG_GOALS, ORG_TYPES } from '../../constants';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { Save, Send, ArrowLeft, FileText, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 
 const ApplicationForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
   const isNew = id === 'new';
 
   const [loading, setLoading] = useState(!isNew);
@@ -37,7 +38,14 @@ const ApplicationForm: React.FC = () => {
   });
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!userProfile) {
       navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
@@ -65,17 +73,17 @@ const ApplicationForm: React.FC = () => {
       // Set default user info for new applications
       setApplication(prev => ({
         ...prev,
-        userId: currentUser.uid,
-        applicantName: currentUser.displayName || '',
+        userId: userProfile.uid,
+        applicantName: userProfile.displayName || '',
         formData: {
           ...prev.formData,
-          contactEmail: currentUser.email || '',
-          declarationName: currentUser.displayName || ''
+          contactEmail: userProfile.email || '',
+          declarationName: userProfile.displayName || ''
         }
       }));
       setLoading(false);
     }
-  }, [id, isNew]);
+  }, [authLoading, id, isNew, userProfile, navigate]);
 
   const loadApplication = async (appId: string) => {
     try {
@@ -90,7 +98,7 @@ const ApplicationForm: React.FC = () => {
       }
 
       // Check permissions - applicants can only view their own applications
-      if (toUserRole(currentUser?.role) === UserRole.APPLICANT && app.userId !== currentUser.uid) {
+      if (toUserRole(userProfile?.role) === UserRole.APPLICANT && app.userId !== userProfile?.uid) {
         setError('You do not have permission to view this application');
         setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
         return;
@@ -250,7 +258,7 @@ const ApplicationForm: React.FC = () => {
         ...application,
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
-        userId: currentUser?.uid || '',
+        userId: userProfile?.uid || '',
         status: statusToSave,
         createdAt: application.createdAt || now,
         updatedAt: now
@@ -274,7 +282,7 @@ const ApplicationForm: React.FC = () => {
 
   // Check if submission is allowed based on round settings
   const isSubmissionAllowed = (): { allowed: boolean; reason?: string } => {
-    const isAdmin = toUserRole(currentUser?.role) === UserRole.ADMIN;
+    const isAdmin = toUserRole(userProfile?.role) === UserRole.ADMIN;
 
     // Admin can always submit (override)
     if (isAdmin) return { allowed: true };
@@ -330,7 +338,7 @@ const ApplicationForm: React.FC = () => {
         ...application,
         id: application.id || `app_${now}`,
         ref: application.ref || `PB-${application.area?.substring(0, 3).toUpperCase() || 'NEW'}-${Math.floor(Math.random() * 900 + 100)}`,
-        userId: currentUser?.uid || '',
+        userId: userProfile?.uid || '',
         roundId: activeRound?.id, // Link application to active round
         status,
         createdAt: application.createdAt || now,
@@ -357,7 +365,7 @@ const ApplicationForm: React.FC = () => {
 
   // Determine if form is read-only
   const isReadOnly = () => {
-    const userRole = toUserRole(currentUser?.role);
+    const userRole = toUserRole(userProfile?.role);
     if (userRole === UserRole.ADMIN) return false;
     if (userRole === UserRole.COMMITTEE) return true;
     if (userRole === UserRole.APPLICANT) {
@@ -370,13 +378,13 @@ const ApplicationForm: React.FC = () => {
 
   const readOnly = isReadOnly();
 
-  if (!currentUser) {
+  if (!userProfile) {
     return null;
   }
 
   if (loading) {
     return (
-      <SecureLayout userRole={toUserRole(currentUser.role)}>
+      <SecureLayout userRole={toUserRole(userProfile.role)}>
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600 font-bold">Loading application...</p>
@@ -386,7 +394,7 @@ const ApplicationForm: React.FC = () => {
   }
 
   return (
-    <SecureLayout userRole={toUserRole(currentUser.role)}>
+    <SecureLayout userRole={toUserRole(userProfile.role)}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -451,7 +459,7 @@ const ApplicationForm: React.FC = () => {
         {readOnly && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
             <p className="text-sm text-blue-800 font-medium">
-              This application is in read-only mode. {toUserRole(currentUser.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
+              This application is in read-only mode. {toUserRole(userProfile.role) === UserRole.COMMITTEE && 'Committee members can view but not edit applications.'}
             </p>
           </div>
         )}

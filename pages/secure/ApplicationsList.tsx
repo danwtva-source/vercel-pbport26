@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Badge, Input } from '../../components/UI';
 import { api } from '../../services/firebase';
-import { api as AuthService } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, ROUTES, toUserRole } from '../../utils';
 import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
 
@@ -15,7 +15,7 @@ const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
 
 const ApplicationsList: React.FC = () => {
   const navigate = useNavigate();
-  const currentUser = AuthService.getCurrentUser();
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,34 +23,41 @@ const ApplicationsList: React.FC = () => {
   const [filterArea, setFilterArea] = useState<Area | 'All'>('All');
 
   useEffect(() => {
-    loadApplications();
-  }, []);
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void loadApplications();
+  }, [authLoading, userProfile]);
 
   const loadApplications = async () => {
     try {
       setLoading(true);
       let apps: Application[] = [];
 
-      if (!currentUser) {
+      if (!userProfile) {
         navigate(ROUTES.PUBLIC.LOGIN);
         return;
       }
 
       // Load applications based on user role
-      if (isRole(currentUser.role, UserRole.ADMIN)) {
+      if (isRole(userProfile.role, UserRole.ADMIN)) {
         // ADMIN: Get all applications
         apps = await api.getApplications('All');
-      } else if (isRole(currentUser.role, UserRole.COMMITTEE)) {
+      } else if (isRole(userProfile.role, UserRole.COMMITTEE)) {
         // COMMITTEE: Get applications for their area
-        if (currentUser.area) {
-          apps = await api.getApplications(currentUser.area);
+        if (userProfile.area) {
+          apps = await api.getApplications(userProfile.area);
         } else {
           apps = await api.getApplications('All');
         }
-      } else if (isRole(currentUser.role, UserRole.APPLICANT)) {
+      } else if (isRole(userProfile.role, UserRole.APPLICANT)) {
         // APPLICANT: Get only their own applications
         const allApps = await api.getApplications('All');
-        apps = allApps.filter(app => app.userId === currentUser.uid);
+        apps = allApps.filter(app => app.userId === userProfile.uid);
       } else {
         apps = [];
       }

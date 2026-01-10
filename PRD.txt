@@ -1,7 +1,7 @@
 Communities’ Choice Participatory ‎Budgeting Portal 
 Final Product Requirements ‎Document (PRD)‎
-Version: FINAL (v5) 
-Date: 2026-02-14 
+Version: FINAL (v6) 
+Date: 2026-02-20 
 Owner: Torfaen Voluntary Alliance (TVA) – Communities’ Choice Team
 
 Document status	Final / implementation-ready
@@ -17,6 +17,24 @@ This PRD is written so that an AI engineer can implement the portal end-to-end w
 •	Use canonical ROUTES constants and canonical data models defined in this PRD.‎
 •	Implement role + area scoping and stage gating exactly as specified.‎
 •	After every change: build must pass and core smoke tests must pass.‎
+
+‎0.1 Current implementation alignment (v6 audit)‎
+This section documents how the repository currently implements the PRD so new work can confirm alignment and avoid regressions:
+•	Routing uses React Router with a HashRouter wrapper in App.tsx; PortalRedirect and ProtectedRoute apply role-based redirects using toUserRole from utils.ts.‎
+•	Role normalisation helpers live in utils.ts (toUserRole, toStoredRole, isStoredRole) and are referenced throughout secure pages.‎
+•	Firebase is configured in services/firebase.ts with USE_DEMO_MODE=false; pb_user is mirrored in localStorage for compatibility and used by DataService.getCurrentUser.‎
+•	Public Documents use a live Firestore-backed collection with fallback to PUBLIC_DOCS in constants.ts; folder visibility is filtered in pages/public/DocumentsPage.tsx.‎
+•	Service worker registration in index.html expects /sw.js to be served as a static asset (served from public/).‎
+•	Build output directory is dist (Vite) per vercel.json and package.json build script.‎
+If any of these change, update this section to keep the PRD truthful.
+
+‎0.2 Release readiness checklist (pilot gating)‎
+Before declaring the weekend pilot-ready release:
+•	Vercel build succeeds (npm run build) with no console errors in production preview.‎
+•	Admin, committee, applicant, and public user journeys succeed end-to-end (Section 14).‎
+•	Firebase rules and data mappings are validated against Section 6 canonical fields.‎
+•	Broken link count is zero and portal redirects never send authenticated users to /login.‎
+•	All external document links resolve and document visibility matches the folder rules.‎
 
 ‎1. Executive summary‎
 The Communities’ Choice PB Portal is a single web application that supports: (1) a branded ‎public site; (2) a secure portal for applicants to submit Stage 1 Expressions of Interest (EOI) ‎and Stage 2 full proposals; (3) a secure portal for People’s Committee members to vote (Stage ‎‎1) and score (Stage 2) using a weighted matrix; and (4) an admin console for TVA staff to ‎manage rounds, users, assignments, documents, scoring/voting data, settings, and exports.‎

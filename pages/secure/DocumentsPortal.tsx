@@ -5,6 +5,8 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService } from '../../services/firebase';
 import { Badge, Card } from '../../components/UI';
 import { DocumentFolder, DocumentItem, User, UserRole } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { ROUTES, toUserRole } from '../../utils';
 
 const DocumentsPortal: React.FC = () => {
   const navigate = useNavigate();
@@ -12,12 +14,19 @@ const DocumentsPortal: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const { userProfile, loading: authLoading, refreshProfile } = useAuth();
 
   useEffect(() => {
-    const user = DataService.getCurrentUser();
-    setCurrentUser(user);
-    if (!user) {
-      navigate('/login');
+    if (!authLoading) {
+      void refreshProfile();
+    }
+  }, [authLoading, refreshProfile]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    setCurrentUser(userProfile);
+    if (!userProfile) {
+      navigate(ROUTES.PUBLIC.LOGIN);
       return;
     }
 
@@ -38,17 +47,13 @@ const DocumentsPortal: React.FC = () => {
     };
 
     void loadDocuments();
-  }, [navigate]);
+  }, [authLoading, userProfile, navigate]);
 
   if (!currentUser) {
     return null;
   }
 
-  const userRole = currentUser.role === 'applicant' ? UserRole.APPLICANT :
-    currentUser.role === 'committee' ? UserRole.COMMITTEE :
-    currentUser.role === 'admin' ? UserRole.ADMIN :
-    currentUser.role === 'community' ? UserRole.COMMUNITY :
-    UserRole.PUBLIC;
+  const userRole = toUserRole(currentUser?.role);
 
   const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
 

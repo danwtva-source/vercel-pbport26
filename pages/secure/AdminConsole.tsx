@@ -102,7 +102,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, assignmentsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
