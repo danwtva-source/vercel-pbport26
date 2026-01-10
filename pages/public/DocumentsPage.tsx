@@ -4,15 +4,21 @@ import { PublicLayout } from '../../components/Layout';
 import { FileText, Download, ExternalLink, Filter, BookOpen, Info } from 'lucide-react';
 import { PUBLIC_DOCS } from '../../constants';
 import { DataService } from '../../services/firebase';
-import { DocumentFolder, DocumentItem } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { DocumentFolder, DocumentItem, UserRole } from '../../types';
+import { ROUTES, toUserRole } from '../../utils';
 
 type CategoryFilter = 'All' | 'Part 1' | 'Part 2';
+const categories: CategoryFilter[] = ['All', 'Part 1', 'Part 2'];
 
 const DocumentsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('All');
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const { userProfile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedFolderSlug, setSelectedFolderSlug] = useState<string>(() => searchParams.get('folder') ?? '');
 
   useEffect(() => {
     let isMounted = true;
@@ -40,27 +46,39 @@ const DocumentsPage: React.FC = () => {
     };
   }, []);
 
-  const usingFallback = documents.length === 0;
-  const filteredDocs = usingFallback
-    ? (selectedCategory === 'All'
-      ? PUBLIC_DOCS
-      : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory))
-    : documents;
+  useEffect(() => {
+    setSelectedFolderSlug(searchParams.get('folder') ?? '');
+  }, [searchParams]);
 
+  const usingFallback = documents.length === 0;
+  const isAdmin = toUserRole(userProfile?.role) === UserRole.ADMIN;
   const hasDocuments = documents.length > 0;
-  const folderById = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
   const folderBySlug = useMemo(
     () => new Map(folders.filter(folder => folder.slug).map(folder => [folder.slug, folder])),
     [folders]
   );
   const selectedFolder = selectedFolderSlug ? folderBySlug.get(selectedFolderSlug) : undefined;
-  const filteredDocs = hasDocuments
-    ? documents.filter((doc) => {
-      if (!selectedFolderSlug) return true;
-      if (!selectedFolder) return false;
-      return doc.folderId === selectedFolder.id;
-    })
-    : [];
+  const filteredDocs = useMemo(() => {
+    if (usingFallback) {
+      return selectedCategory === 'All'
+        ? PUBLIC_DOCS
+        : PUBLIC_DOCS.filter(doc => doc.category === selectedCategory);
+    }
+
+    if (!hasDocuments) {
+      return [];
+    }
+
+    if (!selectedFolderSlug) {
+      return documents;
+    }
+
+    if (!selectedFolder) {
+      return [];
+    }
+
+    return documents.filter(doc => doc.folderId === selectedFolder.id);
+  }, [documents, hasDocuments, selectedCategory, selectedFolder, selectedFolderSlug, usingFallback]);
 
   const handleFolderFilterChange = (slug: string) => {
     setSelectedFolderSlug(slug);
@@ -71,6 +89,13 @@ const DocumentsPage: React.FC = () => {
       nextParams.delete('folder');
     }
     setSearchParams(nextParams, { replace: true });
+  };
+
+  const getCategoryCount = (category: CategoryFilter) => {
+    if (category === 'All') {
+      return PUBLIC_DOCS.length;
+    }
+    return PUBLIC_DOCS.filter(doc => doc.category === category).length;
   };
 
   const folderLookup = useMemo(() => new Map(folders.map(folder => [folder.id, folder.name])), [folders]);
