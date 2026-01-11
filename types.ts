@@ -572,27 +572,34 @@ export interface FundingSimulation {
 
 // --- ANNOUNCEMENTS ---
 
-export type AnnouncementCategory = 'general' | 'deadlines' | 'results' | 'events';
+export type AnnouncementCategory = 'general' | 'deadline' | 'update' | 'event' | 'result' | 'news';
+export type AnnouncementVisibility = 'all' | 'applicants' | 'committee' | 'admin';
+export type AnnouncementPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface Announcement {
   id: string;
   title: string;
   content: string;
   category: AnnouncementCategory;
-  /** Whether to send email/push notifications */
-  sendNotification: boolean;
   /** Target audience */
-  visibility: 'all' | 'registered' | 'committee' | 'admin';
-  /** Author UID */
-  authorId: string;
-  authorName: string;
-  /** Publication status */
-  status: 'draft' | 'published' | 'archived';
-  publishedAt?: number;
-  createdAt: number;
-  updatedAt: number;
+  visibility: AnnouncementVisibility;
+  /** Priority level */
+  priority: AnnouncementPriority;
   /** Pin to top of announcements */
   pinned?: boolean;
+  /** Call to action button */
+  actionLabel?: string;
+  actionUrl?: string;
+  /** Display date range (optional) */
+  startDate?: number;
+  endDate?: number;
+  /** Timestamps */
+  createdAt?: number;
+  updatedAt?: number;
+  /** Author */
+  createdBy?: string;
+  /** View tracking */
+  readCount?: number;
 }
 
 // --- DISCUSSION BOARD ---

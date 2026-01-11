@@ -519,10 +519,12 @@ export const DEFAULT_COEFFICIENT_SETTINGS: CoefficientSettings = {
 // ============================================================================
 
 export const ANNOUNCEMENT_CATEGORIES = [
-  { value: 'general', label: 'General' },
-  { value: 'deadlines', label: 'Deadlines' },
-  { value: 'results', label: 'Results' },
-  { value: 'events', label: 'Events' }
+  'general',
+  'deadline',
+  'update',
+  'event',
+  'result',
+  'news'
 ] as const;
 
 // ============================================================================

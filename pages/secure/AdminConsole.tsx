@@ -12,10 +12,11 @@ import {
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
   Eye, Upload, FolderOpen, Calendar, Search, Filter, TrendingUp,
   UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList,
-  DollarSign, Calculator
+  DollarSign, Calculator, Bell
 } from 'lucide-react';
 import { FinancialDashboard } from '../../components/FinancialDashboard';
 import { CoefficientConfig } from '../../components/CoefficientConfig';
+import { AnnouncementEditor } from '../../components/AnnouncementEditor';
 
 // ============================================================================
 // ADMIN CONSOLE - MASTER CONTROL PANEL
@@ -55,6 +56,7 @@ const AdminConsole: React.FC = () => {
       || tab === 'rounds'
       || tab === 'financials'
       || tab === 'coefficients'
+      || tab === 'announcements'
       || tab === 'documents'
       || tab === 'logs'
       || tab === 'settings'
@@ -63,7 +65,7 @@ const AdminConsole: React.FC = () => {
     }
     return 'overview';
   };
-  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'financials' | 'coefficients' | 'documents' | 'logs' | 'settings'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'financials' | 'coefficients' | 'announcements' | 'documents' | 'logs' | 'settings'>(
     () => resolveTab(searchParams.get('tab'))
   );
   const tabParam = searchParams.get('tab');
@@ -142,6 +144,9 @@ const AdminConsole: React.FC = () => {
   // Financial and Coefficient state
   const [selectedRoundForConfig, setSelectedRoundForConfig] = useState<string | null>(null);
   const [financialRecords, setFinancialRecords] = useState<Record<string, any>>({});
+
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<any[]>([]);
 
   // Load all data
   useEffect(() => {
@@ -1698,6 +1703,58 @@ const AdminConsole: React.FC = () => {
   };
 
   // ============================================================================
+  // TAB: ANNOUNCEMENTS - ANNOUNCEMENT MANAGEMENT
+  // ============================================================================
+
+  const AnnouncementsTab = () => {
+    const handleSaveAnnouncement = async (announcement: any) => {
+      try {
+        // For now, store in local state - will add Firebase integration later
+        setAnnouncements(prev => {
+          const existingIndex = prev.findIndex(a => a.id === announcement.id);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = announcement;
+            return updated;
+          }
+          return [...prev, announcement];
+        });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ANNOUNCEMENT_SAVE',
+          targetId: announcement.id,
+          details: { title: announcement.title }
+        });
+      } catch (error) {
+        console.error('Error saving announcement:', error);
+        throw error;
+      }
+    };
+
+    const handleDeleteAnnouncement = async (id: string) => {
+      try {
+        setAnnouncements(prev => prev.filter(a => a.id !== id));
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'ANNOUNCEMENT_DELETE',
+          targetId: id
+        });
+      } catch (error) {
+        console.error('Error deleting announcement:', error);
+        throw error;
+      }
+    };
+
+    return (
+      <AnnouncementEditor
+        announcements={announcements}
+        onSave={handleSaveAnnouncement}
+        onDelete={handleDeleteAnnouncement}
+      />
+    );
+  };
+
+  // ============================================================================
   // TAB: DOCUMENTS - DOCUMENT MANAGEMENT
   // ============================================================================
 
@@ -2598,6 +2655,17 @@ const AdminConsole: React.FC = () => {
               Coefficients
             </button>
             <button
+              onClick={() => handleTabChange('announcements')}
+              className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
+                activeTab === 'announcements'
+                  ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Bell size={18} />
+              Announcements
+            </button>
+            <button
               onClick={() => handleTabChange('documents')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'documents'
@@ -2642,6 +2710,7 @@ const AdminConsole: React.FC = () => {
           {activeTab === 'rounds' && <RoundsTab />}
           {activeTab === 'financials' && <FinancialsTab />}
           {activeTab === 'coefficients' && <CoefficientsTab />}
+          {activeTab === 'announcements' && <AnnouncementsTab />}
           {activeTab === 'documents' && <DocumentsTab />}
           {activeTab === 'logs' && <LogsTab />}
           {activeTab === 'settings' && <SettingsTab />}
