@@ -22,6 +22,14 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+const inferredStorageBucket = firebaseConfig.storageBucket
+  || (firebaseConfig.projectId ? `${firebaseConfig.projectId}.appspot.com` : undefined);
+
+const firebaseConfigWithBucket = {
+  ...firebaseConfig,
+  storageBucket: inferredStorageBucket
+};
+
 // Check if Firebase config is available, otherwise log warning
 const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
@@ -40,7 +48,7 @@ const secondaryAppName = 'secondary';
 
 try {
   if (hasFirebaseConfig) {
-    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    app = getApps().length ? getApp() : initializeApp(firebaseConfigWithBucket);
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
@@ -48,7 +56,7 @@ try {
     // Create secondary app for admin user creation (prevents session switch)
     secondaryApp = getApps().some(existing => existing.name === secondaryAppName)
       ? getApp(secondaryAppName)
-      : initializeApp(firebaseConfig, secondaryAppName);
+      : initializeApp(firebaseConfigWithBucket, secondaryAppName);
     secondaryAuth = getAuth(secondaryApp);
   } else if (!USE_DEMO_MODE) {
     console.error('❌ Cannot initialize Firebase: Missing configuration');
