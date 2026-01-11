@@ -234,8 +234,53 @@ export const exportToCSV = (data: any[], filename: string) => {
     link.click();
 };
 
+// --- CONSTANTS: File Upload Validation ---
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ALLOWED_FILE_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'text/plain',
+    'text/csv'
+];
+const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.txt', '.csv'];
+
+// --- HELPER: Validate File Before Upload ---
+export const validateFile = (file: File): { valid: boolean; error?: string } => {
+    // Check file size
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+        return { valid: false, error: `File size exceeds ${MAX_FILE_SIZE_MB}MB limit.` };
+    }
+
+    // Check file extension
+    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '');
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        return { valid: false, error: `File type not allowed. Accepted: ${ALLOWED_EXTENSIONS.join(', ')}` };
+    }
+
+    // Check MIME type (additional security layer)
+    if (file.type && !ALLOWED_FILE_TYPES.includes(file.type)) {
+        console.warn(`MIME type ${file.type} not in allowed list, but extension is valid`);
+    }
+
+    return { valid: true };
+};
+
 // --- HELPER: Upload Generic File to Firebase Storage ---
 export const uploadFile = async (path: string, file: File): Promise<string> => {
+    // Validate file before upload
+    const validation = validateFile(file);
+    if (!validation.valid) {
+        throw new Error(validation.error || 'File validation failed.');
+    }
+
     if (USE_DEMO_MODE) return `https://fake-url.com/${file.name}`;
 
     const ensureStorage = () => {
