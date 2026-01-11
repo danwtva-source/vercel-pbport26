@@ -205,6 +205,13 @@ export interface Application {
   publicVoteImage?: string; // URL to image for public voting display
   publicVoteBlurb?: string; // Short description for public voting (max 200 words)
   publicVotePackComplete?: boolean; // True when both image and blurb submitted
+  blurbApproved?: boolean; // Whether blurb is approved for voting page
+
+  // --- Reach Data for Coefficient Calculation ---
+  reachData?: ReachData;
+
+  // --- Voting Data (with coefficient adjustment) ---
+  votingData?: VotingData;
 
   // --- Stage 1 (EOI) Data ---
   formData: {
@@ -445,4 +452,227 @@ export interface MasterTask {
   description: string;
   area?: string;
   targetRef?: string;
+}
+
+// --- COEFFICIENT CALCULATION (Reach/Impact Weighting) ---
+
+export type CoefficientTier = 'small' | 'medium' | 'large';
+
+export interface CoefficientTierConfig {
+  /** Maximum reach value for this tier (inclusive). For 'large' tier, this is Infinity */
+  maxReach: number;
+  /** Coefficient factor to apply (e.g., 1.0, 1.1, 1.2) */
+  factor: number;
+}
+
+export interface CoefficientSettings {
+  /** Whether coefficient weighting is enabled for this round */
+  enabled: boolean;
+  /** Whether to apply weighting to in-person votes (default: false, digital only) */
+  applyToInPerson: boolean;
+  /** Tier configuration */
+  tiers: {
+    small: CoefficientTierConfig;   // Default: maxReach 24, factor 1.2
+    medium: CoefficientTierConfig;  // Default: maxReach 100, factor 1.1
+    large: CoefficientTierConfig;   // Default: maxReach Infinity, factor 1.0
+  };
+}
+
+export interface ReachData {
+  /** Estimated reach figure (membership, mailing list, or social following) */
+  reachFigure: number;
+  /** URL to evidence (screenshot, profile link, etc.) */
+  evidenceUrl?: string;
+  /** Path to uploaded evidence file */
+  evidenceFilePath?: string;
+  /** Whether applicant has confirmed the declaration */
+  declarationConfirmed: boolean;
+  /** Calculated tier based on reach figure */
+  tier?: CoefficientTier;
+  /** Applied coefficient factor */
+  coefficientFactor?: number;
+  /** Admin audit flag (if evidence is questionable) */
+  auditFlag?: boolean;
+  /** Admin override coefficient (if auditFlag is true) */
+  adminOverrideFactor?: number;
+  /** Admin notes for audit */
+  adminNotes?: string;
+}
+
+export interface VotingData {
+  /** Raw digital vote count */
+  rawDigitalVotes: number;
+  /** Coefficient factor applied */
+  coefficientFactor: number;
+  /** Adjusted digital votes (raw × coefficient) */
+  adjustedDigitalVotes: number;
+  /** In-person vote count (recorded separately) */
+  inPersonVotes: number;
+  /** Total votes (adjusted digital + in-person, or raw if coefficient disabled) */
+  totalVotes: number;
+}
+
+// --- FINANCIAL MANAGEMENT ---
+
+export interface FinancialRecord {
+  id: string;
+  roundId: string;
+  /** Total funding allocated for this round */
+  totalFunding: number;
+  /** Total funding spent to date */
+  totalSpent: number;
+  /** Remaining pot (totalFunding - totalSpent) */
+  remainingPot: number;
+  /** Spend breakdown by geographic area */
+  spendByArea: Record<string, number>;
+  /** Spend breakdown by priority category */
+  spendByPriority: Record<string, number>;
+  /** Last updated timestamp */
+  updatedAt: number;
+  /** Who last updated */
+  updatedBy: string;
+}
+
+export interface AreaFinancials {
+  area: Area;
+  allocated: number;
+  spent: number;
+  remaining: number;
+  round1Spend?: number;
+  projectCount: number;
+  pendingRequests: number;
+}
+
+export interface FundingSimulation {
+  /** Application ID being simulated */
+  applicationId: string;
+  /** Amount requested */
+  amountRequested: number;
+  /** Impact on remaining budget */
+  remainingAfterApproval: number;
+  /** Whether this would exceed budget */
+  exceedsBudget: boolean;
+  /** Priority category impact */
+  priorityImpact: {
+    category: string;
+    currentSpend: number;
+    newSpend: number;
+  };
+}
+
+// --- ANNOUNCEMENTS ---
+
+export type AnnouncementCategory = 'general' | 'deadlines' | 'results' | 'events';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  category: AnnouncementCategory;
+  /** Whether to send email/push notifications */
+  sendNotification: boolean;
+  /** Target audience */
+  visibility: 'all' | 'registered' | 'committee' | 'admin';
+  /** Author UID */
+  authorId: string;
+  authorName: string;
+  /** Publication status */
+  status: 'draft' | 'published' | 'archived';
+  publishedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+  /** Pin to top of announcements */
+  pinned?: boolean;
+}
+
+// --- DISCUSSION BOARD ---
+
+export interface DiscussionThread {
+  id: string;
+  title: string;
+  /** Topic category aligned with priority areas */
+  category: string;
+  /** Thread starter UID */
+  authorId: string;
+  authorName: string;
+  /** Initial post content */
+  content: string;
+  /** Number of replies */
+  replyCount: number;
+  /** Last activity timestamp */
+  lastActivityAt: number;
+  createdAt: number;
+  /** Moderation status */
+  status: 'pending' | 'approved' | 'rejected' | 'closed';
+  /** Whether thread is locked for new replies */
+  locked?: boolean;
+  /** Pinned threads appear at top */
+  pinned?: boolean;
+}
+
+export interface DiscussionPost {
+  id: string;
+  threadId: string;
+  /** Author UID */
+  authorId: string;
+  authorName: string;
+  content: string;
+  /** Parent post ID for threaded replies */
+  parentId?: string;
+  createdAt: number;
+  updatedAt?: number;
+  /** Moderation status */
+  status: 'pending' | 'approved' | 'rejected';
+  /** Number of likes/upvotes */
+  likes?: number;
+}
+
+// --- HAVE YOUR SAY SUGGESTIONS ---
+
+export interface PrioritySuggestion {
+  id: string;
+  /** Submitter UID */
+  submitterId: string;
+  submitterName: string;
+  /** Suggested priority title */
+  title: string;
+  /** Description of the suggestion */
+  description: string;
+  /** Which area this suggestion applies to */
+  area?: Area | 'all';
+  /** Admin review status */
+  status: 'pending' | 'under_review' | 'accepted' | 'rejected';
+  /** Admin feedback/notes */
+  adminNotes?: string;
+  /** If accepted, which priority it became */
+  linkedPriorityId?: string;
+  /** Notification sent to submitter */
+  notificationSent?: boolean;
+  createdAt: number;
+  reviewedAt?: number;
+  reviewedBy?: string;
+}
+
+// --- AI BLURB GENERATION ---
+
+export interface BlurbGeneration {
+  id: string;
+  applicationId: string;
+  /** Generated blurb content */
+  generatedBlurb: string;
+  /** Edited version (if modified by applicant) */
+  editedBlurb?: string;
+  /** Final submitted blurb */
+  submittedBlurb?: string;
+  /** Generation timestamp */
+  generatedAt: number;
+  /** Submission timestamp */
+  submittedAt?: number;
+  /** Approval status */
+  approvalStatus: 'pending' | 'approved' | 'rejected' | 'revision_requested';
+  /** Reviewer UID */
+  reviewedBy?: string;
+  /** Reviewer feedback */
+  reviewerNotes?: string;
+  reviewedAt?: number;
 }
