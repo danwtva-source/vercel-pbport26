@@ -1,4 +1,4 @@
-import { AreaData, PriorityData, Application, User, UserRole, Criterion, ScoreCriterion } from './types';
+import { AreaData, PriorityData, Application, User, UserRole, Criterion, ScoreCriterion, CoefficientSettings } from './types';
 
 // ============================================================================
 // WFG & MARMOT DEFINITIONS
@@ -495,3 +495,66 @@ export const DEMO_DOCUMENTS = [
 
 // Legacy export for backward compatibility
 export const DEMO_APPS = DEMO_APPLICATIONS;
+
+// ============================================================================
+// COEFFICIENT CALCULATION DEFAULTS (PRD 4.4.4)
+// ============================================================================
+
+/**
+ * Default coefficient settings for reach/impact weighting in digital voting.
+ * Tiers: Small (0-24) = 1.2x, Medium (25-100) = 1.1x, Large (101+) = 1.0x
+ */
+export const DEFAULT_COEFFICIENT_SETTINGS: CoefficientSettings = {
+  enabled: false,
+  applyToInPerson: false,
+  tiers: {
+    small: { maxReach: 24, factor: 1.2 },
+    medium: { maxReach: 100, factor: 1.1 },
+    large: { maxReach: Infinity, factor: 1.0 }
+  }
+};
+
+// ============================================================================
+// ANNOUNCEMENT CATEGORIES
+// ============================================================================
+
+export const ANNOUNCEMENT_CATEGORIES = [
+  { value: 'general', label: 'General' },
+  { value: 'deadlines', label: 'Deadlines' },
+  { value: 'results', label: 'Results' },
+  { value: 'events', label: 'Events' }
+] as const;
+
+// ============================================================================
+// DISCUSSION BOARD CATEGORIES
+// ============================================================================
+
+export const DISCUSSION_CATEGORIES = [
+  'Community Spaces',
+  'Youth Services',
+  'Environment',
+  'Health & Wellbeing',
+  'Arts & Culture',
+  'General Discussion'
+] as const;
+
+// ============================================================================
+// FINANCIAL DEFAULTS
+// ============================================================================
+
+export const DEFAULT_AREA_BUDGETS: Record<string, number> = {
+  'Blaenavon': 50000,
+  'Thornhill & Upper Cwmbran': 50000,
+  'Trevethin, Penygarn & St. Cadocs': 50000
+};
+
+export const PRIORITY_CATEGORIES = [
+  'Community Spaces',
+  'Youth Services',
+  'Environment',
+  'Health & Wellbeing',
+  'Arts & Culture',
+  'Education & Skills',
+  'Transport & Connectivity',
+  'Other'
+] as const;

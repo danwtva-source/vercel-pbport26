@@ -383,6 +383,16 @@ export interface Round {
   scoringThreshold?: number;
   /** Timestamp when the round was created */
   createdAt?: number;
+
+  // --- Financial Management ---
+  /** Total budget allocated for this round (GBP) */
+  budget?: number;
+  /** Budget allocation per area */
+  budgetByArea?: Record<string, number>;
+
+  // --- Coefficient Settings ---
+  /** Coefficient calculation settings for digital voting */
+  coefficientSettings?: CoefficientSettings;
 }
 
 // --- ASSIGNMENTS ---
