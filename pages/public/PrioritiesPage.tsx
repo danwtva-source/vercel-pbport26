@@ -1,14 +1,34 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { BarChart3, Users, TrendingUp, Info, CheckCircle2 } from 'lucide-react';
 import { PRIORITIES_DATA, AREA_DATA } from '../../constants';
-import { ROUTES } from '../../utils';
+import { ROUTES, toUserRole } from '../../utils';
+import { useAuth } from '../../context/AuthContext';
+import { UserRole } from '../../types';
 
 const PrioritiesPage: React.FC = () => {
   const [selectedArea, setSelectedArea] = useState<'blaenavon' | 'thornhill' | 'trevethin'>('blaenavon');
+  const navigate = useNavigate();
+  const { userProfile } = useAuth();
 
   const areaKeys = Object.keys(PRIORITIES_DATA) as ('blaenavon' | 'thornhill' | 'trevethin')[];
+
+  const handleApplyClick = () => {
+    if (userProfile) {
+      // User is logged in - redirect based on role
+      const role = toUserRole(userProfile.role);
+      if (role === UserRole.APPLICANT) {
+        navigate(ROUTES.PORTAL.APPLICANT);
+      } else {
+        // Admin/Committee users go to their dashboard
+        navigate(ROUTES.PORTAL.DASHBOARD);
+      }
+    } else {
+      // User is not logged in - redirect to login page
+      navigate(ROUTES.PUBLIC.LOGIN);
+    }
+  };
   const currentData = PRIORITIES_DATA[selectedArea];
   const currentAreaName = AREA_DATA[selectedArea].name;
 
@@ -182,14 +202,12 @@ const PrioritiesPage: React.FC = () => {
               Projects that strongly align with these community priorities will score higher during evaluation. Make sure your application clearly demonstrates how it addresses the needs identified by local residents.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                href={AREA_DATA[selectedArea].formUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={handleApplyClick}
                 className="bg-teal-500 hover:bg-teal-400 text-purple-950 px-8 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl"
               >
                 Submit Application for {currentAreaName}
-              </a>
+              </button>
               <Link
                 to={ROUTES.PUBLIC.RESOURCES}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white px-8 py-4 rounded-xl font-bold transition-all"
