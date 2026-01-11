@@ -11,8 +11,11 @@ import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
   Eye, Upload, FolderOpen, Calendar, Search, Filter, TrendingUp,
-  UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList
+  UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList,
+  DollarSign, Calculator
 } from 'lucide-react';
+import { FinancialDashboard } from '../../components/FinancialDashboard';
+import { CoefficientConfig } from '../../components/CoefficientConfig';
 
 // ============================================================================
 // ADMIN CONSOLE - MASTER CONTROL PANEL
@@ -50,6 +53,8 @@ const AdminConsole: React.FC = () => {
       || tab === 'users'
       || tab === 'assignments'
       || tab === 'rounds'
+      || tab === 'financials'
+      || tab === 'coefficients'
       || tab === 'documents'
       || tab === 'logs'
       || tab === 'settings'
@@ -58,7 +63,7 @@ const AdminConsole: React.FC = () => {
     }
     return 'overview';
   };
-  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'financials' | 'coefficients' | 'documents' | 'logs' | 'settings'>(
     () => resolveTab(searchParams.get('tab'))
   );
   const tabParam = searchParams.get('tab');
@@ -133,6 +138,10 @@ const AdminConsole: React.FC = () => {
     status: 'assigned'
   });
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+
+  // Financial and Coefficient state
+  const [selectedRoundForConfig, setSelectedRoundForConfig] = useState<string | null>(null);
+  const [financialRecords, setFinancialRecords] = useState<Record<string, any>>({});
 
   // Load all data
   useEffect(() => {
@@ -1560,6 +1569,135 @@ const AdminConsole: React.FC = () => {
   };
 
   // ============================================================================
+  // TAB: FINANCIALS - FINANCIAL DASHBOARD
+  // ============================================================================
+
+  const FinancialsTab = () => {
+    const [selectedRound, setSelectedRound] = useState<string>(
+      rounds.length > 0 ? rounds[0].id : ''
+    );
+
+    const currentRound = rounds.find(r => r.id === selectedRound);
+    const roundApplications = applications.filter(app =>
+      !selectedRound || app.roundId === selectedRound
+    );
+
+    const handleSaveFinancials = async (financials: any) => {
+      try {
+        // Store in local state for now - will add Firebase integration later
+        setFinancialRecords(prev => ({
+          ...prev,
+          [selectedRound]: financials
+        }));
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'FINANCIALS_UPDATE',
+          targetId: selectedRound,
+          details: { totalFunding: financials.totalFunding, totalSpent: financials.totalSpent }
+        });
+        alert('Financial data saved successfully');
+      } catch (error) {
+        console.error('Error saving financials:', error);
+        alert('Failed to save financial data');
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Round Selector */}
+        <Card>
+          <div className="flex items-center gap-4">
+            <label className="font-bold text-gray-700">Select Round:</label>
+            <select
+              value={selectedRound}
+              onChange={(e) => setSelectedRound(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none"
+            >
+              {rounds.map(round => (
+                <option key={round.id} value={round.id}>{round.name}</option>
+              ))}
+            </select>
+          </div>
+        </Card>
+
+        {/* Financial Dashboard Component */}
+        {selectedRound && (
+          <FinancialDashboard
+            roundId={selectedRound}
+            userRole="admin"
+            financials={financialRecords[selectedRound]}
+            applications={roundApplications}
+            onSaveFinancials={handleSaveFinancials}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================================
+  // TAB: COEFFICIENTS - COEFFICIENT CONFIGURATION
+  // ============================================================================
+
+  const CoefficientsTab = () => {
+    const [selectedRound, setSelectedRound] = useState<string>(
+      rounds.length > 0 ? rounds[0].id : ''
+    );
+
+    const currentRound = rounds.find(r => r.id === selectedRound);
+
+    const handleSaveCoefficients = async (coeffSettings: any) => {
+      if (!currentRound) return;
+
+      try {
+        await DataService.updateRound(currentRound.id, {
+          coefficientSettings: coeffSettings
+        });
+        await DataService.logAction({
+          adminId: currentUser?.uid || 'admin',
+          action: 'COEFFICIENTS_UPDATE',
+          targetId: currentRound.id,
+          details: { enabled: coeffSettings.enabled }
+        });
+        await loadAllData();
+        alert('Coefficient settings saved successfully');
+      } catch (error) {
+        console.error('Error saving coefficient settings:', error);
+        alert('Failed to save coefficient settings');
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Round Selector */}
+        <Card>
+          <div className="flex items-center gap-4">
+            <label className="font-bold text-gray-700">Configure for Round:</label>
+            <select
+              value={selectedRound}
+              onChange={(e) => setSelectedRound(e.target.value)}
+              className="px-4 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none"
+            >
+              {rounds.map(round => (
+                <option key={round.id} value={round.id}>{round.name}</option>
+              ))}
+            </select>
+          </div>
+        </Card>
+
+        {/* Coefficient Config Component */}
+        {selectedRound && currentRound && (
+          <CoefficientConfig
+            roundId={selectedRound}
+            roundName={currentRound.name}
+            settings={currentRound.coefficientSettings}
+            onSave={handleSaveCoefficients}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================================
   // TAB: DOCUMENTS - DOCUMENT MANAGEMENT
   // ============================================================================
 
@@ -2438,6 +2576,28 @@ const AdminConsole: React.FC = () => {
               Rounds
             </button>
             <button
+              onClick={() => handleTabChange('financials')}
+              className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
+                activeTab === 'financials'
+                  ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <DollarSign size={18} />
+              Financials
+            </button>
+            <button
+              onClick={() => handleTabChange('coefficients')}
+              className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
+                activeTab === 'coefficients'
+                  ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Calculator size={18} />
+              Coefficients
+            </button>
+            <button
               onClick={() => handleTabChange('documents')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'documents'
@@ -2480,6 +2640,8 @@ const AdminConsole: React.FC = () => {
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'assignments' && <AssignmentsTab />}
           {activeTab === 'rounds' && <RoundsTab />}
+          {activeTab === 'financials' && <FinancialsTab />}
+          {activeTab === 'coefficients' && <CoefficientsTab />}
           {activeTab === 'documents' && <DocumentsTab />}
           {activeTab === 'logs' && <LogsTab />}
           {activeTab === 'settings' && <SettingsTab />}
