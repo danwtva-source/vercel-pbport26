@@ -81,6 +81,9 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const currentUser = AuthService.getCurrentUser();
+  const adminTab = new URLSearchParams(location.search).get('tab');
+  const isAdminDocumentsActive = location.pathname === ROUTES.PORTAL.ADMIN && adminTab === 'documents';
+  const isAdminConsoleActive = location.pathname === ROUTES.PORTAL.ADMIN && adminTab !== 'documents';
 
   const handleLogout = async () => {
     await AuthService.logout();
@@ -116,14 +119,28 @@ export const SecureLayout: React.FC<LayoutProps & { userRole: UserRole }> = ({ c
       </Link>
 
       {(isCommittee || isAdmin) && (
-        <Link to={ROUTES.PORTAL.DOCUMENTS} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.DOCUMENTS)}`}>
+        <Link
+          to={isAdmin ? `${ROUTES.PORTAL.ADMIN}?tab=documents` : ROUTES.PORTAL.DOCUMENTS}
+          onClick={() => setSidebarOpen(false)}
+          className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${
+            isAdmin
+              ? (isAdminDocumentsActive ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white')
+              : isActive(ROUTES.PORTAL.DOCUMENTS)
+          }`}
+        >
           <FileText size={18} />
           <span>Documents</span>
         </Link>
       )}
 
       {isAdmin && (
-         <Link to={ROUTES.PORTAL.ADMIN} onClick={() => setSidebarOpen(false)} className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${isActive(ROUTES.PORTAL.ADMIN)}`}>
+         <Link
+          to={ROUTES.PORTAL.ADMIN}
+          onClick={() => setSidebarOpen(false)}
+          className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition text-sm font-bold ${
+            isAdminConsoleActive ? 'bg-purple-700 text-white shadow-inner border-l-4 border-teal-400' : 'text-purple-200 hover:bg-purple-800 hover:text-white'
+          }`}
+        >
           <Settings size={18} />
           <span>Master Console</span>
         </Link>
