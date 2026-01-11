@@ -237,10 +237,28 @@ export const exportToCSV = (data: any[], filename: string) => {
 // --- HELPER: Upload Generic File to Firebase Storage ---
 export const uploadFile = async (path: string, file: File): Promise<string> => {
     if (USE_DEMO_MODE) return `https://fake-url.com/${file.name}`;
-    if (!storage) throw new Error("Storage not initialized");
+
+    const ensureStorage = () => {
+      if (storage) return storage;
+      if (!hasFirebaseConfig) return null;
+      const bucketName = inferredStorageBucket;
+      const bucketUrl = bucketName ? `gs://${bucketName}` : undefined;
+      try {
+        storage = getStorage(getApp(), bucketUrl);
+      } catch (error) {
+        console.error("Storage initialization failed:", error);
+        return null;
+      }
+      return storage;
+    };
+
+    const activeStorage = ensureStorage();
+    if (!activeStorage) {
+      throw new Error("Storage not initialized. Check Firebase storage configuration.");
+    }
 
     try {
-        const storageRef = ref(storage, path);
+        const storageRef = ref(activeStorage, path);
         const snapshot = await uploadBytes(storageRef, file);
         return await getDownloadURL(snapshot.ref);
     } catch (error) {

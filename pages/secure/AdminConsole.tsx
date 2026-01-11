@@ -1622,7 +1622,8 @@ const AdminConsole: React.FC = () => {
         await loadAllData();
       } catch (error) {
         console.error('Error uploading document:', error);
-        alert('Failed to upload document');
+        const message = error instanceof Error ? error.message : 'Failed to upload document';
+        alert(message);
       }
     };
 
