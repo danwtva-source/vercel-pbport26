@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
@@ -41,7 +42,26 @@ const AdminConsole: React.FC = () => {
   // Get current user from auth context
   const { userProfile: currentUser, loading: authLoading } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resolveTab = (tab: string | null) => {
+    if (
+      tab === 'overview'
+      || tab === 'masterlist'
+      || tab === 'users'
+      || tab === 'assignments'
+      || tab === 'rounds'
+      || tab === 'documents'
+      || tab === 'logs'
+      || tab === 'settings'
+    ) {
+      return tab;
+    }
+    return 'overview';
+  };
+  const [activeTab, setActiveTab] = useState<'overview' | 'masterlist' | 'users' | 'assignments' | 'rounds' | 'documents' | 'logs' | 'settings'>(
+    () => resolveTab(searchParams.get('tab'))
+  );
+  const tabParam = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
   const [isScoringMode, setIsScoringMode] = useState(false);
   const [authCheckRunning, setAuthCheckRunning] = useState(false);
@@ -54,6 +74,26 @@ const AdminConsole: React.FC = () => {
   const [repairPassword, setRepairPassword] = useState('');
   const [repairSubmitting, setRepairSubmitting] = useState(false);
   const [normalizingUsers, setNormalizingUsers] = useState(false);
+
+  useEffect(() => {
+    const resolvedTab = resolveTab(tabParam);
+    if (resolvedTab !== activeTab) {
+      setActiveTab(resolvedTab);
+    }
+  }, [tabParam, activeTab]);
+
+  const handleTabChange = (tab: typeof activeTab) => {
+    setActiveTab(tab);
+    setSearchParams(prevParams => {
+      const nextParams = new URLSearchParams(prevParams);
+      if (tab === 'overview') {
+        nextParams.delete('tab');
+      } else {
+        nextParams.set('tab', tab);
+      }
+      return nextParams;
+    });
+  };
 
   // Data state
   const [applications, setApplications] = useState<Application[]>([]);
@@ -1582,7 +1622,8 @@ const AdminConsole: React.FC = () => {
         await loadAllData();
       } catch (error) {
         console.error('Error uploading document:', error);
-        alert('Failed to upload document');
+        const message = error instanceof Error ? error.message : 'Failed to upload document';
+        alert(message);
       }
     };
 
@@ -2342,7 +2383,7 @@ const AdminConsole: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-xl border border-purple-100 overflow-x-auto">
           <div className="flex border-b border-gray-200">
             <button
-              onClick={() => setActiveTab('overview')}
+              onClick={() => handleTabChange('overview')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'overview'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2353,7 +2394,7 @@ const AdminConsole: React.FC = () => {
               Overview
             </button>
             <button
-              onClick={() => setActiveTab('masterlist')}
+              onClick={() => handleTabChange('masterlist')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'masterlist'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2364,7 +2405,7 @@ const AdminConsole: React.FC = () => {
               Master List
             </button>
             <button
-              onClick={() => setActiveTab('users')}
+              onClick={() => handleTabChange('users')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'users'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2375,7 +2416,7 @@ const AdminConsole: React.FC = () => {
               Users
             </button>
             <button
-              onClick={() => setActiveTab('assignments')}
+              onClick={() => handleTabChange('assignments')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'assignments'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2386,7 +2427,7 @@ const AdminConsole: React.FC = () => {
               Assignments
             </button>
             <button
-              onClick={() => setActiveTab('rounds')}
+              onClick={() => handleTabChange('rounds')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'rounds'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2397,7 +2438,7 @@ const AdminConsole: React.FC = () => {
               Rounds
             </button>
             <button
-              onClick={() => setActiveTab('documents')}
+              onClick={() => handleTabChange('documents')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'documents'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2408,7 +2449,7 @@ const AdminConsole: React.FC = () => {
               Documents
             </button>
             <button
-              onClick={() => setActiveTab('logs')}
+              onClick={() => handleTabChange('logs')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'logs'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'
@@ -2419,7 +2460,7 @@ const AdminConsole: React.FC = () => {
               Audit Logs
             </button>
             <button
-              onClick={() => setActiveTab('settings')}
+              onClick={() => handleTabChange('settings')}
               className={`px-6 py-4 font-bold text-sm transition flex items-center gap-2 ${
                 activeTab === 'settings'
                   ? 'border-b-4 border-purple-600 text-purple-900 bg-purple-50'

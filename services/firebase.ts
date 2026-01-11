@@ -22,6 +22,14 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+const inferredStorageBucket = firebaseConfig.storageBucket
+  || (firebaseConfig.projectId ? `${firebaseConfig.projectId}.appspot.com` : undefined);
+
+const firebaseConfigWithBucket = {
+  ...firebaseConfig,
+  storageBucket: inferredStorageBucket
+};
+
 // Check if Firebase config is available, otherwise log warning
 const hasFirebaseConfig = firebaseConfig.apiKey && firebaseConfig.projectId;
 
@@ -40,7 +48,7 @@ const secondaryAppName = 'secondary';
 
 try {
   if (hasFirebaseConfig) {
-    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    app = getApps().length ? getApp() : initializeApp(firebaseConfigWithBucket);
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
@@ -48,7 +56,7 @@ try {
     // Create secondary app for admin user creation (prevents session switch)
     secondaryApp = getApps().some(existing => existing.name === secondaryAppName)
       ? getApp(secondaryAppName)
-      : initializeApp(firebaseConfig, secondaryAppName);
+      : initializeApp(firebaseConfigWithBucket, secondaryAppName);
     secondaryAuth = getAuth(secondaryApp);
   } else if (!USE_DEMO_MODE) {
     console.error('❌ Cannot initialize Firebase: Missing configuration');
@@ -229,10 +237,28 @@ export const exportToCSV = (data: any[], filename: string) => {
 // --- HELPER: Upload Generic File to Firebase Storage ---
 export const uploadFile = async (path: string, file: File): Promise<string> => {
     if (USE_DEMO_MODE) return `https://fake-url.com/${file.name}`;
-    if (!storage) throw new Error("Storage not initialized");
+
+    const ensureStorage = () => {
+      if (storage) return storage;
+      if (!hasFirebaseConfig) return null;
+      const bucketName = inferredStorageBucket;
+      const bucketUrl = bucketName ? `gs://${bucketName}` : undefined;
+      try {
+        storage = getStorage(getApp(), bucketUrl);
+      } catch (error) {
+        console.error("Storage initialization failed:", error);
+        return null;
+      }
+      return storage;
+    };
+
+    const activeStorage = ensureStorage();
+    if (!activeStorage) {
+      throw new Error("Storage not initialized. Check Firebase storage configuration.");
+    }
 
     try {
-        const storageRef = ref(storage, path);
+        const storageRef = ref(activeStorage, path);
         const snapshot = await uploadBytes(storageRef, file);
         return await getDownloadURL(snapshot.ref);
     } catch (error) {
