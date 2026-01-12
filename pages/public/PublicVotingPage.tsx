@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
-import { Vote as VoteIcon, Users, MapPin, Coins, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
+import { Vote as VoteIcon, Users, MapPin, Coins, CheckCircle2, Clock, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
 import { DataService } from '../../services/firebase';
 import { Application, PortalSettings } from '../../types';
 import { ROUTES } from '../../utils';
+import { getAreaColor } from '../../constants';
 
 const PublicVotingPage: React.FC = () => {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -37,7 +38,31 @@ const PublicVotingPage: React.FC = () => {
     }
   };
 
-  const votingOpen = settings?.votingOpen || false;
+  // Check voting dates
+  const now = Date.now();
+  const votingStartDate = settings?.publicVotingStartDate;
+  const votingEndDate = settings?.publicVotingEndDate;
+
+  // Voting is open if: votingOpen is true AND we're within the date range (if dates are set)
+  const isWithinDateRange = (
+    (!votingStartDate || now >= votingStartDate) &&
+    (!votingEndDate || now <= votingEndDate)
+  );
+  const votingOpen = (settings?.votingOpen === true) && isWithinDateRange;
+
+  // Format dates for display
+  const formatDate = (timestamp: number | undefined) => {
+    if (!timestamp) return null;
+    return new Date(timestamp).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const areas = ['All', ...Array.from(new Set(applications.map(app => app.area)))];
   const filteredApps = selectedArea === 'All'
     ? applications
@@ -54,16 +79,77 @@ const PublicVotingPage: React.FC = () => {
   }
 
   if (!votingOpen) {
+    // Determine why voting is not open
+    const votingNotEnabled = settings?.votingOpen !== true;
+    const beforeStartDate = votingStartDate && now < votingStartDate;
+    const afterEndDate = votingEndDate && now > votingEndDate;
+
     return (
       <PublicLayout>
         <div className="max-w-4xl mx-auto text-center py-20">
           <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Clock size={40} className="text-purple-600" />
           </div>
-          <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Public Voting Not Yet Live</h1>
-          <p className="text-lg text-purple-700 mb-8">
-            Public voting will open soon. Please check back later or sign up for updates.
-          </p>
+
+          {afterEndDate ? (
+            <>
+              <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Public Voting Has Ended</h1>
+              <p className="text-lg text-purple-700 mb-4">
+                The public voting period has closed. Thank you to everyone who participated!
+              </p>
+              {votingEndDate && (
+                <p className="text-sm text-gray-600 mb-8">
+                  Voting closed on {formatDate(votingEndDate)}
+                </p>
+              )}
+            </>
+          ) : beforeStartDate ? (
+            <>
+              <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Voting Opens Soon</h1>
+              <p className="text-lg text-purple-700 mb-4">
+                Public voting will begin shortly. Mark your calendar!
+              </p>
+              <div className="bg-purple-50 rounded-xl p-6 inline-block mb-8">
+                <div className="flex items-center gap-3 text-purple-800">
+                  <Calendar size={24} />
+                  <span className="font-bold">Opens: {formatDate(votingStartDate)}</span>
+                </div>
+                {votingEndDate && (
+                  <div className="flex items-center gap-3 text-purple-700 mt-2">
+                    <Clock size={24} />
+                    <span>Closes: {formatDate(votingEndDate)}</span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Public Voting Not Yet Live</h1>
+              <p className="text-lg text-purple-700 mb-8">
+                Public voting will open soon. Please check back later or sign up for updates.
+              </p>
+            </>
+          )}
+
+          {/* Postcode Check Link */}
+          <div className="bg-blue-50 rounded-xl p-6 max-w-md mx-auto mb-8">
+            <div className="flex items-start gap-3 text-left">
+              <MapPin className="text-blue-600 flex-shrink-0 mt-1" size={24} />
+              <div>
+                <p className="font-bold text-blue-900 mb-1">Check Your Eligibility</p>
+                <p className="text-sm text-blue-700 mb-3">
+                  Use our postcode checker to see if you're eligible to vote in your area.
+                </p>
+                <Link
+                  to={ROUTES.PUBLIC.POSTCODE_CHECK}
+                  className="text-blue-600 hover:text-blue-800 font-bold text-sm flex items-center gap-1"
+                >
+                  Check Your Postcode <ArrowRight size={16} />
+                </Link>
+              </div>
+            </div>
+          </div>
+
           <Link
             to={ROUTES.PUBLIC.HOME}
             className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-bold transition-all"
@@ -81,9 +167,9 @@ const PublicVotingPage: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 bg-purple-100 rounded-full px-4 py-2 mb-4">
-            <VoteIcon size={18} className="text-purple-600" />
-            <span className="text-sm font-bold text-purple-800">Public Voting Now Open</span>
+          <div className="inline-flex items-center gap-2 bg-green-100 rounded-full px-4 py-2 mb-4">
+            <CheckCircle2 size={18} className="text-green-600" />
+            <span className="text-sm font-bold text-green-800">Public Voting Now Open</span>
           </div>
 
           <h1 className="text-4xl md:text-5xl font-bold text-purple-900 mb-4 font-display">
@@ -93,25 +179,56 @@ const PublicVotingPage: React.FC = () => {
           <p className="text-lg text-purple-700 max-w-3xl mx-auto leading-relaxed">
             Browse the shortlisted projects and cast your vote for those that matter most to your community. Your voice counts in deciding how local funding is allocated.
           </p>
+
+          {/* Voting Period Info */}
+          {(votingStartDate || votingEndDate) && (
+            <div className="mt-6 inline-flex items-center gap-4 bg-purple-50 rounded-xl px-6 py-3 text-purple-800">
+              <Calendar size={20} />
+              <div className="text-sm text-left">
+                {votingStartDate && <span>Opened: {formatDate(votingStartDate)}</span>}
+                {votingStartDate && votingEndDate && <span className="mx-2">•</span>}
+                {votingEndDate && <span>Closes: {formatDate(votingEndDate)}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Postcode Check Reminder */}
+          <div className="mt-6 text-sm text-purple-600">
+            <Link to={ROUTES.PUBLIC.POSTCODE_CHECK} className="inline-flex items-center gap-1 hover:text-purple-800">
+              <MapPin size={14} />
+              Check your postcode to see if you're eligible to vote
+              <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
 
-        {/* Area Filter */}
+        {/* Area Filter with Area Colours */}
         {areas.length > 2 && (
           <div className="mb-8">
             <div className="flex flex-wrap gap-3 justify-center">
-              {areas.map(area => (
-                <button
-                  key={area}
-                  onClick={() => setSelectedArea(area)}
-                  className={`px-6 py-3 rounded-xl font-bold transition-all ${
-                    selectedArea === area
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'bg-white text-purple-700 border-2 border-purple-200 hover:border-purple-400'
-                  }`}
-                >
-                  {area}
-                </button>
-              ))}
+              {areas.map(area => {
+                const areaColor = area === 'All' ? '#9333EA' : getAreaColor(area);
+                const isSelected = selectedArea === area;
+
+                return (
+                  <button
+                    key={area}
+                    onClick={() => setSelectedArea(area)}
+                    className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                      isSelected
+                        ? 'text-white shadow-lg'
+                        : 'bg-white border-2 hover:opacity-80'
+                    }`}
+                    style={{
+                      backgroundColor: isSelected ? areaColor : 'white',
+                      borderColor: isSelected ? areaColor : areaColor,
+                      color: isSelected ? 'white' : areaColor
+                    }}
+                  >
+                    {area}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
