@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area, Notification } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -489,6 +489,20 @@ class AuthService {
       if (USE_DEMO_MODE) return this.mockGetVotes();
       const snap = await getDocs(collection(db, 'votes'));
       return snap.docs.map(d => mapVoteFromFirestore(d.data() as Vote, d.id));
+  }
+
+  async savePublicVote(vote: PublicVote): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSavePublicVote(vote);
+      if (!db) throw new Error('Firestore not initialized');
+      const voteId = vote.id || `${vote.applicationId}_${vote.voterId}`;
+      await setDoc(doc(db, 'publicVotes', voteId), { ...vote, id: voteId });
+  }
+
+  async getPublicVotes(): Promise<PublicVote[]> {
+      if (USE_DEMO_MODE) return this.mockGetPublicVotes();
+      if (!db) throw new Error('Firestore not initialized');
+      const snap = await getDocs(collection(db, 'publicVotes'));
+      return snap.docs.map(d => ({ ...(d.data() as PublicVote), id: d.id }));
   }
 
   async saveScore(score: Score): Promise<void> {
@@ -1340,6 +1354,24 @@ class AuthService {
 
   mockGetVotes(): Promise<Vote[]> {
     return Promise.resolve(this.getLocal<Vote>('votes').map(vote => mapVoteFromFirestore(vote, vote.id)));
+  }
+
+  mockSavePublicVote(vote: PublicVote): Promise<void> {
+    const votes = this.getLocal<PublicVote>('publicVotes');
+    const voteId = vote.id || `${vote.applicationId}_${vote.voterId}`;
+    const normalized = { ...vote, id: voteId };
+    const i = votes.findIndex(v => v.applicationId === vote.applicationId && v.voterId === vote.voterId);
+    if (i >= 0) {
+      votes[i] = normalized;
+    } else {
+      votes.push(normalized);
+    }
+    this.setLocal('publicVotes', votes);
+    return Promise.resolve();
+  }
+
+  mockGetPublicVotes(): Promise<PublicVote[]> {
+    return Promise.resolve(this.getLocal<PublicVote>('publicVotes'));
   }
 
   mockSaveScore(s: Score): Promise<void> {

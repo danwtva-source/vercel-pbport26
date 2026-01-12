@@ -47,6 +47,10 @@ const ScoringMatrix: React.FC = () => {
       return { allowed: false, reason: 'Scoring is currently closed for this funding round.' };
     }
 
+    if (portalSettings?.stage2ScoringOpen === false) {
+      return { allowed: false, reason: 'Scoring is currently closed by the portal administrator.' };
+    }
+
     return { allowed: true };
   };
 

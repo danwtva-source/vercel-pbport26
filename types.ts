@@ -135,6 +135,16 @@ export interface Vote {
   createdAt: string;
 }
 
+// --- PUBLIC VOTING ---
+
+export interface PublicVote {
+  id: string;
+  applicationId: string;
+  voterId: string;
+  area?: Area;
+  createdAt: string;
+}
+
 // --- SCORING (Stage 2) ---
 
 export interface ScoreBreakdown {
