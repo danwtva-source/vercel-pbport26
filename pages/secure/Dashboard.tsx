@@ -597,12 +597,14 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   const assignedAppIds = new Set(assignments.map(assignment => assignment.applicationId));
   const filteredApps = applications.filter(app => assignedAppIds.has(app.id));
 
-  // Check if voting is allowed based on portal settings
-  const isVotingAllowed = portalSettings?.votingOpen !== false;
+  // Check if committee voting on EOIs is allowed (Stage 1)
+  const isStage1VotingAllowed = portalSettings?.stage1VotingOpen === true;
+  // Check if committee scoring is allowed (Stage 2)
+  const isStage2ScoringAllowed = portalSettings?.stage2ScoringOpen === true;
 
   const handleVote = async (appId: string, decision: 'yes' | 'no') => {
-    if (!isVotingAllowed) {
-      alert('Voting is currently closed.');
+    if (!isStage1VotingAllowed) {
+      alert('Stage 1 committee voting is currently closed. Contact Admin to enable voting.');
       return;
     }
     await DataService.saveVote({
@@ -680,6 +682,59 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Workflow Status Banners */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Stage 1 Voting Status */}
+        <div className={`rounded-xl p-4 flex items-center gap-3 ${
+          isStage1VotingAllowed
+            ? 'bg-green-50 border border-green-200'
+            : 'bg-amber-50 border border-amber-200'
+        }`}>
+          {isStage1VotingAllowed ? (
+            <>
+              <CheckCircle2 className="text-green-600 flex-shrink-0" size={24} />
+              <div>
+                <p className="font-bold text-green-800">Stage 1 Voting: Open</p>
+                <p className="text-sm text-green-700">You can vote Yes/No on EOI applications</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <Lock className="text-amber-600 flex-shrink-0" size={24} />
+              <div>
+                <p className="font-bold text-amber-800">Stage 1 Voting: Closed</p>
+                <p className="text-sm text-amber-700">EOI voting will be enabled by Admin</p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Stage 2 Scoring Status */}
+        <div className={`rounded-xl p-4 flex items-center gap-3 ${
+          isStage2ScoringAllowed
+            ? 'bg-green-50 border border-green-200'
+            : 'bg-amber-50 border border-amber-200'
+        }`}>
+          {isStage2ScoringAllowed ? (
+            <>
+              <CheckCircle2 className="text-green-600 flex-shrink-0" size={24} />
+              <div>
+                <p className="font-bold text-green-800">Stage 2 Scoring: Open</p>
+                <p className="text-sm text-green-700">You can score full applications</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <Lock className="text-amber-600 flex-shrink-0" size={24} />
+              <div>
+                <p className="font-bold text-amber-800">Stage 2 Scoring: Closed</p>
+                <p className="text-sm text-amber-700">Application scoring will be enabled by Admin</p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Pending Assignments */}
       {pendingAssignments.length > 0 && (

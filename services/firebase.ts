@@ -68,9 +68,17 @@ try {
 export { auth, db, storage };
 
 const DEFAULT_SETTINGS: PortalSettings = {
+    // Stage 1 (EOI)
     stage1Visible: true,
+    stage1VotingOpen: false,
+    // Stage 2 (Full Application)
     stage2Visible: false,
+    stage2ScoringOpen: false,
+    // Public Voting
     votingOpen: false,
+    publicVotingStartDate: undefined,
+    publicVotingEndDate: undefined,
+    // Scoring & Results
     scoringThreshold: 50,
     resultsReleased: false
 };

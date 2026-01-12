@@ -2335,7 +2335,57 @@ const AdminConsole: React.FC = () => {
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
               </label>
             </div>
+          </div>
+        </Card>
 
+        {/* Committee Workflow Controls */}
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Committee Workflow Controls</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+              <div>
+                <p className="font-bold text-gray-800">Stage 1 Committee Voting</p>
+                <p className="text-sm text-gray-600">Allow committee members to vote Yes/No on Stage 1 EOIs in their area</p>
+                <p className="text-xs text-blue-600 mt-1">
+                  {applications.filter(a => a.status === 'Submitted-Stage1').length} EOI(s) awaiting committee review
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={localSettings.stage1VotingOpen || false}
+                  onChange={(e) => setLocalSettings({ ...localSettings, stage1VotingOpen: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-teal-50 rounded-lg border-l-4 border-teal-500">
+              <div>
+                <p className="font-bold text-gray-800">Stage 2 Committee Scoring</p>
+                <p className="text-sm text-gray-600">Allow committee members to score Stage 2 applications in their area</p>
+                <p className="text-xs text-teal-600 mt-1">
+                  {applications.filter(a => a.status === 'Submitted-Stage2' || a.status === 'Invited-Stage2').length} application(s) awaiting scoring
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={localSettings.stage2ScoringOpen || false}
+                  onChange={(e) => setLocalSettings({ ...localSettings, stage2ScoringOpen: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+              </label>
+            </div>
+          </div>
+        </Card>
+
+        {/* Public Voting Controls */}
+        <Card>
+          <h3 className="text-xl font-bold text-purple-900 mb-6">Public Voting</h3>
+          <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div>
                 <p className="font-bold text-gray-800">Voting Open</p>
@@ -2377,6 +2427,47 @@ const AdminConsole: React.FC = () => {
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
               </label>
+            </div>
+
+            {/* Public Voting Dates */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Public Voting Start Date
+                </label>
+                <input
+                  type="datetime-local"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+                  value={localSettings.publicVotingStartDate
+                    ? new Date(localSettings.publicVotingStartDate).toISOString().slice(0, 16)
+                    : ''}
+                  onChange={(e) => setLocalSettings({
+                    ...localSettings,
+                    publicVotingStartDate: e.target.value ? new Date(e.target.value).getTime() : undefined
+                  })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Public Voting End Date
+                </label>
+                <input
+                  type="datetime-local"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-purple-500 outline-none"
+                  value={localSettings.publicVotingEndDate
+                    ? new Date(localSettings.publicVotingEndDate).toISOString().slice(0, 16)
+                    : ''}
+                  onChange={(e) => setLocalSettings({
+                    ...localSettings,
+                    publicVotingEndDate: e.target.value ? new Date(e.target.value).getTime() : undefined
+                  })}
+                />
+              </div>
+              {localSettings.publicVotingStartDate && localSettings.publicVotingEndDate && (
+                <div className="col-span-2 text-sm text-purple-700">
+                  Voting period: {new Date(localSettings.publicVotingStartDate).toLocaleString('en-GB')} - {new Date(localSettings.publicVotingEndDate).toLocaleString('en-GB')}
+                </div>
+              )}
             </div>
           </div>
         </Card>

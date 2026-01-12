@@ -68,11 +68,22 @@ export interface User {
 // --- PORTAL SETTINGS ---
 
 export interface PortalSettings {
-    stage1Visible: boolean;
-    stage2Visible: boolean;
-    votingOpen: boolean;
-    scoringThreshold: number;
-    resultsReleased?: boolean; // Controls whether Part 2 results are visible to applicants
+    // Stage 1 (EOI) Controls
+    stage1Visible: boolean;          // EOI submission form visible to applicants
+    stage1VotingOpen?: boolean;      // Committee can vote on Stage 1 EOIs
+
+    // Stage 2 (Full Application) Controls
+    stage2Visible: boolean;          // Stage 2 form visible to invited applicants
+    stage2ScoringOpen?: boolean;     // Committee can score Stage 2 applications
+
+    // Public Voting Controls
+    votingOpen: boolean;             // Public voting is active
+    publicVotingStartDate?: number;  // Public voting start date (timestamp)
+    publicVotingEndDate?: number;    // Public voting end date (timestamp)
+
+    // Results & Threshold
+    scoringThreshold: number;        // Minimum score percentage for funding consideration
+    resultsReleased?: boolean;       // Part 2 results visible to applicants
 }
 
 // System Settings (from v8) - Alternative/extended settings interface
