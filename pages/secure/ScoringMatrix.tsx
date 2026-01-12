@@ -84,9 +84,10 @@ const ScoringMatrix: React.FC = () => {
       const active = rounds.find(r => r.status === 'scoring' || r.status === 'open');
       setActiveRound(active || null);
 
-      // Fetch applications based on assignments
+      // Fetch applications based on assignments - filter by user's area for committee members
       const assignedAppIds = new Set(assignments.map(assignment => assignment.applicationId));
-      const apps = await DataService.getApplications();
+      const userArea = !isAdmin ? currentUser?.area : undefined;
+      const apps = await DataService.getApplications(userArea);
 
       // Only show Stage 2 applications that are ready for scoring
       const eligibleApps = apps.filter(

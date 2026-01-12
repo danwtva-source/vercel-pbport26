@@ -265,8 +265,8 @@ const PublicVotingPage: React.FC = () => {
                 <div className="p-6">
                   {/* Area Badge */}
                   <div className="flex items-center gap-2 mb-3">
-                    <MapPin size={16} className="text-purple-600" />
-                    <span className="text-sm font-bold text-purple-600">{app.area}</span>
+                    <MapPin size={16} style={{ color: getAreaColor(app.area) }} />
+                    <span className="text-sm font-bold" style={{ color: getAreaColor(app.area) }}>{app.area}</span>
                   </div>
 
                   {/* Project Title */}
