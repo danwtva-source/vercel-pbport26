@@ -507,13 +507,62 @@ const AdminConsole: React.FC = () => {
 
     const handleStatusChange = async (appId: string, newStatus: string) => {
       try {
+        // Find the application to get applicant info
+        const app = applications.find(a => a.id === appId);
+
         await DataService.updateApplication(appId, { status: newStatus as any });
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'APP_STATUS_CHANGE',
           targetId: appId,
-          details: { newStatus }
+          details: { newStatus, previousStatus: app?.status }
         });
+
+        // Send notification to applicant for key status changes
+        if (app?.userId) {
+          if (newStatus === 'Invited-Stage2') {
+            await DataService.createNotification({
+              recipientId: app.userId,
+              type: 'application_invited',
+              title: 'Invitation to Part 2!',
+              message: `Great news! Your application "${app.projectTitle}" has been invited to submit a full Part 2 application.`,
+              relatedId: appId,
+              link: '/portal/applications',
+              area: app.area
+            });
+          } else if (newStatus === 'Funded') {
+            await DataService.createNotification({
+              recipientId: app.userId,
+              type: 'application_funded',
+              title: 'Application Funded!',
+              message: `Congratulations! Your application "${app.projectTitle}" has been approved for funding.`,
+              relatedId: appId,
+              link: '/portal/applications',
+              area: app.area
+            });
+          } else if (newStatus === 'Not-Funded') {
+            await DataService.createNotification({
+              recipientId: app.userId,
+              type: 'application_not_funded',
+              title: 'Application Update',
+              message: `Your application "${app.projectTitle}" was not selected for funding in this round. Thank you for participating.`,
+              relatedId: appId,
+              link: '/portal/applications',
+              area: app.area
+            });
+          } else if (newStatus === 'Rejected-Stage1') {
+            await DataService.createNotification({
+              recipientId: app.userId,
+              type: 'application_not_funded',
+              title: 'Application Update',
+              message: `Your EOI "${app.projectTitle}" was not selected to proceed to Part 2. Thank you for your submission.`,
+              relatedId: appId,
+              link: '/portal/applications',
+              area: app.area
+            });
+          }
+        }
+
         await loadAllData();
       } catch (error) {
         console.error('Error updating status:', error);
@@ -2520,6 +2569,11 @@ const AdminConsole: React.FC = () => {
 
     const handleSaveSettings = async () => {
       try {
+        // Track which settings changed for notifications
+        const stage1VotingChanged = settings.stage1VotingOpen !== localSettings.stage1VotingOpen;
+        const stage2ScoringChanged = settings.stage2ScoringOpen !== localSettings.stage2ScoringOpen;
+        const publicVotingChanged = settings.votingOpen !== localSettings.votingOpen;
+
         await DataService.updatePortalSettings(localSettings);
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
@@ -2527,8 +2581,46 @@ const AdminConsole: React.FC = () => {
           targetId: 'global',
           details: localSettings as unknown as Record<string, unknown>
         });
+
+        // Send notifications for workflow changes
+        if (stage1VotingChanged) {
+          const isOpen = localSettings.stage1VotingOpen;
+          // Notify all committee members across all areas
+          for (const area of AREA_NAMES) {
+            await DataService.notifyCommitteeByArea({
+              area,
+              type: isOpen ? 'stage_opened' : 'stage_closed',
+              title: isOpen ? 'Part 1 Voting Now Open' : 'Part 1 Voting Closed',
+              message: isOpen
+                ? 'You can now vote on Part 1 EOI applications in your area.'
+                : 'Part 1 EOI voting has been closed by Admin.',
+              link: '/portal/dashboard'
+            });
+          }
+        }
+
+        if (stage2ScoringChanged) {
+          const isOpen = localSettings.stage2ScoringOpen;
+          for (const area of AREA_NAMES) {
+            await DataService.notifyCommitteeByArea({
+              area,
+              type: isOpen ? 'stage_opened' : 'stage_closed',
+              title: isOpen ? 'Part 2 Scoring Now Open' : 'Part 2 Scoring Closed',
+              message: isOpen
+                ? 'You can now score Part 2 full applications in your area.'
+                : 'Part 2 application scoring has been closed by Admin.',
+              link: '/portal/scoring'
+            });
+          }
+        }
+
+        if (publicVotingChanged && localSettings.votingOpen) {
+          // Public voting opened - could notify applicants/community
+          console.log('Public voting status changed');
+        }
+
         setSettings(localSettings);
-        alert('Settings saved successfully');
+        alert('Settings saved successfully' + (stage1VotingChanged || stage2ScoringChanged ? '\nCommittee members have been notified.' : ''));
       } catch (error) {
         console.error('Error saving settings:', error);
         alert('Failed to save settings');
