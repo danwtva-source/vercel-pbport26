@@ -419,7 +419,17 @@ export interface Assignment {
   committeeId: string;
   assignedDate: string;
   dueDate?: string;
-  status: 'assigned' | 'draft' | 'submitted' | 'rescore';
+  status: 'assigned' | 'in_progress' | 'draft' | 'submitted' | 'rescore' | 'overdue';
+  /** Track when the assignment was started (committee viewed it) */
+  startedAt?: number;
+  /** Track when the assignment was completed */
+  completedAt?: number;
+  /** Area for the application (denormalized for filtering) */
+  area?: string;
+  /** Stage: 'stage1' (EOI voting) or 'stage2' (full app scoring) */
+  stage?: 'stage1' | 'stage2';
+  /** Admin who created this assignment */
+  assignedBy?: string;
 }
 
 // --- AUDIT LOGGING ---
@@ -440,6 +450,50 @@ export interface AuditLog {
   timestamp: number;
   /** Additional details about the action */
   details?: Record<string, unknown>;
+}
+
+// --- NOTIFICATIONS ---
+
+export type NotificationType =
+  | 'assignment_created'      // Committee: New assignment
+  | 'assignment_due_soon'     // Committee: Assignment due within 24h
+  | 'assignment_overdue'      // Committee: Assignment past due date
+  | 'stage_opened'            // Committee: Voting/scoring stage opened
+  | 'stage_closed'            // Committee: Voting/scoring stage closed
+  | 'application_invited'     // Applicant: Invited to Stage 2
+  | 'application_funded'      // Applicant: Application funded
+  | 'application_not_funded'  // Applicant: Application not funded
+  | 'voting_opened'           // Public: Public voting opened
+  | 'voting_closing_soon'     // Public: Public voting closes within 24h
+  | 'settings_changed'        // Committee: Portal settings changed
+  | 'bulk_assignment';        // Committee: Bulk assignment created
+
+/**
+ * Notification record for in-app notification system.
+ * Notifications are created by system events and displayed to users.
+ */
+export interface Notification {
+  id: string;
+  /** User ID who should receive this notification */
+  recipientId: string;
+  /** Type of notification for display styling and routing */
+  type: NotificationType;
+  /** Title shown in notification */
+  title: string;
+  /** Body text of notification */
+  message: string;
+  /** When the notification was created */
+  createdAt: number;
+  /** Whether the user has read this notification */
+  read: boolean;
+  /** When the user read the notification */
+  readAt?: number;
+  /** Optional link to navigate to */
+  link?: string;
+  /** Related entity ID (application, assignment, etc.) */
+  relatedId?: string;
+  /** Area context for area-specific notifications */
+  area?: string;
 }
 
 // --- AREA DATA (from v8) ---

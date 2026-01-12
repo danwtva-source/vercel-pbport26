@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, ApplicationStatus, AuditLog, Area, Notification } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -953,6 +953,317 @@ class AuthService {
       const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
       const snap = await getDocs(q);
       return snap.docs.map(d => d.data() as AuditLog);
+  }
+
+  // --- BULK ASSIGNMENT ---
+
+  /**
+   * Bulk assign applications to committee members by area.
+   * Creates assignments for all eligible applications to all committee members in that area.
+   */
+  async bulkAssignByArea(params: {
+    area: string;
+    stage: 'stage1' | 'stage2';
+    dueDate?: string;
+    adminId: string;
+  }): Promise<{ created: number; skipped: number; errors: string[] }> {
+    const { area, stage, dueDate, adminId } = params;
+    const result = { created: 0, skipped: 0, errors: [] as string[] };
+
+    // Get all committee members for this area
+    const allUsers = await this.getUsers();
+    const committeeMembers = allUsers.filter(
+      u => (u.role === 'committee' || u.role === 'Committee') && u.area === area
+    );
+
+    if (committeeMembers.length === 0) {
+      result.errors.push(`No committee members found for area: ${area}`);
+      return result;
+    }
+
+    // Get all applications for this area at the appropriate stage
+    const allApps = await this.getApplications(area);
+    const targetStatus = stage === 'stage1' ? 'Submitted-Stage1' : 'Submitted-Stage2';
+    const eligibleApps = allApps.filter(app =>
+      app.status === targetStatus ||
+      (stage === 'stage2' && app.status === 'Invited-Stage2')
+    );
+
+    if (eligibleApps.length === 0) {
+      result.errors.push(`No eligible applications found for ${stage} in area: ${area}`);
+      return result;
+    }
+
+    // Get existing assignments to avoid duplicates
+    const existingAssignments = await this.getAssignments();
+    const existingKeys = new Set(existingAssignments.map(a => `${a.applicationId}_${a.committeeId}`));
+
+    // Create assignments for each app/committee combination
+    const assignedDate = new Date().toISOString().split('T')[0];
+
+    for (const app of eligibleApps) {
+      for (const member of committeeMembers) {
+        const assignmentKey = `${app.id}_${member.uid}`;
+
+        if (existingKeys.has(assignmentKey)) {
+          result.skipped++;
+          continue;
+        }
+
+        const assignment: Assignment = {
+          id: assignmentKey,
+          applicationId: app.id,
+          committeeId: member.uid,
+          assignedDate,
+          dueDate,
+          status: 'assigned',
+          area,
+          stage,
+          assignedBy: adminId
+        };
+
+        try {
+          await this.createAssignment(assignment);
+          result.created++;
+
+          // Create notification for committee member
+          await this.createNotification({
+            recipientId: member.uid,
+            type: 'assignment_created',
+            title: 'New Assignment',
+            message: `You have been assigned to review "${app.projectTitle || app.ref}" for ${stage === 'stage1' ? 'Part 1 voting' : 'Part 2 scoring'}.`,
+            relatedId: app.id,
+            area
+          });
+        } catch (err) {
+          result.errors.push(`Failed to assign ${app.ref} to ${member.displayName || member.email}: ${err}`);
+        }
+      }
+    }
+
+    // Log the bulk action
+    await this.logAction({
+      adminId,
+      action: 'BULK_ASSIGNMENT',
+      targetId: area,
+      details: {
+        stage,
+        appsAssigned: eligibleApps.length,
+        committeeMembersCount: committeeMembers.length,
+        created: result.created,
+        skipped: result.skipped
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * Get assignments filtered by various criteria
+   */
+  async getAssignmentsByApplication(applicationId: string): Promise<Assignment[]> {
+    if (USE_DEMO_MODE) {
+      const all = await this.mockGetAssignments();
+      return all.filter(a => a.applicationId === applicationId);
+    }
+    const q = query(collection(db, 'assignments'), where('applicationId', '==', applicationId));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Assignment);
+  }
+
+  async getAssignmentsByStatus(status: Assignment['status']): Promise<Assignment[]> {
+    if (USE_DEMO_MODE) {
+      const all = await this.mockGetAssignments();
+      return all.filter(a => a.status === status);
+    }
+    const q = query(collection(db, 'assignments'), where('status', '==', status));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Assignment);
+  }
+
+  async getAssignmentsByArea(area: string): Promise<Assignment[]> {
+    if (USE_DEMO_MODE) {
+      const all = await this.mockGetAssignments();
+      return all.filter(a => a.area === area);
+    }
+    const q = query(collection(db, 'assignments'), where('area', '==', area));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Assignment);
+  }
+
+  async getOverdueAssignments(): Promise<Assignment[]> {
+    const today = new Date().toISOString().split('T')[0];
+    const all = await this.getAssignments();
+    return all.filter(a =>
+      a.status === 'assigned' &&
+      a.dueDate &&
+      a.dueDate < today
+    );
+  }
+
+  /**
+   * Get assignment statistics for admin dashboard
+   */
+  async getAssignmentStats(): Promise<{
+    total: number;
+    byStatus: Record<string, number>;
+    byArea: Record<string, number>;
+    byCommittee: Record<string, { assigned: number; completed: number; name: string }>;
+    overdueCount: number;
+  }> {
+    const assignments = await this.getAssignments();
+    const users = await this.getUsers();
+    const userMap = new Map(users.map(u => [u.uid, u]));
+
+    const stats = {
+      total: assignments.length,
+      byStatus: {} as Record<string, number>,
+      byArea: {} as Record<string, number>,
+      byCommittee: {} as Record<string, { assigned: number; completed: number; name: string }>,
+      overdueCount: 0
+    };
+
+    const today = new Date().toISOString().split('T')[0];
+
+    for (const a of assignments) {
+      // By status
+      stats.byStatus[a.status] = (stats.byStatus[a.status] || 0) + 1;
+
+      // By area
+      if (a.area) {
+        stats.byArea[a.area] = (stats.byArea[a.area] || 0) + 1;
+      }
+
+      // By committee member
+      if (!stats.byCommittee[a.committeeId]) {
+        const user = userMap.get(a.committeeId);
+        stats.byCommittee[a.committeeId] = {
+          assigned: 0,
+          completed: 0,
+          name: user?.displayName || user?.email || a.committeeId
+        };
+      }
+      stats.byCommittee[a.committeeId].assigned++;
+      if (a.status === 'submitted') {
+        stats.byCommittee[a.committeeId].completed++;
+      }
+
+      // Overdue count
+      if (a.status === 'assigned' && a.dueDate && a.dueDate < today) {
+        stats.overdueCount++;
+      }
+    }
+
+    return stats;
+  }
+
+  // --- NOTIFICATIONS ---
+
+  async createNotification(params: {
+    recipientId: string;
+    type: Notification['type'];
+    title: string;
+    message: string;
+    link?: string;
+    relatedId?: string;
+    area?: string;
+  }): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockCreateNotification(params);
+    const id = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const notification: Notification = {
+      id,
+      ...params,
+      createdAt: Date.now(),
+      read: false
+    };
+    await setDoc(doc(db, 'notifications', id), notification);
+  }
+
+  async getNotifications(userId: string): Promise<Notification[]> {
+    if (USE_DEMO_MODE) return this.mockGetNotifications(userId);
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Notification);
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockMarkNotificationRead(notificationId);
+    await setDoc(doc(db, 'notifications', notificationId), {
+      read: true,
+      readAt: Date.now()
+    }, { merge: true });
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    const notifications = await this.getNotifications(userId);
+    const unread = notifications.filter(n => !n.read);
+    for (const n of unread) {
+      await this.markNotificationRead(n.id);
+    }
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const notifications = await this.getNotifications(userId);
+    return notifications.filter(n => !n.read).length;
+  }
+
+  /**
+   * Send notification to all committee members in an area
+   */
+  async notifyCommitteeByArea(params: {
+    area: string;
+    type: Notification['type'];
+    title: string;
+    message: string;
+    link?: string;
+    relatedId?: string;
+  }): Promise<void> {
+    const users = await this.getUsers();
+    const committeeMembers = users.filter(
+      u => (u.role === 'committee' || u.role === 'Committee') && u.area === params.area
+    );
+
+    for (const member of committeeMembers) {
+      await this.createNotification({
+        recipientId: member.uid,
+        ...params,
+        area: params.area
+      });
+    }
+  }
+
+  // Mock notification methods
+  private mockCreateNotification(params: any): Promise<void> {
+    const notifications = this.getLocal<Notification>('notifications');
+    const id = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    notifications.push({ id, ...params, createdAt: Date.now(), read: false });
+    this.setLocal('notifications', notifications);
+    return Promise.resolve();
+  }
+
+  private mockGetNotifications(userId: string): Promise<Notification[]> {
+    const notifications = this.getLocal<Notification>('notifications');
+    return Promise.resolve(
+      notifications
+        .filter(n => n.recipientId === userId)
+        .sort((a, b) => b.createdAt - a.createdAt)
+    );
+  }
+
+  private mockMarkNotificationRead(notificationId: string): Promise<void> {
+    const notifications = this.getLocal<Notification>('notifications');
+    const idx = notifications.findIndex(n => n.id === notificationId);
+    if (idx >= 0) {
+      notifications[idx].read = true;
+      notifications[idx].readAt = Date.now();
+      this.setLocal('notifications', notifications);
+    }
+    return Promise.resolve();
   }
 
   // --- MOCK IMPLEMENTATIONS (Preserved for Demo toggle) ---

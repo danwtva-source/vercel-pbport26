@@ -143,6 +143,25 @@ const AdminConsole: React.FC = () => {
   });
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
 
+  // Bulk assignment state
+  const [bulkAssignment, setBulkAssignment] = useState<{
+    area: string;
+    stage: 'stage1' | 'stage2';
+    dueDate: string;
+  }>({
+    area: '',
+    stage: 'stage1',
+    dueDate: ''
+  });
+  const [bulkAssignmentLoading, setBulkAssignmentLoading] = useState(false);
+  const [assignmentStats, setAssignmentStats] = useState<{
+    total: number;
+    byStatus: Record<string, number>;
+    byArea: Record<string, number>;
+    byCommittee: Record<string, { assigned: number; completed: number; name: string }>;
+    overdueCount: number;
+  } | null>(null);
+
   // Financial and Coefficient state
   const [selectedRoundForConfig, setSelectedRoundForConfig] = useState<string | null>(null);
   const [financialRecords, setFinancialRecords] = useState<Record<string, any>>({});
@@ -1000,8 +1019,8 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const AssignmentsTab = () => {
-    const committeeMembers = users.filter(u => u.role === 'committee');
-    const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString() : '—');
+    const committeeMembers = users.filter(u => u.role === 'committee' || u.role === 'Committee');
+    const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString('en-GB') : '—');
 
     const resolveApplication = (applicationId: string) =>
       applications.find(app => app.id === applicationId);
@@ -1033,6 +1052,60 @@ const AdminConsole: React.FC = () => {
     const refreshAssignments = async () => {
       const assignmentsData = await DataService.getAssignments();
       setAssignments(assignmentsData);
+      // Also refresh stats
+      const stats = await DataService.getAssignmentStats();
+      setAssignmentStats(stats);
+    };
+
+    // Load assignment stats on mount
+    useEffect(() => {
+      DataService.getAssignmentStats().then(setAssignmentStats);
+    }, [assignments]);
+
+    // Handle bulk assignment
+    const handleBulkAssignment = async () => {
+      if (!bulkAssignment.area) {
+        alert('Please select an area');
+        return;
+      }
+
+      setBulkAssignmentLoading(true);
+      try {
+        const result = await DataService.bulkAssignByArea({
+          area: bulkAssignment.area,
+          stage: bulkAssignment.stage,
+          dueDate: bulkAssignment.dueDate || undefined,
+          adminId: currentUser?.uid || 'admin'
+        });
+
+        if (result.errors.length > 0) {
+          alert(`Bulk assignment completed with errors:\n${result.errors.join('\n')}`);
+        } else {
+          alert(`Bulk assignment completed!\nCreated: ${result.created}\nSkipped (duplicates): ${result.skipped}`);
+        }
+
+        setBulkAssignment({ area: '', stage: 'stage1', dueDate: '' });
+        await refreshAssignments();
+      } catch (error: any) {
+        console.error('Bulk assignment error:', error);
+        alert(error?.message || 'Failed to create bulk assignments');
+      } finally {
+        setBulkAssignmentLoading(false);
+      }
+    };
+
+    // Get committee members by area for preview
+    const getCommitteeMembersForArea = (area: string) =>
+      committeeMembers.filter(m => m.area === area);
+
+    // Get eligible applications for bulk assignment preview
+    const getEligibleAppsForBulk = () => {
+      if (!bulkAssignment.area) return [];
+      const targetStatus = bulkAssignment.stage === 'stage1' ? 'Submitted-Stage1' : 'Submitted-Stage2';
+      return applications.filter(app =>
+        app.area === bulkAssignment.area &&
+        (app.status === targetStatus || (bulkAssignment.stage === 'stage2' && app.status === 'Invited-Stage2'))
+      );
     };
 
     const handleCreateAssignment = async () => {
@@ -1124,10 +1197,177 @@ const AdminConsole: React.FC = () => {
           <p className="text-gray-600">Assign committee members to applications and track scoring status.</p>
         </div>
 
+        {/* Assignment Statistics */}
+        {assignmentStats && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Card className="bg-gradient-to-br from-purple-50 to-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-purple-600">{assignmentStats.total}</p>
+                <p className="text-sm text-gray-600 font-bold">Total Assignments</p>
+              </div>
+            </Card>
+            <Card className="bg-gradient-to-br from-green-50 to-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-green-600">{assignmentStats.byStatus['submitted'] || 0}</p>
+                <p className="text-sm text-gray-600 font-bold">Completed</p>
+              </div>
+            </Card>
+            <Card className="bg-gradient-to-br from-blue-50 to-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-blue-600">{assignmentStats.byStatus['assigned'] || 0}</p>
+                <p className="text-sm text-gray-600 font-bold">Pending</p>
+              </div>
+            </Card>
+            <Card className="bg-gradient-to-br from-orange-50 to-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-orange-600">{assignmentStats.byStatus['in_progress'] || 0}</p>
+                <p className="text-sm text-gray-600 font-bold">In Progress</p>
+              </div>
+            </Card>
+            <Card className="bg-gradient-to-br from-red-50 to-white">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-red-600">{assignmentStats.overdueCount}</p>
+                <p className="text-sm text-gray-600 font-bold">Overdue</p>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Committee Workload */}
+        {assignmentStats && Object.keys(assignmentStats.byCommittee).length > 0 && (
+          <Card>
+            <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+              <Users size={24} />
+              Committee Workload
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(assignmentStats.byCommittee).map(([id, data]) => {
+                const completionRate = data.assigned > 0 ? Math.round((data.completed / data.assigned) * 100) : 0;
+                return (
+                  <div key={id} className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+                    <p className="font-bold text-gray-800 truncate">{data.name}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-green-500 transition-all"
+                          style={{ width: `${completionRate}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-gray-600">{completionRate}%</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{data.completed}/{data.assigned} completed</p>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* Bulk Assignment Card */}
+        <Card className="border-2 border-purple-200 bg-purple-50/30">
+          <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+            <Users size={24} />
+            Bulk Assign by Area
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Assign all eligible applications in an area to all committee members for that area.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Area</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={bulkAssignment.area}
+                onChange={(e) => setBulkAssignment({ ...bulkAssignment, area: e.target.value })}
+                style={{
+                  borderLeftWidth: '4px',
+                  borderLeftColor: bulkAssignment.area ? getAreaColor(bulkAssignment.area) : '#9333EA'
+                }}
+              >
+                <option value="">Select area</option>
+                {AREA_NAMES.map(area => (
+                  <option key={area} value={area}>{area}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Stage</label>
+              <select
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={bulkAssignment.stage}
+                onChange={(e) => setBulkAssignment({ ...bulkAssignment, stage: e.target.value as 'stage1' | 'stage2' })}
+              >
+                <option value="stage1">Part 1 - EOI Voting</option>
+                <option value="stage2">Part 2 - Full Application Scoring</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Due Date (Optional)</label>
+              <input
+                type="date"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 outline-none"
+                value={bulkAssignment.dueDate}
+                onChange={(e) => setBulkAssignment({ ...bulkAssignment, dueDate: e.target.value })}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={handleBulkAssignment}
+                disabled={bulkAssignmentLoading || !bulkAssignment.area}
+                className="w-full"
+              >
+                {bulkAssignmentLoading ? (
+                  <span className="animate-pulse">Creating...</span>
+                ) : (
+                  <>
+                    <Users size={18} />
+                    Bulk Assign
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Preview */}
+          {bulkAssignment.area && (
+            <div className="mt-4 p-4 rounded-xl bg-white border border-purple-100">
+              <p className="text-sm font-bold text-gray-700 mb-2">Preview:</p>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-500">Committee Members ({bulkAssignment.area}):</p>
+                  <p className="font-bold">{getCommitteeMembersForArea(bulkAssignment.area).length} members</p>
+                  <div className="mt-1 space-y-1">
+                    {getCommitteeMembersForArea(bulkAssignment.area).slice(0, 3).map(m => (
+                      <span key={m.uid} className="inline-block px-2 py-1 bg-gray-100 rounded text-xs mr-1">
+                        {m.displayName || m.email}
+                      </span>
+                    ))}
+                    {getCommitteeMembersForArea(bulkAssignment.area).length > 3 && (
+                      <span className="text-xs text-gray-500">+{getCommitteeMembersForArea(bulkAssignment.area).length - 3} more</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-gray-500">Eligible Applications:</p>
+                  <p className="font-bold">{getEligibleAppsForBulk().length} applications</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {bulkAssignment.stage === 'stage1' ? 'Status: Submitted-Stage1' : 'Status: Invited-Stage2 or Submitted-Stage2'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-purple-600 mt-3 font-bold">
+                This will create up to {getCommitteeMembersForArea(bulkAssignment.area).length * getEligibleAppsForBulk().length} assignments
+                (excluding existing duplicates)
+              </p>
+            </div>
+          )}
+        </Card>
+
+        {/* Individual Assignment Card */}
         <Card>
           <h3 className="text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
             <Plus size={24} />
-            Create Assignment
+            Create Individual Assignment
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
@@ -1155,7 +1395,7 @@ const AdminConsole: React.FC = () => {
                 <option value="">Select committee member</option>
                 {committeeMembers.map(member => (
                   <option key={member.uid} value={member.uid}>
-                    {member.displayName || member.email}
+                    {member.displayName || member.email} {member.area ? `(${member.area})` : ''}
                   </option>
                 ))}
               </select>
@@ -1177,6 +1417,7 @@ const AdminConsole: React.FC = () => {
                 onChange={(e) => setNewAssignment({ ...newAssignment, status: e.target.value as Assignment['status'] })}
               >
                 <option value="assigned">Assigned</option>
+                <option value="in_progress">In Progress</option>
                 <option value="draft">Draft</option>
                 <option value="submitted">Submitted</option>
                 <option value="rescore">Rescore</option>

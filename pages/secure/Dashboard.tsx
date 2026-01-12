@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { DataService, uploadFile } from '../../services/firebase';
-import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings } from '../../types';
+import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES, isStoredRole, toUserRole } from '../../utils';
@@ -30,8 +30,13 @@ import {
   Briefcase,
   Vote as VoteIcon,
   Lock,
-  MapPin
+  MapPin,
+  Bell,
+  RefreshCw
 } from 'lucide-react';
+
+// Settings polling interval (30 seconds)
+const SETTINGS_POLL_INTERVAL = 30000;
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -45,6 +50,11 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [lastSettingsCheck, setLastSettingsCheck] = useState<number>(Date.now());
+  const settingsPollRef = useRef<NodeJS.Timeout | null>(null);
   const { userProfile, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -109,6 +119,85 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Load notifications
+  const loadNotifications = useCallback(async (userId: string) => {
+    try {
+      const notifs = await DataService.getNotifications(userId);
+      setNotifications(notifs);
+      setUnreadCount(notifs.filter(n => !n.read).length);
+    } catch (err) {
+      console.error('Error loading notifications:', err);
+    }
+  }, []);
+
+  // Poll for settings changes (committee members only)
+  useEffect(() => {
+    if (!currentUser || !isStoredRole(currentUser.role, 'committee')) return;
+
+    const pollSettings = async () => {
+      try {
+        const newSettings = await DataService.getPortalSettings();
+        setPortalSettings(prev => {
+          // Check if settings changed and notify user
+          if (prev) {
+            const votingChanged = prev.stage1VotingOpen !== newSettings.stage1VotingOpen;
+            const scoringChanged = prev.stage2ScoringOpen !== newSettings.stage2ScoringOpen;
+
+            if (votingChanged || scoringChanged) {
+              // Settings changed - update the UI
+              setLastSettingsCheck(Date.now());
+            }
+          }
+          return newSettings;
+        });
+      } catch (err) {
+        console.error('Error polling settings:', err);
+      }
+    };
+
+    // Initial poll
+    pollSettings();
+
+    // Set up interval
+    settingsPollRef.current = setInterval(pollSettings, SETTINGS_POLL_INTERVAL);
+
+    return () => {
+      if (settingsPollRef.current) {
+        clearInterval(settingsPollRef.current);
+      }
+    };
+  }, [currentUser]);
+
+  // Load notifications on mount and poll periodically
+  useEffect(() => {
+    if (!currentUser) return;
+
+    loadNotifications(currentUser.uid);
+
+    // Poll notifications every minute
+    const notifInterval = setInterval(() => {
+      loadNotifications(currentUser.uid);
+    }, 60000);
+
+    return () => clearInterval(notifInterval);
+  }, [currentUser, loadNotifications]);
+
+  // Handle marking notification as read
+  const handleMarkNotificationRead = async (notificationId: string) => {
+    await DataService.markNotificationRead(notificationId);
+    if (currentUser) {
+      loadNotifications(currentUser.uid);
+    }
+  };
+
+  // Handle marking all notifications as read
+  const handleMarkAllRead = async () => {
+    if (currentUser) {
+      await DataService.markAllNotificationsRead(currentUser.uid);
+      loadNotifications(currentUser.uid);
+    }
+  };
+
   // Show loading state while auth is resolving or data is loading
   if (authLoading || !currentUser || loading) {
     return (
@@ -163,15 +252,84 @@ const Dashboard: React.FC = () => {
               Welcome back, {currentUser.displayName || currentUser.username || currentUser.email}
             </p>
           </div>
-          {userRole === UserRole.APPLICANT && (
+          <div className="flex items-center gap-3">
+            {/* Notification Bell - For all authenticated users */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition border border-gray-100"
+              >
+                <Bell size={20} className="text-gray-600" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50">
+                  <div className="p-3 border-b border-gray-100 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-900">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs text-purple-600 hover:underline font-bold"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="p-4 text-center text-gray-500 text-sm">No notifications</p>
+                    ) : (
+                      notifications.slice(0, 10).map(notif => (
+                        <div
+                          key={notif.id}
+                          onClick={() => handleMarkNotificationRead(notif.id)}
+                          className={`p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${
+                            !notif.read ? 'bg-purple-50' : ''
+                          }`}
+                        >
+                          <p className="font-bold text-sm text-gray-900">{notif.title}</p>
+                          <p className="text-xs text-gray-600 mt-1">{notif.message}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {new Date(notif.createdAt).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Refresh Button */}
             <button
-              onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg"
+              onClick={() => loadData(currentUser)}
+              className="p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition border border-gray-100"
+              title="Refresh data"
             >
-              <Plus size={20} />
-              New Application
+              <RefreshCw size={20} className="text-gray-600" />
             </button>
-          )}
+
+            {userRole === UserRole.APPLICANT && (
+              <button
+                onClick={() => navigate(ROUTES.PORTAL.APPLICATIONS_NEW)}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg"
+              >
+                <Plus size={20} />
+                New Application
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Applicant Dashboard */}
