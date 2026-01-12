@@ -6,8 +6,9 @@ import { DataService } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { Application, Score, UserRole, User, Round, PortalSettings } from '../../types';
 import { SCORING_CRITERIA } from '../../constants';
-import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock } from 'lucide-react';
+import { BarChart3, CheckCircle, Clock, AlertCircle, Save, Eye, FileText, Lock, MapPin } from 'lucide-react';
 import { isStoredRole, toUserRole, ROUTES } from '../../utils';
+import { getAreaColor } from '../../constants';
 
 interface CriterionScore {
   score: number;
@@ -279,7 +280,16 @@ const ScoringMatrix: React.FC = () => {
           </p>
           {!isAdmin && currentUser.area && (
             <div className="mt-2">
-              <Badge variant="purple">Viewing: {currentUser.area}</Badge>
+              <span
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-bold"
+                style={{
+                  backgroundColor: `${getAreaColor(currentUser.area)}20`,
+                  color: getAreaColor(currentUser.area)
+                }}
+              >
+                <MapPin size={14} />
+                Viewing: {currentUser.area}
+              </span>
             </div>
           )}
         </div>
@@ -400,9 +410,18 @@ const ScoringMatrix: React.FC = () => {
                         <span className="text-gray-500 font-bold">Applicant:</span>{' '}
                         <span className="text-gray-900">{app.applicantName || app.orgName}</span>
                       </div>
-                      <div>
-                        <span className="text-gray-500 font-bold">Area:</span>{' '}
-                        <Badge variant="purple">{app.area}</Badge>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500 font-bold">Area:</span>
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold"
+                          style={{
+                            backgroundColor: `${getAreaColor(app.area)}20`,
+                            color: getAreaColor(app.area)
+                          }}
+                        >
+                          <MapPin size={10} />
+                          {app.area}
+                        </span>
                       </div>
                     </div>
 
@@ -469,8 +488,18 @@ const ScoringMatrix: React.FC = () => {
                   <div>
                     <span className="text-purple-700 font-bold">Applicant:</span> {selectedApp.applicantName || selectedApp.orgName}
                   </div>
-                  <div>
-                    <span className="text-purple-700 font-bold">Area:</span> {selectedApp.area}
+                  <div className="flex items-center gap-1">
+                    <span className="text-purple-700 font-bold">Area:</span>
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold"
+                      style={{
+                        backgroundColor: `${getAreaColor(selectedApp.area)}30`,
+                        color: getAreaColor(selectedApp.area)
+                      }}
+                    >
+                      <MapPin size={10} />
+                      {selectedApp.area}
+                    </span>
                   </div>
                   <div>
                     <span className="text-purple-700 font-bold">Funding:</span> £{selectedApp.amountRequested?.toLocaleString()}

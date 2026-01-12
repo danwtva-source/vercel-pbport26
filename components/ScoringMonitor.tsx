@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Application, User, Score } from '../types';
 import { DataService } from '../services/firebase';
 import { Card, Badge, Button } from './UI';
+import { getAreaColor, AREA_NAMES } from '../constants';
+import { MapPin } from 'lucide-react';
 
 interface ScoringMonitorProps {
   onExit: () => void;
@@ -26,7 +28,7 @@ export const ScoringMonitor: React.FC<ScoringMonitorProps> = ({ onExit }) => {
     });
   }, []);
 
-  const areas = ['Blaenavon', 'Thornhill & Upper Cwmbran', 'Trevethin, Penygarn & St. Cadocs'];
+  const areas = AREA_NAMES;
   const filteredApps = filterArea === 'All' ? apps : apps.filter(a => a.area === filterArea || a.area === 'Cross-Area');
   const committee = users.filter(u => u.role === 'committee');
 
@@ -38,14 +40,21 @@ export const ScoringMonitor: React.FC<ScoringMonitorProps> = ({ onExit }) => {
           <p className="text-gray-400 text-sm">Real-time tracking of committee scoring progress</p>
         </div>
         <div className="flex gap-4 items-center">
-          <select
-            className="p-2 border border-gray-700 bg-gray-800 rounded-lg text-white"
-            value={filterArea}
-            onChange={e => setFilterArea(e.target.value)}
-          >
-            <option value="All">All Areas</option>
-            {areas.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            <MapPin size={18} className="text-gray-400" />
+            <select
+              className="p-2 border border-gray-700 bg-gray-800 rounded-lg text-white"
+              value={filterArea}
+              onChange={e => setFilterArea(e.target.value)}
+              style={{
+                borderLeftWidth: '4px',
+                borderLeftColor: filterArea === 'All' ? '#9333EA' : getAreaColor(filterArea)
+              }}
+            >
+              <option value="All">All Areas</option>
+              {areas.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
           <Button onClick={onExit} variant="secondary">
             Exit Committee Tasks Overview
           </Button>
@@ -74,7 +83,16 @@ export const ScoringMonitor: React.FC<ScoringMonitorProps> = ({ onExit }) => {
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <span>{app.orgName}</span>
                       <span>•</span>
-                      <span className="font-bold text-gray-700">{app.area}</span>
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold"
+                        style={{
+                          backgroundColor: `${getAreaColor(app.area)}20`,
+                          color: getAreaColor(app.area)
+                        }}
+                      >
+                        <MapPin size={10} />
+                        {app.area}
+                      </span>
                     </div>
                   </div>
                 </div>

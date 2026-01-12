@@ -6,7 +6,8 @@ import { api } from '../../services/firebase';
 import { Application, UserRole, Area, ApplicationStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, ROUTES, toUserRole } from '../../utils';
-import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2 } from 'lucide-react';
+import { FileText, Plus, Search, Filter, Download, Eye, Edit2, Trash2, MapPin } from 'lucide-react';
+import { getAreaColor, AREA_NAMES } from '../../constants';
 
 // Helper to check role (case-insensitive)
 const isRole = (role: string | undefined, targetRole: UserRole): boolean => {
@@ -240,17 +241,24 @@ const ApplicationsList: React.FC = () => {
             </select>
 
             {isRole(currentUser.role, UserRole.ADMIN) && (
-              <select
-                value={filterArea}
-                onChange={(e) => setFilterArea(e.target.value as Area | 'All')}
-                className="px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-600 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
-              >
-                <option value="All">All Areas</option>
-                <option value="Blaenavon">Blaenavon</option>
-                <option value="Thornhill & Upper Cwmbran">Thornhill & Upper Cwmbran</option>
-                <option value="Trevethin, Penygarn & St. Cadocs">Trevethin, Penygarn & St. Cadocs</option>
-                <option value="Cross-Area">Cross-Area</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <MapPin size={18} className="text-gray-400" />
+                <select
+                  value={filterArea}
+                  onChange={(e) => setFilterArea(e.target.value as Area | 'All')}
+                  className="px-4 py-3 rounded-xl border border-gray-200 focus:border-purple-600 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+                  style={{
+                    borderLeftWidth: '4px',
+                    borderLeftColor: filterArea === 'All' ? '#9333EA' : getAreaColor(filterArea)
+                  }}
+                >
+                  <option value="All">All Areas</option>
+                  {AREA_NAMES.map(area => (
+                    <option key={area} value={area}>{area}</option>
+                  ))}
+                  <option value="Cross-Area">Cross-Area</option>
+                </select>
+              </div>
             )}
           </div>
         </Card>
@@ -352,7 +360,16 @@ const ApplicationsList: React.FC = () => {
                         <div className="text-sm text-gray-900">{app.orgName}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-700">{app.area}</span>
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold"
+                          style={{
+                            backgroundColor: `${getAreaColor(app.area)}20`,
+                            color: getAreaColor(app.area)
+                          }}
+                        >
+                          <MapPin size={12} />
+                          {app.area}
+                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Badge>{app.status}</Badge>
