@@ -396,6 +396,8 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
   const [publicVoteBlurb, setPublicVoteBlurb] = useState('');
   const [publicVoteImageFile, setPublicVoteImageFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const publicVoteBlurbWordCount = publicVoteBlurb.split(/\s+/).filter(Boolean).length;
+  const isPublicBlurbValid = publicVoteBlurbWordCount <= 200;
   const draftApps = applications.filter(app => app.status === 'Draft');
   const submittedApps = applications.filter(app => app.status.includes('Submitted'));
   const fundedApps = applications.filter(app => app.status === 'Funded');
@@ -410,6 +412,11 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
   const handleSubmitPublicPack = async () => {
     if (!publicPackApp || !publicVoteBlurb || !publicVoteImageFile) {
       alert('Please provide both an image and a blurb');
+      return;
+    }
+
+    if (!isPublicBlurbValid) {
+      alert('Please keep your public vote description to 200 words or less.');
       return;
     }
 
@@ -574,15 +581,18 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                  {publicVoteBlurb.split(/\s+/).filter(Boolean).length} / 200 words
+                  {publicVoteBlurbWordCount} / 200 words
                 </p>
+                {!isPublicBlurbValid && (
+                  <p className="text-sm text-red-600 mt-1">Please reduce your description to 200 words or fewer.</p>
+                )}
               </div>
 
               {/* Submit Button */}
               <div className="flex gap-4">
                 <button
                   onClick={handleSubmitPublicPack}
-                  disabled={submittingPublicPack || !publicVoteBlurb || !publicVoteImageFile}
+                  disabled={submittingPublicPack || !publicVoteBlurb || !publicVoteImageFile || !isPublicBlurbValid}
                   className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-6 py-3 rounded-xl font-bold transition"
                 >
                   {uploadingImage ? 'Uploading Image...' : submittingPublicPack ? 'Submitting...' : 'Submit Public Vote Pack'}
