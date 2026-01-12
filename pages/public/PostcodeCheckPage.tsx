@@ -68,6 +68,7 @@ const PostcodeCheckPage: React.FC = () => {
   const handleReset = () => {
     setPostcode('');
     setResult(null);
+    localStorage.removeItem(eligibilityStorageKey);
   };
 
   return (
