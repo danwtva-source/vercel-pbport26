@@ -115,9 +115,14 @@ const AdminConsole: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
     stage1Visible: true,
+    stage1VotingOpen: false,
     stage2Visible: false,
+    stage2ScoringOpen: false,
     votingOpen: false,
-    scoringThreshold: 50
+    publicVotingStartDate: undefined,
+    publicVotingEndDate: undefined,
+    scoringThreshold: 50,
+    resultsReleased: false
   });
 
   // UI state
@@ -2573,7 +2578,18 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const SettingsTab = () => {
-    const [localSettings, setLocalSettings] = useState(settings);
+    // Ensure localSettings has all fields with proper defaults
+    const [localSettings, setLocalSettings] = useState<PortalSettings>({
+      stage1Visible: settings.stage1Visible ?? true,
+      stage1VotingOpen: settings.stage1VotingOpen ?? false,
+      stage2Visible: settings.stage2Visible ?? false,
+      stage2ScoringOpen: settings.stage2ScoringOpen ?? false,
+      votingOpen: settings.votingOpen ?? false,
+      publicVotingStartDate: settings.publicVotingStartDate,
+      publicVotingEndDate: settings.publicVotingEndDate,
+      scoringThreshold: settings.scoringThreshold ?? 50,
+      resultsReleased: settings.resultsReleased ?? false
+    });
 
     const handleSaveSettings = async () => {
       try {
@@ -2582,6 +2598,7 @@ const AdminConsole: React.FC = () => {
         const stage2ScoringChanged = settings.stage2ScoringOpen !== localSettings.stage2ScoringOpen;
         const publicVotingChanged = settings.votingOpen !== localSettings.votingOpen;
 
+        // Save settings first - this is the critical operation
         await DataService.updatePortalSettings(localSettings);
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
@@ -2590,48 +2607,58 @@ const AdminConsole: React.FC = () => {
           details: localSettings as unknown as Record<string, unknown>
         });
 
-        // Send notifications for workflow changes
-        if (stage1VotingChanged) {
-          const isOpen = localSettings.stage1VotingOpen;
-          // Notify all committee members across all areas
-          for (const area of AREA_NAMES) {
-            await DataService.notifyCommitteeByArea({
-              area,
-              type: isOpen ? 'stage_opened' : 'stage_closed',
-              title: isOpen ? 'Part 1 Voting Now Open' : 'Part 1 Voting Closed',
-              message: isOpen
-                ? 'You can now vote on Part 1 EOI applications in your area.'
-                : 'Part 1 EOI voting has been closed by Admin.',
-              link: '/portal/dashboard'
-            });
-          }
-        }
+        // Update local state immediately after successful save
+        setSettings(localSettings);
 
-        if (stage2ScoringChanged) {
-          const isOpen = localSettings.stage2ScoringOpen;
-          for (const area of AREA_NAMES) {
-            await DataService.notifyCommitteeByArea({
-              area,
-              type: isOpen ? 'stage_opened' : 'stage_closed',
-              title: isOpen ? 'Part 2 Scoring Now Open' : 'Part 2 Scoring Closed',
-              message: isOpen
-                ? 'You can now score Part 2 full applications in your area.'
-                : 'Part 2 application scoring has been closed by Admin.',
-              link: '/portal/scoring'
-            });
+        // Send notifications for workflow changes (non-blocking)
+        // Wrap in try-catch so notification failures don't affect the save confirmation
+        let notificationsSent = false;
+        try {
+          if (stage1VotingChanged) {
+            const isOpen = localSettings.stage1VotingOpen;
+            // Notify all committee members across all areas
+            for (const area of AREA_NAMES) {
+              await DataService.notifyCommitteeByArea({
+                area,
+                type: isOpen ? 'stage_opened' : 'stage_closed',
+                title: isOpen ? 'Part 1 Voting Now Open' : 'Part 1 Voting Closed',
+                message: isOpen
+                  ? 'You can now vote on Part 1 EOI applications in your area.'
+                  : 'Part 1 EOI voting has been closed by Admin.',
+                link: '/portal/dashboard'
+              });
+            }
+            notificationsSent = true;
           }
+
+          if (stage2ScoringChanged) {
+            const isOpen = localSettings.stage2ScoringOpen;
+            for (const area of AREA_NAMES) {
+              await DataService.notifyCommitteeByArea({
+                area,
+                type: isOpen ? 'stage_opened' : 'stage_closed',
+                title: isOpen ? 'Part 2 Scoring Now Open' : 'Part 2 Scoring Closed',
+                message: isOpen
+                  ? 'You can now score Part 2 full applications in your area.'
+                  : 'Part 2 application scoring has been closed by Admin.',
+                link: '/portal/scoring'
+              });
+            }
+            notificationsSent = true;
+          }
+        } catch (notifError) {
+          console.warn('Failed to send notifications, but settings were saved:', notifError);
         }
 
         if (publicVotingChanged && localSettings.votingOpen) {
-          // Public voting opened - could notify applicants/community
           console.log('Public voting status changed');
         }
 
-        setSettings(localSettings);
-        alert('Settings saved successfully' + (stage1VotingChanged || stage2ScoringChanged ? '\nCommittee members have been notified.' : ''));
-      } catch (error) {
+        alert('Settings saved successfully' + (notificationsSent ? '\nCommittee members have been notified.' : ''));
+      } catch (error: any) {
         console.error('Error saving settings:', error);
-        alert('Failed to save settings');
+        const errorMsg = error?.message || error?.code || 'Unknown error';
+        alert(`Failed to save settings: ${errorMsg}`);
       }
     };
 

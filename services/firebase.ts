@@ -952,7 +952,14 @@ class AuthService {
 
   async updatePortalSettings(s: PortalSettings): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
-      await setDoc(doc(db, 'portalSettings', 'global'), s);
+      // Filter out undefined values as Firebase doesn't handle them well
+      const cleanSettings: Record<string, any> = {};
+      for (const [key, value] of Object.entries(s)) {
+        if (value !== undefined) {
+          cleanSettings[key] = value;
+        }
+      }
+      await setDoc(doc(db, 'portalSettings', 'global'), cleanSettings, { merge: true });
   }
 
   // --- AUDIT LOGGING ---
