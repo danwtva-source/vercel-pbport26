@@ -55,6 +55,35 @@ export const POSTCODES = {
 };
 
 // ============================================================================
+// AREA COLOURS (PRD - sub-colours for visual distinction)
+// ============================================================================
+
+export const AREA_COLORS: Record<string, string> = {
+  'Blaenavon': '#FFD447',                        // Yellow
+  'Thornhill & Upper Cwmbran': '#2FBF71',        // Green
+  'Trevethin, Penygarn & St. Cadocs': '#3A86FF', // Blue
+  'Cross-Area': '#9333EA',                        // Purple (for cross-area projects)
+  // Slug-based keys for flexibility
+  'blaenavon': '#FFD447',
+  'thornhill': '#2FBF71',
+  'trevethin': '#3A86FF',
+  'cross-area': '#9333EA'
+};
+
+// Helper to get area colour (with fallback)
+export const getAreaColor = (area: string | null | undefined): string => {
+  if (!area) return '#9333EA'; // Default purple
+  return AREA_COLORS[area] || AREA_COLORS[area.toLowerCase()] || '#9333EA';
+};
+
+// Area display names for UI
+export const AREA_NAMES = [
+  'Blaenavon',
+  'Thornhill & Upper Cwmbran',
+  'Trevethin, Penygarn & St. Cadocs'
+] as const;
+
+// ============================================================================
 // COMMUNITY PRIORITIES DATA
 // ============================================================================
 

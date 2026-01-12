@@ -6,6 +6,7 @@ import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSetti
 import { ScoringModal } from '../../components/ScoringModal';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES, isStoredRole, toUserRole } from '../../utils';
+import { getAreaColor } from '../../constants';
 import {
   Plus,
   FileText,
@@ -28,7 +29,8 @@ import {
   ChevronRight,
   Briefcase,
   Vote as VoteIcon,
-  Lock
+  Lock,
+  MapPin
 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -61,8 +63,11 @@ const Dashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      // For committee members, fetch applications filtered by their area
+      const userArea = isStoredRole(user.role, 'committee') ? user.area : undefined;
+
       const [appsData, votesData, scoresData, assignmentsData, usersData, settings] = await Promise.all([
-        DataService.getApplications(),
+        DataService.getApplications(userArea || undefined),
         DataService.getVotes(),
         DataService.getScores(),
         isStoredRole(user.role, 'committee') ? DataService.getAssignments(user.uid) : Promise.resolve([]),
@@ -81,9 +86,18 @@ const Dashboard: React.FC = () => {
       if (isStoredRole(user.role, 'applicant')) {
         setApplications(appsData.filter(app => app.userId === user.uid));
       } else if (isStoredRole(user.role, 'committee')) {
+        // AREA-BASED FILTERING: Committee members only see apps in their assigned area
+        // First filter by area (already done in getApplications), then by assignments
         const assignedAppIds = assignmentsData.map(a => a.applicationId);
-        const committeeApps = appsData.filter(app => assignedAppIds.includes(app.id));
-        setApplications(committeeApps);
+        // Show both area-matched apps with assignments AND all apps in their area for voting
+        const areaFilteredApps = appsData.filter(app => {
+          // Must be in committee member's area (or cross-area)
+          if (user.area && app.area !== user.area && app.area !== 'Cross-Area') {
+            return false;
+          }
+          return true;
+        });
+        setApplications(areaFilteredApps);
       } else {
         setApplications(appsData);
       }
@@ -638,17 +652,31 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
         />
       </div>
 
-      {/* Area Indicator - Context only */}
+      {/* Area Indicator - Committee members only see applications from their area */}
       {currentUser.area && (
-        <div className="bg-white rounded-xl shadow-md p-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="text-gray-600" size={20} />
-              <span className="font-semibold text-gray-700">Your Area (context):</span>
+        <div
+          className="rounded-xl shadow-md p-4 border-l-4"
+          style={{
+            borderLeftColor: getAreaColor(currentUser.area),
+            backgroundColor: `${getAreaColor(currentUser.area)}15`
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <MapPin style={{ color: getAreaColor(currentUser.area) }} size={20} />
+                <span className="font-semibold text-gray-700">Your Area:</span>
+              </div>
+              <span
+                className="px-4 py-2 rounded-lg font-bold text-white"
+                style={{ backgroundColor: getAreaColor(currentUser.area) }}
+              >
+                {currentUser.area}
+              </span>
             </div>
-            <span className="px-4 py-2 rounded-lg font-semibold bg-purple-600 text-white">
-              {currentUser.area}
-            </span>
+            <div className="text-sm text-gray-600">
+              You can only view and interact with applications in your assigned area
+            </div>
           </div>
         </div>
       )}

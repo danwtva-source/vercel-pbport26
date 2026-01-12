@@ -7,12 +7,13 @@ import { useAuth } from '../../context/AuthContext';
 import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
+import { AREA_NAMES, getAreaColor } from '../../constants';
 import {
   BarChart3, Users, FileText, Settings as SettingsIcon, Clock, Download,
   Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, AlertCircle,
   Eye, Upload, FolderOpen, Calendar, Search, Filter, TrendingUp,
   UserCheck, FileCheck, Activity, ShieldCheck, ClipboardList,
-  DollarSign, Calculator, Bell
+  DollarSign, Calculator, Bell, MapPin
 } from 'lucide-react';
 import { FinancialDashboard } from '../../components/FinancialDashboard';
 import { CoefficientConfig } from '../../components/CoefficientConfig';
@@ -121,6 +122,7 @@ const AdminConsole: React.FC = () => {
   // UI state
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [areaFilter, setAreaFilter] = useState<string>('All');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -480,7 +482,8 @@ const AdminConsole: React.FC = () => {
                            (app.ref || '').toLowerCase().includes(searchLower) ||
                            (app.applicantName || '').toLowerCase().includes(searchLower);
       const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesArea = areaFilter === 'All' || app.area === areaFilter;
+      return matchesSearch && matchesStatus && matchesArea;
     });
 
     const handleStatusChange = async (appId: string, newStatus: string) => {
@@ -528,7 +531,7 @@ const AdminConsole: React.FC = () => {
 
         {/* Filters */}
         <Card>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -538,6 +541,23 @@ const AdminConsole: React.FC = () => {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+            </div>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <select
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 outline-none"
+                value={areaFilter}
+                onChange={(e) => setAreaFilter(e.target.value)}
+                style={{
+                  borderLeftColor: areaFilter !== 'All' ? getAreaColor(areaFilter) : undefined,
+                  borderLeftWidth: areaFilter !== 'All' ? '4px' : undefined
+                }}
+              >
+                <option value="All">All Areas</option>
+                {AREA_NAMES.map(area => (
+                  <option key={area} value={area}>{area}</option>
+                ))}
+              </select>
             </div>
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -587,7 +607,14 @@ const AdminConsole: React.FC = () => {
                         <p className="text-xs text-gray-500">{app.applicantName || '-'}</p>
                       </td>
                       <td className="p-3 text-sm">{app.orgName || '-'}</td>
-                      <td className="p-3 text-sm">{app.area || '-'}</td>
+                      <td className="p-3 text-sm">
+                        <span
+                          className="px-2 py-1 rounded-lg font-medium text-white text-xs"
+                          style={{ backgroundColor: getAreaColor(app.area) }}
+                        >
+                          {app.area || '-'}
+                        </span>
+                      </td>
                       <td className="p-3 text-sm font-bold">{formatCurrency(app.amountRequested || 0)}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 text-xs">

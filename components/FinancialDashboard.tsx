@@ -6,7 +6,7 @@ import {
 import { Card, Button, Input, Badge } from './UI';
 import { FinancialRecord, AreaFinancials, Area, Application, FundingSimulation } from '../types';
 import { formatCurrency } from '../utils';
-import { DEFAULT_AREA_BUDGETS, PRIORITY_CATEGORIES } from '../constants';
+import { DEFAULT_AREA_BUDGETS, PRIORITY_CATEGORIES, getAreaColor } from '../constants';
 
 interface FinancialDashboardProps {
   roundId: string;
@@ -260,11 +260,15 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
           {areaFinancials.map(area => {
             const percentage = (area.spent / area.allocated) * 100;
             const isOverBudget = area.spent > area.allocated;
+            const areaColor = getAreaColor(area.area);
 
             return (
-              <div key={area.area} className="space-y-2">
+              <div key={area.area} className="space-y-2 p-3 rounded-lg border-l-4" style={{ borderLeftColor: areaColor, backgroundColor: `${areaColor}08` }}>
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-800">{area.area}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: areaColor }} />
+                    <span className="font-semibold text-gray-800">{area.area}</span>
+                  </div>
                   <div className="flex items-center gap-4">
                     <span className="text-sm text-gray-600">
                       {formatCurrency(area.spent)} / {formatCurrency(area.allocated)}
@@ -276,10 +280,11 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                 </div>
                 <div className="relative h-3 bg-gray-200 rounded-full overflow-hidden">
                   <div
-                    className={`absolute h-full rounded-full transition-all ${
-                      isOverBudget ? 'bg-red-500' : percentage > 80 ? 'bg-amber-500' : 'bg-teal-500'
-                    }`}
-                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                    className="absolute h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(percentage, 100)}%`,
+                      backgroundColor: isOverBudget ? '#ef4444' : areaColor
+                    }}
                   />
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
