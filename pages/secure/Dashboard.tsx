@@ -4,6 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { DataService, uploadFile } from '../../services/firebase';
 import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
+import { AnnouncementsBanner } from '../../components/AnnouncementsBanner';
 import { useAuth } from '../../context/AuthContext';
 import { ROUTES, isStoredRole, toUserRole } from '../../utils';
 import { getAreaColor } from '../../constants';
@@ -469,6 +470,11 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
 
   return (
     <div className="space-y-6">
+      {/* Announcements Section */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <AnnouncementsBanner role="applicant" maxItems={3} />
+      </div>
+
       {/* Results Released Notifications */}
       {resultsReleased && fundedApps.length > 0 && (
         <div className="bg-gradient-to-r from-green-50 to-teal-50 border-2 border-green-300 rounded-xl p-6">
@@ -902,6 +908,11 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
             </>
           )}
         </div>
+      </div>
+
+      {/* Announcements Section */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <AnnouncementsBanner role="committee" maxItems={3} />
       </div>
 
       {/* Pending Assignments */}

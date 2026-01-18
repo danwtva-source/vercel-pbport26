@@ -1,5 +1,5 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification } from '../types';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification, Announcement } from '../types';
 import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -1319,6 +1319,169 @@ class AuthService {
       notifications[idx].readAt = Date.now();
       this.setLocal('notifications', notifications);
     }
+    return Promise.resolve();
+  }
+
+  // --- ANNOUNCEMENTS ---
+
+  async getAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
+    if (USE_DEMO_MODE) return this.mockGetAnnouncements(visibility);
+
+    const snap = await getDocs(collection(db, 'announcements'));
+    let announcements = snap.docs.map(d => d.data() as Announcement);
+
+    // Filter by visibility if specified
+    if (visibility) {
+      announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
+    }
+
+    // Filter out announcements outside their date range
+    const now = Date.now();
+    announcements = announcements.filter(a => {
+      if (a.startDate && a.startDate > now) return false;
+      if (a.endDate && a.endDate < now) return false;
+      return true;
+    });
+
+    // Sort: pinned first, then by createdAt desc
+    return announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  }
+
+  async getAllAnnouncements(): Promise<Announcement[]> {
+    if (USE_DEMO_MODE) return this.mockGetAnnouncements();
+
+    const snap = await getDocs(collection(db, 'announcements'));
+    const announcements = snap.docs.map(d => d.data() as Announcement);
+
+    // Sort: pinned first, then by createdAt desc
+    return announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  }
+
+  async createAnnouncement(announcement: Announcement): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockCreateAnnouncement(announcement);
+
+    const id = announcement.id || `announcement_${Date.now()}`;
+    await setDoc(doc(db, 'announcements', id), {
+      ...announcement,
+      id,
+      createdAt: announcement.createdAt || Date.now(),
+      updatedAt: Date.now()
+    });
+  }
+
+  async updateAnnouncement(id: string, updates: Partial<Announcement>): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockUpdateAnnouncement(id, updates);
+
+    await setDoc(doc(db, 'announcements', id), {
+      ...updates,
+      updatedAt: Date.now()
+    }, { merge: true });
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
+
+    await deleteDoc(doc(db, 'announcements', id));
+  }
+
+  async incrementAnnouncementReadCount(id: string): Promise<void> {
+    if (USE_DEMO_MODE) return;
+
+    const docRef = doc(db, 'announcements', id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const current = snap.data() as Announcement;
+      await setDoc(docRef, { readCount: (current.readCount || 0) + 1 }, { merge: true });
+    }
+  }
+
+  // Get announcements filtered by user role
+  async getAnnouncementsForRole(role: 'admin' | 'committee' | 'applicant' | 'community'): Promise<Announcement[]> {
+    const all = await this.getAnnouncements();
+
+    return all.filter(a => {
+      switch (a.visibility) {
+        case 'all': return true;
+        case 'admin': return role === 'admin';
+        case 'committee': return role === 'admin' || role === 'committee';
+        case 'applicants': return role === 'admin' || role === 'applicant';
+        default: return true;
+      }
+    });
+  }
+
+  // Get public announcements (visibility: 'all')
+  async getPublicAnnouncements(): Promise<Announcement[]> {
+    const all = await this.getAnnouncements();
+    return all.filter(a => a.visibility === 'all');
+  }
+
+  // Mock announcement methods
+  private mockGetAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
+    let announcements = this.getLocal<Announcement>('announcements');
+
+    if (visibility) {
+      announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
+    }
+
+    // Filter by date range
+    const now = Date.now();
+    announcements = announcements.filter(a => {
+      if (a.startDate && a.startDate > now) return false;
+      if (a.endDate && a.endDate < now) return false;
+      return true;
+    });
+
+    // Sort: pinned first, then by createdAt desc
+    return Promise.resolve(announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    }));
+  }
+
+  private mockCreateAnnouncement(announcement: Announcement): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const id = announcement.id || `announcement_${Date.now()}`;
+    const newAnnouncement = {
+      ...announcement,
+      id,
+      createdAt: announcement.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const existingIdx = announcements.findIndex(a => a.id === id);
+    if (existingIdx >= 0) {
+      announcements[existingIdx] = newAnnouncement;
+    } else {
+      announcements.push(newAnnouncement);
+    }
+
+    this.setLocal('announcements', announcements);
+    return Promise.resolve();
+  }
+
+  private mockUpdateAnnouncement(id: string, updates: Partial<Announcement>): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const idx = announcements.findIndex(a => a.id === id);
+    if (idx >= 0) {
+      announcements[idx] = { ...announcements[idx], ...updates, updatedAt: Date.now() };
+      this.setLocal('announcements', announcements);
+    }
+    return Promise.resolve();
+  }
+
+  private mockDeleteAnnouncement(id: string): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    this.setLocal('announcements', announcements.filter(a => a.id !== id));
     return Promise.resolve();
   }
 

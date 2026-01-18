@@ -4,7 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import { AREA_NAMES, getAreaColor } from '../../constants';
@@ -173,7 +173,7 @@ const AdminConsole: React.FC = () => {
   const [financialRecords, setFinancialRecords] = useState<Record<string, any>>({});
 
   // Announcements state
-  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   const publicVoteCounts = publicVotes.reduce<Record<string, number>>((acc, vote) => {
     acc[vote.applicationId] = (acc[vote.applicationId] || 0) + 1;
@@ -188,7 +188,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -199,7 +199,8 @@ const AdminConsole: React.FC = () => {
         DataService.getPortalSettings(),
         DataService.getVotes(),
         DataService.getPublicVotes(),
-        DataService.getAssignments()
+        DataService.getAssignments(),
+        DataService.getAllAnnouncements()
       ]);
 
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
@@ -231,6 +232,7 @@ const AdminConsole: React.FC = () => {
       setPublicVotes(publicVotesData);
       setSettings(settingsData);
       setAssignments(assignmentsData);
+      setAnnouncements(announcementsData);
       void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -2037,9 +2039,12 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const AnnouncementsTab = () => {
-    const handleSaveAnnouncement = async (announcement: any) => {
+    const handleSaveAnnouncement = async (announcement: Announcement) => {
       try {
-        // For now, store in local state - will add Firebase integration later
+        // Persist to Firebase
+        await DataService.createAnnouncement(announcement);
+
+        // Update local state
         setAnnouncements(prev => {
           const existingIndex = prev.findIndex(a => a.id === announcement.id);
           if (existingIndex >= 0) {
@@ -2049,11 +2054,12 @@ const AdminConsole: React.FC = () => {
           }
           return [...prev, announcement];
         });
+
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'ANNOUNCEMENT_SAVE',
           targetId: announcement.id,
-          details: { title: announcement.title }
+          details: { title: announcement.title, visibility: announcement.visibility }
         });
       } catch (error) {
         console.error('Error saving announcement:', error);
@@ -2063,7 +2069,12 @@ const AdminConsole: React.FC = () => {
 
     const handleDeleteAnnouncement = async (id: string) => {
       try {
+        // Delete from Firebase
+        await DataService.deleteAnnouncement(id);
+
+        // Update local state
         setAnnouncements(prev => prev.filter(a => a.id !== id));
+
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'ANNOUNCEMENT_DELETE',
