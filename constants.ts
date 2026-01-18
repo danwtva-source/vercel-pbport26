@@ -1,4 +1,4 @@
-import { AreaData, PriorityData, Application, User, UserRole, Criterion, ScoreCriterion, CoefficientSettings } from './types';
+import { AreaData, PriorityData, Application, User, UserRole, Criterion, ScoreCriterion, CoefficientSettings, Round, Assignment, Announcement, FinancialRecord, AuditLog } from './types';
 
 // ============================================================================
 // WFG & MARMOT DEFINITIONS
@@ -589,3 +589,135 @@ export const PRIORITY_CATEGORIES = [
   'Transport & Connectivity',
   'Other'
 ] as const;
+
+// ============================================================================
+// DEMO DATA - ROUNDS, ASSIGNMENTS, ANNOUNCEMENTS, FINANCIALS, AUDIT LOGS
+// ============================================================================
+
+export const DEMO_ROUNDS: Round[] = [
+  {
+    id: 'round_2026',
+    name: "Communities' Choice 2026",
+    year: 2026,
+    status: 'open',
+    startDate: '2026-01-01',
+    endDate: '2026-06-30',
+    areas: [],
+    stage1Open: true,
+    stage2Open: false,
+    scoringOpen: false,
+    scoringThreshold: 50,
+    createdAt: Date.now(),
+    budget: 150000,
+    budgetByArea: { ...DEFAULT_AREA_BUDGETS },
+    coefficientSettings: DEFAULT_COEFFICIENT_SETTINGS
+  },
+  {
+    id: 'round_2025',
+    name: "Communities' Choice 2025",
+    year: 2025,
+    status: 'scoring',
+    startDate: '2025-01-01',
+    endDate: '2025-06-30',
+    areas: [],
+    stage1Open: false,
+    stage2Open: true,
+    scoringOpen: true,
+    scoringThreshold: 55,
+    createdAt: Date.now() - 1000 * 60 * 60 * 24 * 365,
+    budget: 150000,
+    budgetByArea: { ...DEFAULT_AREA_BUDGETS },
+    coefficientSettings: DEFAULT_COEFFICIENT_SETTINGS
+  }
+];
+
+export const DEMO_ASSIGNMENTS: Assignment[] = [
+  {
+    id: 'demo_app_1_demo-comm-bl',
+    applicationId: 'demo_app_1',
+    committeeId: 'demo-comm-bl',
+    assignedDate: new Date().toISOString(),
+    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString().split('T')[0],
+    status: 'assigned',
+    area: 'Blaenavon',
+    stage: 'stage1',
+    assignedBy: 'demo-admin'
+  },
+  {
+    id: 'demo_app_2_demo-comm-th',
+    applicationId: 'demo_app_2',
+    committeeId: 'demo-comm-th',
+    assignedDate: new Date().toISOString(),
+    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 21).toISOString().split('T')[0],
+    status: 'draft',
+    area: 'Thornhill & Upper Cwmbran',
+    stage: 'stage2',
+    assignedBy: 'demo-admin'
+  }
+];
+
+export const DEMO_ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: 'announcement_1',
+    title: 'Stage 1 Applications Now Open',
+    content: 'Expression of Interest submissions are now open. Please submit your project ideas by the end of this month.',
+    category: 'deadline',
+    visibility: 'all',
+    priority: 'high',
+    pinned: true,
+    createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+    createdBy: 'admin'
+  },
+  {
+    id: 'announcement_2',
+    title: 'Committee Scoring Guidance Updated',
+    content: 'Committee members can access new scoring guidance documents in the portal. Please review before scoring.',
+    category: 'update',
+    visibility: 'committee',
+    priority: 'normal',
+    createdAt: Date.now() - 1000 * 60 * 60 * 12,
+    createdBy: 'admin'
+  }
+];
+
+export const DEMO_FINANCIALS: FinancialRecord[] = [
+  {
+    id: 'round_2026',
+    roundId: 'round_2026',
+    totalFunding: 150000,
+    totalSpent: 45000,
+    remainingPot: 105000,
+    spendByArea: { ...DEFAULT_AREA_BUDGETS },
+    spendByPriority: {
+      'Community Spaces': 15000,
+      'Youth Services': 10000,
+      Environment: 8000,
+      'Health & Wellbeing': 12000,
+      'Arts & Culture': 0,
+      'Education & Skills': 0,
+      'Transport & Connectivity': 0,
+      Other: 0
+    },
+    updatedAt: Date.now() - 1000 * 60 * 60 * 24,
+    updatedBy: 'admin'
+  }
+];
+
+export const DEMO_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: 'audit_1',
+    adminId: 'admin',
+    action: 'SETTINGS_UPDATE',
+    targetId: 'global',
+    timestamp: Date.now() - 1000 * 60 * 60 * 6,
+    details: { stage1Visible: true, stage1VotingOpen: true }
+  },
+  {
+    id: 'audit_2',
+    adminId: 'admin',
+    action: 'ROUND_UPDATE',
+    targetId: 'round_2026',
+    timestamp: Date.now() - 1000 * 60 * 60 * 2,
+    details: { status: 'open' }
+  }
+];

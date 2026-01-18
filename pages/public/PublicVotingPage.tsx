@@ -1,27 +1,57 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { Vote as VoteIcon, Users, MapPin, Coins, CheckCircle2, Clock, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
 import { DataService } from '../../services/firebase';
-import { Application, PortalSettings } from '../../types';
+import { Application, PortalSettings, PublicVote } from '../../types';
 import { ROUTES } from '../../utils';
 import { getAreaColor } from '../../constants';
 
 const PublicVotingPage: React.FC = () => {
+  const navigate = useNavigate();
   const [applications, setApplications] = useState<Application[]>([]);
   const [settings, setSettings] = useState<PortalSettings | null>(null);
+  const [publicVotes, setPublicVotes] = useState<PublicVote[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedArea, setSelectedArea] = useState<string>('All');
+  const [error, setError] = useState<string | null>(null);
+  const eligibilityStorageKey = 'pb_public_vote_eligibility';
+  const voterIdStorageKey = 'pb_public_voter_id';
 
   useEffect(() => {
     loadData();
   }, []);
 
+  const getOrCreateVoterId = () => {
+    const existing = localStorage.getItem(voterIdStorageKey);
+    if (existing) return existing;
+    const newId = (globalThis.crypto?.randomUUID?.() ?? `pv_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+    localStorage.setItem(voterIdStorageKey, newId);
+    return newId;
+  };
+
+  const getEligibility = () => {
+    const stored = localStorage.getItem(eligibilityStorageKey);
+    if (!stored) return null;
+    try {
+      const parsed = JSON.parse(stored) as { area: string; checkedAt: number };
+      const expiryMs = 1000 * 60 * 60 * 24 * 30;
+      if (!parsed.checkedAt || Date.now() - parsed.checkedAt > expiryMs) {
+        localStorage.removeItem(eligibilityStorageKey);
+        return null;
+      }
+      return parsed;
+    } catch (error) {
+      return null;
+    }
+  };
+
   const loadData = async () => {
     try {
-      const [appsData, settingsData] = await Promise.all([
+      const [appsData, settingsData, publicVotesData] = await Promise.all([
         DataService.getApplications(),
-        DataService.getPortalSettings()
+        DataService.getPortalSettings(),
+        DataService.getPublicVotes()
       ]);
 
       // Filter for funded applications with public vote pack complete
@@ -31,8 +61,10 @@ const PublicVotingPage: React.FC = () => {
 
       setApplications(votableApps);
       setSettings(settingsData);
+      setPublicVotes(publicVotesData);
     } catch (error) {
       console.error('Error loading public voting data:', error);
+      setError('Unable to load public voting data. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -49,6 +81,40 @@ const PublicVotingPage: React.FC = () => {
     (!votingEndDate || now <= votingEndDate)
   );
   const votingOpen = (settings?.votingOpen === true) && isWithinDateRange;
+
+  const eligibility = getEligibility();
+  const voterId = getOrCreateVoterId();
+  const myVotes = publicVotes.filter(vote => vote.voterId === voterId);
+
+  const handleVote = async (app: Application) => {
+    if (!votingOpen) {
+      alert('Public voting is not currently open.');
+      return;
+    }
+
+    if (!eligibility) {
+      navigate(ROUTES.PUBLIC.VOTING_ZONE);
+      return;
+    }
+
+    try {
+      const vote: PublicVote = {
+        id: `${app.id}_${voterId}`,
+        applicationId: app.id,
+        voterId,
+        area: eligibility.area,
+        eligibilityCheckedAt: eligibility.checkedAt,
+        createdAt: new Date().toISOString()
+      };
+      await DataService.savePublicVote(vote);
+      const updatedVotes = await DataService.getPublicVotes();
+      setPublicVotes(updatedVotes);
+      alert('Thank you! Your vote has been recorded.');
+    } catch (error) {
+      console.error('Failed to submit public vote:', error);
+      alert('Unable to record your vote right now. Please try again.');
+    }
+  };
 
   // Format dates for display
   const formatDate = (timestamp: number | undefined) => {
@@ -73,6 +139,19 @@ const PublicVotingPage: React.FC = () => {
       <PublicLayout>
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <PublicLayout>
+        <div className="max-w-3xl mx-auto text-center py-20">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+            <AlertCircle size={32} className="text-red-500 mx-auto mb-3" />
+            <p className="text-red-700 font-semibold">{error}</p>
+          </div>
         </div>
       </PublicLayout>
     );
@@ -156,6 +235,29 @@ const PublicVotingPage: React.FC = () => {
           >
             <ArrowRight size={20} />
             Back to Home
+          </Link>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (!eligibility) {
+    return (
+      <PublicLayout>
+        <div className="max-w-4xl mx-auto text-center py-20">
+          <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle size={40} className="text-purple-600" />
+          </div>
+          <h1 className="text-4xl font-bold text-purple-900 mb-4 font-display">Check Your Eligibility First</h1>
+          <p className="text-lg text-purple-700 mb-8">
+            Please check your postcode to confirm eligibility before voting on projects.
+          </p>
+          <Link
+            to={ROUTES.PUBLIC.VOTING_ZONE}
+            className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-bold transition-all"
+          >
+            <MapPin size={20} />
+            Check My Postcode
           </Link>
         </div>
       </PublicLayout>
@@ -293,10 +395,20 @@ const PublicVotingPage: React.FC = () => {
                   </div>
 
                   {/* Vote Button */}
-                  <button className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
-                    <VoteIcon size={20} />
-                    Vote for This Project
-                  </button>
+                  {myVotes.some(vote => vote.applicationId === app.id) ? (
+                    <div className="w-full bg-green-100 text-green-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                      <CheckCircle2 size={20} />
+                      Vote Recorded
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleVote(app)}
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                    >
+                      <VoteIcon size={20} />
+                      Vote for This Project
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

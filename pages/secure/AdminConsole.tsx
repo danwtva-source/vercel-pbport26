@@ -4,7 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import { AREA_NAMES, getAreaColor } from '../../constants';
@@ -111,6 +111,7 @@ const AdminConsole: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [publicVotes, setPublicVotes] = useState<PublicVote[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
     stage1Visible: true,
@@ -167,7 +168,34 @@ const AdminConsole: React.FC = () => {
   const [financialRecords, setFinancialRecords] = useState<Record<string, any>>({});
 
   // Announcements state
-  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  const publicVoteCounts = publicVotes.reduce<Record<string, number>>((acc, vote) => {
+    acc[vote.applicationId] = (acc[vote.applicationId] || 0) + 1;
+    return acc;
+  }, {});
+
+  const handleExportPublicVotes = () => {
+    if (publicVotes.length === 0) {
+      alert('No public votes available to export yet.');
+      return;
+    }
+    const exportRows = publicVotes.map(vote => {
+      const app = applications.find(item => item.id === vote.applicationId);
+      return {
+        applicationId: vote.applicationId,
+        projectTitle: app?.projectTitle || '',
+        organisation: app?.orgName || '',
+        area: app?.area || vote.area || '',
+        voterId: vote.voterId,
+        eligibilityCheckedAt: vote.eligibilityCheckedAt
+          ? new Date(vote.eligibilityCheckedAt).toISOString()
+          : '',
+        createdAt: vote.createdAt
+      };
+    });
+    exportToCSV(exportRows, `public-votes-${new Date().toISOString().slice(0, 10)}.csv`);
+  };
 
   // Load all data
   useEffect(() => {
@@ -177,7 +205,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, assignmentsData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData, financialsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -187,7 +215,10 @@ const AdminConsole: React.FC = () => {
         DataService.getScores(),
         DataService.getPortalSettings(),
         DataService.getVotes(),
-        DataService.getAssignments()
+        DataService.getPublicVotes(),
+        DataService.getAssignments(),
+        DataService.getAnnouncements(),
+        DataService.getFinancials()
       ]);
 
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
@@ -216,8 +247,16 @@ const AdminConsole: React.FC = () => {
       setDocuments(docsData);
       setAuditLogs(logsData);
       setScores(scoresData);
+      setPublicVotes(publicVotesData);
       setSettings(settingsData);
       setAssignments(assignmentsData);
+      setAnnouncements(announcementsData);
+      setFinancialRecords(
+        financialsData.reduce<Record<string, any>>((acc, record) => {
+          acc[record.roundId] = record;
+          return acc;
+        }, {})
+      );
       void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -1899,6 +1938,12 @@ const AdminConsole: React.FC = () => {
       rounds.length > 0 ? rounds[0].id : ''
     );
 
+    useEffect(() => {
+      if (!selectedRound && rounds.length > 0) {
+        setSelectedRound(rounds[0].id);
+      }
+    }, [rounds, selectedRound]);
+
     const currentRound = rounds.find(r => r.id === selectedRound);
     const roundApplications = applications.filter(app =>
       !selectedRound || app.roundId === selectedRound
@@ -1906,7 +1951,7 @@ const AdminConsole: React.FC = () => {
 
     const handleSaveFinancials = async (financials: any) => {
       try {
-        // Store in local state for now - will add Firebase integration later
+        await DataService.saveFinancials(financials);
         setFinancialRecords(prev => ({
           ...prev,
           [selectedRound]: financials
@@ -1964,6 +2009,12 @@ const AdminConsole: React.FC = () => {
     const [selectedRound, setSelectedRound] = useState<string>(
       rounds.length > 0 ? rounds[0].id : ''
     );
+
+    useEffect(() => {
+      if (!selectedRound && rounds.length > 0) {
+        setSelectedRound(rounds[0].id);
+      }
+    }, [rounds, selectedRound]);
 
     const currentRound = rounds.find(r => r.id === selectedRound);
 
@@ -2024,9 +2075,9 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const AnnouncementsTab = () => {
-    const handleSaveAnnouncement = async (announcement: any) => {
+    const handleSaveAnnouncement = async (announcement: Announcement) => {
       try {
-        // For now, store in local state - will add Firebase integration later
+        await DataService.saveAnnouncement(announcement);
         setAnnouncements(prev => {
           const existingIndex = prev.findIndex(a => a.id === announcement.id);
           if (existingIndex >= 0) {
@@ -2050,6 +2101,7 @@ const AdminConsole: React.FC = () => {
 
     const handleDeleteAnnouncement = async (id: string) => {
       try {
+        await DataService.deleteAnnouncement(id);
         setAnnouncements(prev => prev.filter(a => a.id !== id));
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
@@ -2567,6 +2619,10 @@ const AdminConsole: React.FC = () => {
   const SettingsTab = () => {
     const [localSettings, setLocalSettings] = useState(settings);
 
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
     const handleSaveSettings = async () => {
       try {
         // Track which settings changed for notifications
@@ -2799,6 +2855,40 @@ const AdminConsole: React.FC = () => {
               {localSettings.publicVotingStartDate && localSettings.publicVotingEndDate && (
                 <div className="col-span-2 text-sm text-purple-700">
                   Voting period: {new Date(localSettings.publicVotingStartDate).toLocaleString('en-GB')} - {new Date(localSettings.publicVotingEndDate).toLocaleString('en-GB')}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-purple-100 rounded-lg p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <p className="font-bold text-gray-800">Public Vote Totals</p>
+                  <p className="text-sm text-gray-600">Live count of public votes per eligible project</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-purple-700">
+                    Total votes: {publicVotes.length}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={handleExportPublicVotes}>
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+              {applications.filter(app => app.status === 'Funded' && app.publicVotePackComplete).length === 0 ? (
+                <p className="text-sm text-gray-500">No funded applications with completed vote packs yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {applications
+                    .filter(app => app.status === 'Funded' && app.publicVotePackComplete)
+                    .map(app => (
+                      <div key={app.id} className="flex items-center justify-between text-sm bg-gray-50 rounded-md px-3 py-2">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-800">{app.projectTitle}</span>
+                          <span className="text-gray-500">{app.orgName}</span>
+                        </div>
+                        <span className="font-bold text-purple-700">{publicVoteCounts[app.id] || 0}</span>
+                      </div>
+                    ))}
                 </div>
               )}
             </div>
