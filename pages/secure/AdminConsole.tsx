@@ -71,6 +71,7 @@ const AdminConsole: React.FC = () => {
   );
   const tabParam = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isScoringMode, setIsScoringMode] = useState(false);
   const [authCheckRunning, setAuthCheckRunning] = useState(false);
   const [authCheckResult, setAuthCheckResult] = useState<{
@@ -188,7 +189,8 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData] = await Promise.all([
+      // Use Promise.allSettled to handle individual failures gracefully
+      const results = await Promise.allSettled([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -203,10 +205,49 @@ const AdminConsole: React.FC = () => {
         DataService.getAllAnnouncements()
       ]);
 
+      // Extract successful results with fallbacks
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData] = results;
+
+      const apps = appsData.status === 'fulfilled' ? appsData.value : [];
+      const users = usersData.status === 'fulfilled' ? usersData.value : [];
+      const rounds = roundsData.status === 'fulfilled' ? roundsData.value : [];
+      const folders = folderData.status === 'fulfilled' ? folderData.value : [];
+      const docs = docsData.status === 'fulfilled' ? docsData.value : [];
+      const logs = logsData.status === 'fulfilled' ? logsData.value : [];
+      const scores = scoresData.status === 'fulfilled' ? scoresData.value : [];
+      const settings = settingsData.status === 'fulfilled' ? settingsData.value : {
+        stage1Visible: true,
+        stage1VotingOpen: false,
+        stage2Visible: false,
+        stage2ScoringOpen: false,
+        votingOpen: false,
+        scoringThreshold: 50,
+        resultsReleased: false
+      };
+      const votes = votesData.status === 'fulfilled' ? votesData.value : [];
+      const publicVotes = publicVotesData.status === 'fulfilled' ? publicVotesData.value : [];
+      const assignments = assignmentsData.status === 'fulfilled' ? assignmentsData.value : [];
+      const announcements = announcementsData.status === 'fulfilled' ? announcementsData.value : [];
+
+      // Log any failures for debugging
+      const failures: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const collectionNames = ['applications', 'users', 'rounds', 'documentFolders', 'documents', 'auditLogs', 'scores', 'portalSettings', 'votes', 'publicVotes', 'assignments', 'announcements'];
+          console.error(`Failed to load ${collectionNames[index]}:`, result.reason);
+          failures.push(collectionNames[index]);
+        }
+      });
+
+      if (failures.length > 0) {
+        console.warn(`⚠️ Admin Console: Failed to load ${failures.length} collection(s): ${failures.join(', ')}`);
+        console.warn('Please check Firestore rules to ensure admin has read access to all collections.');
+      }
+
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
-      const enrichedApps = appsData.map(app => {
-        const appScores = scoresData.filter(s => s.appId === app.id);
-        const appVotes = votesData.filter(v => v.appId === app.id);
+      const enrichedApps = apps.map(app => {
+        const appScores = scores.filter(s => s.appId === app.id);
+        const appVotes = votes.filter(v => v.appId === app.id);
         const avg = appScores.length > 0
           ? Math.round(appScores.reduce((sum, curr) => sum + curr.weightedTotal, 0) / appScores.length)
           : 0;
@@ -223,19 +264,20 @@ const AdminConsole: React.FC = () => {
       });
 
       setApplications(enrichedApps);
-      setUsers(usersData);
-      setRounds(roundsData);
-      setDocumentFolders(folderData);
-      setDocuments(docsData);
-      setAuditLogs(logsData);
-      setScores(scoresData);
-      setPublicVotes(publicVotesData);
-      setSettings(settingsData);
-      setAssignments(assignmentsData);
-      setAnnouncements(announcementsData);
-      void runAuthConsistencyCheck(usersData);
+      setUsers(users);
+      setRounds(rounds);
+      setDocumentFolders(folders);
+      setDocuments(docs);
+      setAuditLogs(logs);
+      setScores(scores);
+      setPublicVotes(publicVotes);
+      setSettings(settings);
+      setAssignments(assignments);
+      setAnnouncements(announcements);
+      void runAuthConsistencyCheck(users);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading admin console data:', error);
+      setLoadError('Some admin console data failed to load. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -3204,6 +3246,39 @@ const AdminConsole: React.FC = () => {
   return (
     <SecureLayout userRole={UserRole.ADMIN}>
       <div className="space-y-6">
+        {/* Load Error Banner */}
+        {loadError && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-lg shadow-md">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h3 className="font-bold text-amber-900 mb-1">Data Load Warning</h3>
+                <p className="text-sm text-amber-800 mb-2">{loadError}</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  Some data collections may be restricted. The admin console is functional but may show incomplete data.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setLoadError(null);
+                      loadAllData();
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition"
+                  >
+                    Retry Loading
+                  </button>
+                  <button
+                    onClick={() => setLoadError(null)}
+                    className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-sm font-bold transition"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-purple-100 p-3 rounded-xl">
