@@ -1293,14 +1293,19 @@ class AuthService {
 
   async getNotifications(userId: string): Promise<Notification[]> {
     if (USE_DEMO_MODE) return this.mockGetNotifications(userId);
-    const q = query(
-      collection(db, 'notifications'),
-      where('recipientId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Notification);
+    try {
+      const q = query(
+        collection(db, 'notifications'),
+        where('recipientId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as Notification);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+      return [];
+    }
   }
 
   async markNotificationRead(notificationId: string): Promise<void> {
