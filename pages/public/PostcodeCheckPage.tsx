@@ -12,6 +12,7 @@ const PostcodeCheckPage: React.FC = () => {
   const [result, setResult] = useState<{ eligible: boolean; area?: string; formUrl?: string } | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [settings, setSettings] = useState<PortalSettings | null>(null);
+  const eligibilityStorageKey = 'pb_public_vote_eligibility';
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -38,6 +39,10 @@ const PostcodeCheckPage: React.FC = () => {
 
       for (const [key, areaData] of Object.entries(AREA_DATA)) {
         if (areaData.postcodes.includes(normalized)) {
+          localStorage.setItem(eligibilityStorageKey, JSON.stringify({
+            area: areaData.name,
+            checkedAt: Date.now()
+          }));
           setResult({
             eligible: true,
             area: areaData.name,
@@ -63,6 +68,7 @@ const PostcodeCheckPage: React.FC = () => {
   const handleReset = () => {
     setPostcode('');
     setResult(null);
+    localStorage.removeItem(eligibilityStorageKey);
   };
 
   return (
