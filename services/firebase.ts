@@ -966,7 +966,26 @@ class AuthService {
   async logAction(params: { adminId: string; action: string; targetId: string; details?: Record<string, unknown>; }): Promise<void> {
       if (USE_DEMO_MODE) { console.log(`[AUDIT]`, params); return; }
       const id = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-      await setDoc(doc(db, 'auditLogs', id), { ...params, id, timestamp: Date.now() });
+
+      // Clean undefined values from details to avoid Firebase errors
+      let cleanDetails: Record<string, unknown> | undefined;
+      if (params.details) {
+        cleanDetails = {};
+        for (const [key, value] of Object.entries(params.details)) {
+          if (value !== undefined) {
+            cleanDetails[key] = value;
+          }
+        }
+      }
+
+      await setDoc(doc(db, 'auditLogs', id), {
+        adminId: params.adminId,
+        action: params.action,
+        targetId: params.targetId,
+        details: cleanDetails,
+        id,
+        timestamp: Date.now()
+      });
   }
 
   async getAuditLogs(): Promise<AuditLog[]> {
