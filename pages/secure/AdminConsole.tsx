@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
-import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
+import { DataService, exportToCSV, uploadFile as uploadToStorage, seedAllTestData } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
@@ -3066,75 +3066,75 @@ const AdminConsole: React.FC = () => {
           </div>
         </Card>
 
-        {/* Test Data Seeding */}
+        {/* Comprehensive Test Data Seeding */}
         <Card className="border-2 border-dashed border-gray-300 bg-gray-50">
           <h3 className="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2">
             <Activity size={24} />
-            Development: Seed Test Data
+            Development: Seed All Test Data
           </h3>
           <p className="text-sm text-gray-600 mb-4">
-            Generate test applications across all areas to observe portal functionality. This creates sample applications at various stages.
+            Populate all tabs with comprehensive test data including users, rounds, applications, assignments, audit logs, and announcements.
           </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 text-sm">
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Users</p>
+              <p className="text-gray-500">Admin + 6 committee + 2 applicants</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Rounds</p>
+              <p className="text-gray-500">2025 (active) + 2026 (planning)</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Applications</p>
+              <p className="text-gray-500">12 apps across 3 areas</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Assignments</p>
+              <p className="text-gray-500">Stage 2 apps assigned to committee</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Audit Logs</p>
+              <p className="text-gray-500">Sample admin activity logs</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Announcements</p>
+              <p className="text-gray-500">Public + committee + applicant</p>
+            </div>
+          </div>
           <Button
             variant="secondary"
             onClick={async () => {
-              if (!confirm('This will create test applications in your database. Continue?')) return;
+              if (!confirm('This will create comprehensive test data in your database including users, rounds, applications, assignments, audit logs, and announcements. Continue?')) return;
 
-              const timestamp = Date.now();
-              const testApps = [
-                // Blaenavon - Stage 1
-                { ref: 'TEST-BL-001', projectTitle: 'Blaenavon Youth Club Renovation', orgName: 'Blaenavon Youth Association', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 4500, summary: 'Renovating the local youth club to provide better facilities for young people.' },
-                { ref: 'TEST-BL-002', projectTitle: 'Heritage Walking Tours', orgName: 'Blaenavon Heritage Trust', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 2800, summary: 'Creating guided walking tours showcasing our industrial heritage.' },
-                // Blaenavon - Stage 2
-                { ref: 'TEST-BL-003', projectTitle: 'Community Garden Project', orgName: 'Blaenavon Green Spaces', area: 'Blaenavon', status: 'Submitted-Stage2', amountRequested: 5000, summary: 'Creating a community garden with growing spaces for families.' },
+              try {
+                const result = await seedAllTestData(currentUser?.uid || 'admin');
 
-                // Thornhill - Stage 1
-                { ref: 'TEST-TH-001', projectTitle: 'Thornhill Sports Equipment', orgName: 'Thornhill Sports Club', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage1', amountRequested: 3200, summary: 'Purchasing new sports equipment for community use.' },
-                { ref: 'TEST-TH-002', projectTitle: 'Digital Skills Workshop', orgName: 'Upper Cwmbran Community Centre', area: 'Thornhill & Upper Cwmbran', status: 'Invited-Stage2', amountRequested: 4000, summary: 'Providing digital skills training for seniors.' },
-                // Thornhill - Stage 2
-                { ref: 'TEST-TH-003', projectTitle: 'After School Club', orgName: 'Thornhill Primary PTA', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage2', amountRequested: 4800, summary: 'Establishing an after-school club for working parents.' },
+                let message = `Test Data Seeding Complete!\n\n`;
+                message += `Users: ${result.users}\n`;
+                message += `Rounds: ${result.rounds}\n`;
+                message += `Applications: ${result.applications}\n`;
+                message += `Assignments: ${result.assignments}\n`;
+                message += `Audit Logs: ${result.auditLogs}\n`;
+                message += `Announcements: ${result.announcements}\n`;
 
-                // Trevethin - Stage 1
-                { ref: 'TEST-TR-001', projectTitle: 'Penygarn Play Area', orgName: 'Penygarn Residents Group', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 5500, summary: 'Improving the local play area with new equipment.' },
-                { ref: 'TEST-TR-002', projectTitle: 'St Cadocs Food Bank', orgName: 'St Cadocs Church', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 2500, summary: 'Expanding food bank services to help more families.' },
-                // Trevethin - Stage 2
-                { ref: 'TEST-TR-003', projectTitle: 'Trevethin Community Cafe', orgName: 'Trevethin Community Action', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage2', amountRequested: 4200, summary: 'Setting up a community cafe as a social hub.' },
-              ];
-
-              let created = 0;
-              for (let i = 0; i < testApps.length; i++) {
-                const app = testApps[i];
-                const id = `test_${app.ref.toLowerCase().replace(/-/g, '_')}_${timestamp}_${i}`;
-                try {
-                  await DataService.createApplication({
-                    id,
-                    ref: app.ref,
-                    projectTitle: app.projectTitle,
-                    orgName: app.orgName,
-                    area: app.area as any,
-                    status: app.status as any,
-                    amountRequested: app.amountRequested,
-                    summary: app.summary,
-                    userId: currentUser?.uid || 'test-user',
-                    applicantName: 'Test Applicant',
-                    applicantEmail: 'test@example.com',
-                    applicantPhone: '01234 567890',
-                    applicantAddress: `Test Address, ${app.area}`,
-                    createdAt: timestamp + i,
-                    updatedAt: timestamp + i,
-                  } as any);
-                  created++;
-                } catch (e) {
-                  console.error('Failed to create test app:', app.ref, e);
+                if (result.errors.length > 0) {
+                  message += `\nErrors (${result.errors.length}):\n`;
+                  message += result.errors.slice(0, 5).join('\n');
+                  if (result.errors.length > 5) {
+                    message += `\n... and ${result.errors.length - 5} more`;
+                  }
                 }
-              }
 
-              alert(`Created ${created} test applications.\n\nRefresh the page to see them in the Master List.`);
-              await loadAllData();
+                alert(message);
+                await loadAllData();
+              } catch (error: any) {
+                console.error('Seeding error:', error);
+                alert(`Failed to seed test data: ${error.message}`);
+              }
             }}
           >
             <Plus size={18} />
-            Seed Test Applications
+            Seed All Test Data
           </Button>
         </Card>
 
