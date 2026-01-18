@@ -3040,6 +3040,68 @@ const AdminConsole: React.FC = () => {
           </div>
         </Card>
 
+        {/* Test Data Seeding */}
+        <Card className="border-2 border-dashed border-gray-300 bg-gray-50">
+          <h3 className="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2">
+            <Activity size={24} />
+            Development: Seed Test Data
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Generate test applications across all areas to observe portal functionality. This creates sample applications at various stages.
+          </p>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              if (!confirm('This will create test applications in your database. Continue?')) return;
+
+              const testApps = [
+                // Blaenavon - Stage 1
+                { ref: 'TEST-BL-001', projectTitle: 'Blaenavon Youth Club Renovation', orgName: 'Blaenavon Youth Association', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 4500, summary: 'Renovating the local youth club to provide better facilities for young people.' },
+                { ref: 'TEST-BL-002', projectTitle: 'Heritage Walking Tours', orgName: 'Blaenavon Heritage Trust', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 2800, summary: 'Creating guided walking tours showcasing our industrial heritage.' },
+                // Blaenavon - Stage 2
+                { ref: 'TEST-BL-003', projectTitle: 'Community Garden Project', orgName: 'Blaenavon Green Spaces', area: 'Blaenavon', status: 'Submitted-Stage2', amountRequested: 5000, summary: 'Creating a community garden with growing spaces for families.' },
+
+                // Thornhill - Stage 1
+                { ref: 'TEST-TH-001', projectTitle: 'Thornhill Sports Equipment', orgName: 'Thornhill Sports Club', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage1', amountRequested: 3200, summary: 'Purchasing new sports equipment for community use.' },
+                { ref: 'TEST-TH-002', projectTitle: 'Digital Skills Workshop', orgName: 'Upper Cwmbran Community Centre', area: 'Thornhill & Upper Cwmbran', status: 'Invited-Stage2', amountRequested: 4000, summary: 'Providing digital skills training for seniors.' },
+                // Thornhill - Stage 2
+                { ref: 'TEST-TH-003', projectTitle: 'After School Club', orgName: 'Thornhill Primary PTA', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage2', amountRequested: 4800, summary: 'Establishing an after-school club for working parents.' },
+
+                // Trevethin - Stage 1
+                { ref: 'TEST-TR-001', projectTitle: 'Penygarn Play Area', orgName: 'Penygarn Residents Group', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 5500, summary: 'Improving the local play area with new equipment.' },
+                { ref: 'TEST-TR-002', projectTitle: 'St Cadocs Food Bank', orgName: 'St Cadocs Church', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 2500, summary: 'Expanding food bank services to help more families.' },
+                // Trevethin - Stage 2
+                { ref: 'TEST-TR-003', projectTitle: 'Trevethin Community Cafe', orgName: 'Trevethin Community Action', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage2', amountRequested: 4200, summary: 'Setting up a community cafe as a social hub.' },
+              ];
+
+              let created = 0;
+              for (const app of testApps) {
+                const id = `test_${app.ref.toLowerCase().replace(/-/g, '_')}_${Date.now()}`;
+                try {
+                  await DataService.updateApplication(id, {
+                    ...app,
+                    id,
+                    userId: currentUser?.uid || 'test-user',
+                    applicantName: 'Test Applicant',
+                    applicantEmail: 'test@example.com',
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  } as any);
+                  created++;
+                } catch (e) {
+                  console.error('Failed to create test app:', app.ref, e);
+                }
+              }
+
+              alert(`Created ${created} test applications.\n\nRefresh the page to see them in the Master List.`);
+              await loadAllData();
+            }}
+          >
+            <Plus size={18} />
+            Seed Test Applications
+          </Button>
+        </Card>
+
         <div className="flex justify-end">
           <Button onClick={handleSaveSettings}>
             <Save size={18} />
