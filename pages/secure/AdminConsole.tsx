@@ -2633,6 +2633,10 @@ const AdminConsole: React.FC = () => {
       setLocalSettings(settings);
     }, [settings]);
 
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
     const handleSaveSettings = async () => {
       try {
         // Track which settings changed for notifications
