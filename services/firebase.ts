@@ -942,20 +942,38 @@ class AuthService {
         console.warn('Firestore not initialized, returning empty announcements');
         return [];
       }
-      const snap = await getDocs(collection(db, 'announcements'));
-      return snap.docs.map(d => d.data() as Announcement);
+      try {
+        const snap = await getDocs(collection(db, 'announcements'));
+        return snap.docs.map(d => d.data() as Announcement);
+      } catch (error) {
+        console.error('Error fetching announcements:', error);
+        if ((error as any)?.code === 'permission-denied') {
+          console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
+        }
+        return [];
+      }
   }
 
   async saveAnnouncement(announcement: Announcement): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveAnnouncement(announcement);
       if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
+      try {
+        await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
+      } catch (error) {
+        console.error('Error saving announcement:', error);
+        throw new Error('Failed to save announcement. Please check your permissions.');
+      }
   }
 
   async deleteAnnouncement(id: string): Promise<void> {
       if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
       if (!db) throw new Error('Firestore not initialized');
-      await deleteDoc(doc(db, 'announcements', id));
+      try {
+        await deleteDoc(doc(db, 'announcements', id));
+      } catch (error) {
+        console.error('Error deleting announcement:', error);
+        throw new Error('Failed to delete announcement. Please check your permissions.');
+      }
   }
 
   // --- FINANCIALS ---
@@ -1113,9 +1131,17 @@ class AuthService {
 
   async getAuditLogs(): Promise<AuditLog[]> {
       if (USE_DEMO_MODE) return this.mockGetAuditLogs();
-      const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
-      const snap = await getDocs(q);
-      return snap.docs.map(d => d.data() as AuditLog);
+      try {
+        const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as AuditLog);
+      } catch (error) {
+        console.error('Error fetching audit logs:', error);
+        if ((error as any)?.code === 'permission-denied') {
+          console.warn('⚠️ Permission denied reading audit logs. Check Firestore rules.');
+        }
+        return [];
+      }
   }
 
   // --- BULK ASSIGNMENT ---
@@ -1355,6 +1381,9 @@ class AuthService {
       return snap.docs.map(d => d.data() as Notification);
     } catch (error) {
       console.error('Error loading notifications:', error);
+      if ((error as any)?.code === 'permission-denied') {
+        console.warn('⚠️ Permission denied reading notifications. Check Firestore rules.');
+      }
       return [];
     }
   }
