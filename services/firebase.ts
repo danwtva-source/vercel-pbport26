@@ -223,6 +223,22 @@ const mapScoreToFirestore = (score: Score): Partial<Score> => {
   };
 };
 
+const stripUndefinedFields = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map(item => stripUndefinedFields(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, stripUndefinedFields(entry)])
+    ) as T;
+  }
+
+  return value;
+};
+
 // --- HELPER: CSV Export ---
 export const exportToCSV = (data: any[], filename: string) => {
     if (!data.length) return;
@@ -878,6 +894,46 @@ class AuthService {
       }
   }
 
+  // --- ANNOUNCEMENTS ---
+  async getAnnouncements(): Promise<Announcement[]> {
+      if (USE_DEMO_MODE) return this.mockGetAnnouncements();
+      if (!db) {
+        console.warn('Firestore not initialized, returning empty announcements');
+        return [];
+      }
+      const snap = await getDocs(collection(db, 'announcements'));
+      return snap.docs.map(d => d.data() as Announcement);
+  }
+
+  async saveAnnouncement(announcement: Announcement): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSaveAnnouncement(announcement);
+      if (!db) throw new Error('Firestore not initialized');
+      await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
+      if (!db) throw new Error('Firestore not initialized');
+      await deleteDoc(doc(db, 'announcements', id));
+  }
+
+  // --- FINANCIALS ---
+  async getFinancials(): Promise<FinancialRecord[]> {
+      if (USE_DEMO_MODE) return this.mockGetFinancials();
+      if (!db) {
+        console.warn('Firestore not initialized, returning empty financial records');
+        return [];
+      }
+      const snap = await getDocs(collection(db, 'financials'));
+      return snap.docs.map(d => d.data() as FinancialRecord);
+  }
+
+  async saveFinancials(record: FinancialRecord): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSaveFinancials(record);
+      if (!db) throw new Error('Firestore not initialized');
+      await setDoc(doc(db, 'financials', record.roundId), record, { merge: true });
+  }
+
   // --- PASSWORD MANAGEMENT ---
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
       if (USE_DEMO_MODE) {
@@ -1510,7 +1566,10 @@ class AuthService {
   mockGetApps(area?: string): Promise<Application[]> {
     const apps = this.getLocal<Application>('apps');
     if (apps.length === 0 && !localStorage.getItem('apps_init')) {
-      const normalized = DEMO_APPS.map(app => mapApplicationFromFirestore(app as Application, app.id));
+      const normalized = DEMO_APPS.map((app, index) => mapApplicationFromFirestore(
+        app as Application,
+        app.id || `demo_app_${index + 1}`
+      ));
       this.setLocal('apps', normalized);
       localStorage.setItem('apps_init', '1');
       return Promise.resolve(normalized);
@@ -1698,8 +1757,60 @@ class AuthService {
     return Promise.resolve();
   }
 
+  mockGetAnnouncements(): Promise<Announcement[]> {
+    let announcements = this.getLocal<Announcement>('announcements');
+    if (announcements.length === 0) {
+      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
+      announcements = DEMO_ANNOUNCEMENTS;
+    }
+    return Promise.resolve(announcements);
+  }
+
+  mockSaveAnnouncement(announcement: Announcement): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const i = announcements.findIndex(item => item.id === announcement.id);
+    if (i >= 0) {
+      announcements[i] = announcement;
+    } else {
+      announcements.push(announcement);
+    }
+    this.setLocal('announcements', announcements);
+    return Promise.resolve();
+  }
+
+  mockDeleteAnnouncement(id: string): Promise<void> {
+    this.setLocal('announcements', this.getLocal<Announcement>('announcements').filter(a => a.id !== id));
+    return Promise.resolve();
+  }
+
+  mockGetFinancials(): Promise<FinancialRecord[]> {
+    let financials = this.getLocal<FinancialRecord>('financials');
+    if (financials.length === 0) {
+      this.setLocal('financials', DEMO_FINANCIALS);
+      financials = DEMO_FINANCIALS;
+    }
+    return Promise.resolve(financials);
+  }
+
+  mockSaveFinancials(record: FinancialRecord): Promise<void> {
+    const financials = this.getLocal<FinancialRecord>('financials');
+    const i = financials.findIndex(item => item.roundId === record.roundId);
+    if (i >= 0) {
+      financials[i] = record;
+    } else {
+      financials.push(record);
+    }
+    this.setLocal('financials', financials);
+    return Promise.resolve();
+  }
+
   mockGetRounds(): Promise<Round[]> {
-    return Promise.resolve(this.getLocal('rounds'));
+    let rounds = this.getLocal<Round>('rounds');
+    if (rounds.length === 0) {
+      this.setLocal('rounds', DEMO_ROUNDS);
+      rounds = DEMO_ROUNDS;
+    }
+    return Promise.resolve(rounds);
   }
 
   mockCreateRound(round: Round): Promise<void> {
@@ -1720,7 +1831,11 @@ class AuthService {
   }
 
   mockGetAssignments(committeeId?: string): Promise<Assignment[]> {
-    const assignments = this.getLocal<Assignment>('assignments');
+    let assignments = this.getLocal<Assignment>('assignments');
+    if (assignments.length === 0) {
+      this.setLocal('assignments', DEMO_ASSIGNMENTS);
+      assignments = DEMO_ASSIGNMENTS;
+    }
     return Promise.resolve(committeeId ? assignments.filter(a => a.committeeId === committeeId) : assignments);
   }
 
@@ -1743,7 +1858,8 @@ class AuthService {
   }
 
   mockGetSettings(): Promise<PortalSettings> {
-    return Promise.resolve(this.getLocal<PortalSettings>('portalSettings')[0] || DEFAULT_SETTINGS);
+    const stored = this.getLocal<PortalSettings>('portalSettings')[0];
+    return Promise.resolve({ ...DEFAULT_SETTINGS, ...stored });
   }
 
   mockUpdateSettings(s: PortalSettings): Promise<void> {
@@ -1752,7 +1868,12 @@ class AuthService {
   }
 
   mockGetAuditLogs(): Promise<AuditLog[]> {
-    return Promise.resolve(this.getLocal('auditLogs'));
+    let logs = this.getLocal<AuditLog>('auditLogs');
+    if (logs.length === 0) {
+      this.setLocal('auditLogs', DEMO_AUDIT_LOGS);
+      logs = DEMO_AUDIT_LOGS;
+    }
+    return Promise.resolve(logs);
   }
 }
 

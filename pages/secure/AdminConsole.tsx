@@ -1914,6 +1914,12 @@ const AdminConsole: React.FC = () => {
       rounds.length > 0 ? rounds[0].id : ''
     );
 
+    useEffect(() => {
+      if (!selectedRound && rounds.length > 0) {
+        setSelectedRound(rounds[0].id);
+      }
+    }, [rounds, selectedRound]);
+
     const currentRound = rounds.find(r => r.id === selectedRound);
     const roundApplications = applications.filter(app =>
       !selectedRound || app.roundId === selectedRound
@@ -1921,7 +1927,7 @@ const AdminConsole: React.FC = () => {
 
     const handleSaveFinancials = async (financials: any) => {
       try {
-        // Store in local state for now - will add Firebase integration later
+        await DataService.saveFinancials(financials);
         setFinancialRecords(prev => ({
           ...prev,
           [selectedRound]: financials
@@ -1979,6 +1985,12 @@ const AdminConsole: React.FC = () => {
     const [selectedRound, setSelectedRound] = useState<string>(
       rounds.length > 0 ? rounds[0].id : ''
     );
+
+    useEffect(() => {
+      if (!selectedRound && rounds.length > 0) {
+        setSelectedRound(rounds[0].id);
+      }
+    }, [rounds, selectedRound]);
 
     const currentRound = rounds.find(r => r.id === selectedRound);
 
@@ -2615,6 +2627,10 @@ const AdminConsole: React.FC = () => {
         scoringThreshold: settings.scoringThreshold ?? 50,
         resultsReleased: settings.resultsReleased ?? false
       });
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
     }, [settings]);
 
     const handleSaveSettings = async () => {

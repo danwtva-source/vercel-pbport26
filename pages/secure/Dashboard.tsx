@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { DataService, uploadFile } from '../../services/firebase';
-import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification } from '../../types';
+import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification, Announcement } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
 import { AnnouncementsBanner } from '../../components/AnnouncementsBanner';
 import { useAuth } from '../../context/AuthContext';
@@ -48,6 +48,7 @@ const Dashboard: React.FC = () => {
   const [scores, setScores] = useState<Score[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
@@ -77,13 +78,14 @@ const Dashboard: React.FC = () => {
       // For committee members, fetch applications filtered by their area
       const userArea = isStoredRole(user.role, 'committee') ? user.area : undefined;
 
-      const [appsData, votesData, scoresData, assignmentsData, usersData, settings] = await Promise.all([
+      const [appsData, votesData, scoresData, assignmentsData, usersData, settings, announcementsData] = await Promise.all([
         DataService.getApplications(userArea || undefined),
         DataService.getVotes(),
         DataService.getScores(),
         isStoredRole(user.role, 'committee') ? DataService.getAssignments(user.uid) : Promise.resolve([]),
         isStoredRole(user.role, 'admin') ? DataService.getUsers() : Promise.resolve([]),
-        DataService.getPortalSettings()
+        DataService.getPortalSettings(),
+        DataService.getAnnouncements()
       ]);
 
       setAllApplications(appsData);
@@ -92,6 +94,7 @@ const Dashboard: React.FC = () => {
       setAssignments(assignmentsData);
       setUsers(usersData);
       setPortalSettings(settings);
+      setAnnouncements(announcementsData);
 
       // Filter applications based on role
       if (isStoredRole(user.role, 'applicant')) {
@@ -341,6 +344,7 @@ const Dashboard: React.FC = () => {
             navigate={navigate}
             portalSettings={portalSettings}
             onReloadData={() => loadData(currentUser)}
+            announcements={announcements}
           />
         )}
 
@@ -355,6 +359,7 @@ const Dashboard: React.FC = () => {
             navigate={navigate}
             onRefresh={() => loadData(currentUser)}
             portalSettings={portalSettings}
+            announcements={announcements}
           />
         )}
 
@@ -375,6 +380,7 @@ const Dashboard: React.FC = () => {
             currentUser={currentUser}
             navigate={navigate}
             portalSettings={portalSettings}
+            announcements={announcements}
           />
         )}
       </div>
@@ -389,9 +395,10 @@ interface ApplicantDashboardProps {
   navigate: any;
   portalSettings: PortalSettings | null;
   onReloadData: () => void;
+  announcements: Announcement[];
 }
 
-const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, currentUser, navigate, portalSettings, onReloadData }) => {
+const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, currentUser, navigate, portalSettings, onReloadData, announcements }) => {
   const [submittingPublicPack, setSubmittingPublicPack] = useState(false);
   const [publicPackApp, setPublicPackApp] = useState<Application | null>(null);
   const [publicVoteBlurb, setPublicVoteBlurb] = useState('');
@@ -512,6 +519,8 @@ const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ applications, c
           </div>
         </div>
       )}
+
+      <AnnouncementsFeed announcements={announcements} userRole="applicant" />
 
       {resultsReleased && rejectedApps.length > 0 && fundedApps.length === 0 && (
         <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-6">
@@ -746,6 +755,7 @@ interface CommitteeDashboardProps {
   navigate: any;
   onRefresh: () => Promise<void>;
   portalSettings: PortalSettings | null;
+  announcements: Announcement[];
 }
 
 const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
@@ -756,7 +766,8 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   currentUser,
   navigate,
   onRefresh,
-  portalSettings
+  portalSettings,
+  announcements
 }) => {
   const [scoringApp, setScoringApp] = useState<Application | null>(null);
   const myVotes = votes.filter(v => v.voterId === currentUser.uid);
@@ -800,6 +811,8 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
 
   return (
     <div className="space-y-6">
+      <AnnouncementsFeed announcements={announcements} userRole="committee" />
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -1374,9 +1387,10 @@ interface CommunityDashboardProps {
   currentUser: User;
   navigate: any;
   portalSettings: PortalSettings | null;
+  announcements: Announcement[];
 }
 
-const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, navigate, portalSettings }) => {
+const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, navigate, portalSettings, announcements }) => {
   const votingOpen = portalSettings?.votingOpen || false;
 
   return (
@@ -1388,6 +1402,8 @@ const CommunityDashboard: React.FC<CommunityDashboardProps> = ({ currentUser, na
           As a community member, you can stay informed about participatory budgeting projects, participate in public voting when it's live, and engage in community discussions.
         </p>
       </div>
+
+      <AnnouncementsFeed announcements={announcements} userRole="public" />
 
       {/* Quick Info Cards */}
       <div className="grid md:grid-cols-2 gap-6">
