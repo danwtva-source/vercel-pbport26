@@ -117,6 +117,7 @@ export const ROUTES = {
     VOTING_LIVE: '/voting/live',
     RESOURCES: '/resources',
     TIMELINE: '/timeline',
+    ANNOUNCEMENTS: '/announcements',
     LOGIN: '/login',
     ALIASES: {
       VOTING_ZONE: '/vote',
