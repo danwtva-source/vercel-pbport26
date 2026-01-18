@@ -34,13 +34,7 @@ const PublicVotingPage: React.FC = () => {
     const stored = localStorage.getItem(eligibilityStorageKey);
     if (!stored) return null;
     try {
-      const parsed = JSON.parse(stored) as { area: string; checkedAt: number };
-      const expiryMs = 1000 * 60 * 60 * 24 * 30;
-      if (!parsed.checkedAt || Date.now() - parsed.checkedAt > expiryMs) {
-        localStorage.removeItem(eligibilityStorageKey);
-        return null;
-      }
-      return parsed;
+      return JSON.parse(stored) as { area: string; checkedAt: number };
     } catch (error) {
       return null;
     }
@@ -103,7 +97,6 @@ const PublicVotingPage: React.FC = () => {
         applicationId: app.id,
         voterId,
         area: eligibility.area,
-        eligibilityCheckedAt: eligibility.checkedAt,
         createdAt: new Date().toISOString()
       };
       await DataService.savePublicVote(vote);
