@@ -2591,6 +2591,21 @@ const AdminConsole: React.FC = () => {
       resultsReleased: settings.resultsReleased ?? false
     });
 
+    // Sync localSettings when parent settings change (e.g., after data reload)
+    useEffect(() => {
+      setLocalSettings({
+        stage1Visible: settings.stage1Visible ?? true,
+        stage1VotingOpen: settings.stage1VotingOpen ?? false,
+        stage2Visible: settings.stage2Visible ?? false,
+        stage2ScoringOpen: settings.stage2ScoringOpen ?? false,
+        votingOpen: settings.votingOpen ?? false,
+        publicVotingStartDate: settings.publicVotingStartDate,
+        publicVotingEndDate: settings.publicVotingEndDate,
+        scoringThreshold: settings.scoringThreshold ?? 50,
+        resultsReleased: settings.resultsReleased ?? false
+      });
+    }, [settings]);
+
     const handleSaveSettings = async () => {
       try {
         // Track which settings changed for notifications
@@ -3054,6 +3069,7 @@ const AdminConsole: React.FC = () => {
             onClick={async () => {
               if (!confirm('This will create test applications in your database. Continue?')) return;
 
+              const timestamp = Date.now();
               const testApps = [
                 // Blaenavon - Stage 1
                 { ref: 'TEST-BL-001', projectTitle: 'Blaenavon Youth Club Renovation', orgName: 'Blaenavon Youth Association', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 4500, summary: 'Renovating the local youth club to provide better facilities for young people.' },
@@ -3075,17 +3091,26 @@ const AdminConsole: React.FC = () => {
               ];
 
               let created = 0;
-              for (const app of testApps) {
-                const id = `test_${app.ref.toLowerCase().replace(/-/g, '_')}_${Date.now()}`;
+              for (let i = 0; i < testApps.length; i++) {
+                const app = testApps[i];
+                const id = `test_${app.ref.toLowerCase().replace(/-/g, '_')}_${timestamp}_${i}`;
                 try {
-                  await DataService.updateApplication(id, {
-                    ...app,
+                  await DataService.createApplication({
                     id,
+                    ref: app.ref,
+                    projectTitle: app.projectTitle,
+                    orgName: app.orgName,
+                    area: app.area as any,
+                    status: app.status as any,
+                    amountRequested: app.amountRequested,
+                    summary: app.summary,
                     userId: currentUser?.uid || 'test-user',
                     applicantName: 'Test Applicant',
                     applicantEmail: 'test@example.com',
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
+                    applicantPhone: '01234 567890',
+                    applicantAddress: `Test Address, ${app.area}`,
+                    createdAt: timestamp + i,
+                    updatedAt: timestamp + i,
                   } as any);
                   created++;
                 } catch (e) {

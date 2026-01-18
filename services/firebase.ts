@@ -947,7 +947,23 @@ class AuthService {
   async getPortalSettings(): Promise<PortalSettings> {
       if (USE_DEMO_MODE) return this.mockGetSettings();
       const s = await getDoc(doc(db, 'portalSettings', 'global'));
-      return s.exists() ? (s.data() as PortalSettings) : DEFAULT_SETTINGS;
+      if (s.exists()) {
+        // Merge with defaults to ensure all fields exist
+        const data = s.data();
+        return {
+          ...DEFAULT_SETTINGS,
+          ...data,
+          // Ensure boolean fields are actually booleans
+          stage1Visible: data.stage1Visible === true,
+          stage1VotingOpen: data.stage1VotingOpen === true,
+          stage2Visible: data.stage2Visible === true,
+          stage2ScoringOpen: data.stage2ScoringOpen === true,
+          votingOpen: data.votingOpen === true,
+          resultsReleased: data.resultsReleased === true,
+          scoringThreshold: typeof data.scoringThreshold === 'number' ? data.scoringThreshold : 50,
+        };
+      }
+      return DEFAULT_SETTINGS;
   }
 
   async updatePortalSettings(s: PortalSettings): Promise<void> {
