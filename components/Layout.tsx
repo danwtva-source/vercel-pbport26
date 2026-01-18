@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api as AuthService, USE_DEMO_MODE } from '../services/firebase';
-import { LogOut, LayoutDashboard, FileText, BarChart3, Settings, Menu, X, Home, Vote, FileQuestion, BookOpen, Briefcase } from 'lucide-react';
+import { LogOut, LayoutDashboard, FileText, BarChart3, Settings, Menu, X, Home, Vote, FileQuestion, BookOpen, Briefcase, Megaphone } from 'lucide-react';
 import { UserRole } from '../types';
 import { ROUTES } from '../utils';
 
@@ -38,6 +38,7 @@ export const PublicLayout: React.FC<LayoutProps> = ({ children }) => {
             <Link to={ROUTES.PUBLIC.HOME} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.HOME)}`}>Home</Link>
             <Link to={ROUTES.PUBLIC.PRIORITIES} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.PRIORITIES)}`}>Priorities</Link>
             <Link to={ROUTES.PUBLIC.VOTING_ZONE} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.VOTING_ZONE)}`}>Voting Zone</Link>
+            <Link to={ROUTES.PUBLIC.ANNOUNCEMENTS} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.ANNOUNCEMENTS)}`}>News</Link>
             <Link to={ROUTES.PUBLIC.RESOURCES} className={`px-4 py-2 rounded-xl font-bold font-display transition ${isActive(ROUTES.PUBLIC.RESOURCES)}`}>Resources</Link>
             <Link to={ROUTES.PUBLIC.LOGIN} className="ml-4 bg-purple-600 hover:bg-purple-800 text-white px-6 py-2 rounded-xl font-bold font-display transition shadow-lg">Secure Portal</Link>
           </nav>
@@ -57,6 +58,7 @@ export const PublicLayout: React.FC<LayoutProps> = ({ children }) => {
             <Link to={ROUTES.PUBLIC.HOME} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Home size={18} className="mr-3"/> Home</Link>
             <Link to={ROUTES.PUBLIC.PRIORITIES} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><FileQuestion size={18} className="mr-3"/> Community Priorities</Link>
             <Link to={ROUTES.PUBLIC.VOTING_ZONE} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Vote size={18} className="mr-3"/> Voting Zone</Link>
+            <Link to={ROUTES.PUBLIC.ANNOUNCEMENTS} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><Megaphone size={18} className="mr-3"/> News & Announcements</Link>
             <Link to={ROUTES.PUBLIC.RESOURCES} className="p-3 rounded-xl hover:bg-purple-50 font-bold text-purple-800 flex items-center" onClick={() => setMobileMenuOpen(false)}><BookOpen size={18} className="mr-3"/> Documents</Link>
             <Link to={ROUTES.PUBLIC.LOGIN} className="mt-4 p-4 rounded-xl bg-purple-600 text-white font-bold text-center shadow-lg font-display">Secure Portal Access</Link>
           </div>

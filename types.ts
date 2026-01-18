@@ -142,7 +142,6 @@ export interface PublicVote {
   applicationId: string;
   voterId: string;
   area?: Area;
-  eligibilityCheckedAt?: number;
   createdAt: string;
 }
 
