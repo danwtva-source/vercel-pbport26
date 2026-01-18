@@ -503,8 +503,39 @@ class AuthService {
 
   async getVotes(): Promise<Vote[]> {
       if (USE_DEMO_MODE) return this.mockGetVotes();
-      const snap = await getDocs(collection(db, 'votes'));
-      return snap.docs.map(d => mapVoteFromFirestore(d.data() as Vote, d.id));
+      try {
+        const snap = await getDocs(collection(db, 'votes'));
+        return snap.docs.map(d => mapVoteFromFirestore(d.data() as Vote, d.id));
+      } catch (error) {
+        console.error('Error fetching votes:', error);
+        return [];
+      }
+  }
+
+  async savePublicVote(vote: PublicVote): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSavePublicVote(vote);
+      if (!db) throw new Error('Firestore not initialized');
+      const settings = await this.getPortalSettings();
+      const now = Date.now();
+      const withinDateRange = (!settings.publicVotingStartDate || now >= settings.publicVotingStartDate)
+        && (!settings.publicVotingEndDate || now <= settings.publicVotingEndDate);
+      if (!settings.votingOpen || !withinDateRange) {
+        throw new Error('Public voting is currently closed.');
+      }
+      const voteId = vote.id || `${vote.applicationId}_${vote.voterId}`;
+      await setDoc(doc(db, 'publicVotes', voteId), { ...vote, id: voteId });
+  }
+
+  async getPublicVotes(): Promise<PublicVote[]> {
+      if (USE_DEMO_MODE) return this.mockGetPublicVotes();
+      if (!db) throw new Error('Firestore not initialized');
+      try {
+        const snap = await getDocs(collection(db, 'publicVotes'));
+        return snap.docs.map(d => ({ ...(d.data() as PublicVote), id: d.id }));
+      } catch (error) {
+        console.error('Error fetching public votes:', error);
+        return [];
+      }
   }
 
   async savePublicVote(vote: PublicVote): Promise<void> {
@@ -530,16 +561,26 @@ class AuthService {
 
   async getScores(): Promise<Score[]> {
       if (USE_DEMO_MODE) return this.mockGetScores();
-      const snap = await getDocs(collection(db, 'scores'));
-      return snap.docs.map(d => mapScoreFromFirestore(d.data() as Score, d.id));
+      try {
+        const snap = await getDocs(collection(db, 'scores'));
+        return snap.docs.map(d => mapScoreFromFirestore(d.data() as Score, d.id));
+      } catch (error) {
+        console.error('Error fetching scores:', error);
+        return [];
+      }
   }
 
   // --- USERS ---
   async getUsers(): Promise<User[]> {
       if (USE_DEMO_MODE) return this.mockGetUsers();
-      const snap = await getDocs(collection(db, 'users'));
-      // Ensure uid is set from document ID if missing in data
-      return snap.docs.map(d => mapUserFromFirestore(d.data() as User, d.id));
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        // Ensure uid is set from document ID if missing in data
+        return snap.docs.map(d => mapUserFromFirestore(d.data() as User, d.id));
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        return [];
+      }
   }
 
   async updateUser(u: User): Promise<void> {
@@ -951,12 +992,17 @@ class AuthService {
   // --- ROUNDS & ASSIGNMENTS ---
   async getRounds(): Promise<Round[]> {
       if (USE_DEMO_MODE) return this.mockGetRounds();
-      const snap = await getDocs(collection(db, 'rounds'));
-      // Ensure id is set from document ID if missing in data
-      return snap.docs.map(d => {
-        const data = d.data() as Round;
-        return { ...data, id: data.id || d.id };
-      });
+      try {
+        const snap = await getDocs(collection(db, 'rounds'));
+        // Ensure id is set from document ID if missing in data
+        return snap.docs.map(d => {
+          const data = d.data() as Round;
+          return { ...data, id: data.id || d.id };
+        });
+      } catch (error) {
+        console.error('Error fetching rounds:', error);
+        return [];
+      }
   }
 
   async createRound(round: Round): Promise<void> {
@@ -976,11 +1022,16 @@ class AuthService {
 
   async getAssignments(committeeId?: string): Promise<Assignment[]> {
       if (USE_DEMO_MODE) return this.mockGetAssignments(committeeId);
-      const q = committeeId
-        ? query(collection(db, 'assignments'), where('committeeId', '==', committeeId))
-        : collection(db, 'assignments');
-      const snap = await getDocs(q);
-      return snap.docs.map(d => d.data() as Assignment);
+      try {
+        const q = committeeId
+          ? query(collection(db, 'assignments'), where('committeeId', '==', committeeId))
+          : collection(db, 'assignments');
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as Assignment);
+      } catch (error) {
+        console.error('Error fetching assignments:', error);
+        return [];
+      }
   }
 
   async createAssignment(assignment: Assignment): Promise<void> {
