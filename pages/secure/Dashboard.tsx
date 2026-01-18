@@ -167,8 +167,13 @@ const Dashboard: React.FC = () => {
       }
 
       // If there were permission errors, set a warning but don't block the dashboard
-      if (errors.length > 0 && isStoredRole(user.role, 'admin')) {
-        setError(`Some collections could not be loaded due to permissions: ${errors.join(', ')}. Please check Firestore rules.`);
+      if (errors.length > 0) {
+        if (isStoredRole(user.role, 'admin')) {
+          setError(`Some collections could not be loaded due to permissions: ${errors.join(', ')}. Please check Firestore rules.`);
+        } else {
+          // Generic message for non-admin users
+          setError(`Some data could not be loaded. Please contact support if this persists.`);
+        }
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);

@@ -71,6 +71,7 @@ const AdminConsole: React.FC = () => {
   );
   const tabParam = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isScoringMode, setIsScoringMode] = useState(false);
   const [authCheckRunning, setAuthCheckRunning] = useState(false);
   const [authCheckResult, setAuthCheckResult] = useState<{
@@ -276,7 +277,7 @@ const AdminConsole: React.FC = () => {
       void runAuthConsistencyCheck(users);
     } catch (error) {
       console.error('Error loading admin console data:', error);
-      alert('Some admin console data failed to load. Check console for details.');
+      setLoadError('Some admin console data failed to load. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -3245,6 +3246,39 @@ const AdminConsole: React.FC = () => {
   return (
     <SecureLayout userRole={UserRole.ADMIN}>
       <div className="space-y-6">
+        {/* Load Error Banner */}
+        {loadError && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-lg shadow-md">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h3 className="font-bold text-amber-900 mb-1">Data Load Warning</h3>
+                <p className="text-sm text-amber-800 mb-2">{loadError}</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  Some data collections may be restricted. The admin console is functional but may show incomplete data.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setLoadError(null);
+                      loadAllData();
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition"
+                  >
+                    Retry Loading
+                  </button>
+                  <button
+                    onClick={() => setLoadError(null)}
+                    className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-sm font-bold transition"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-purple-100 p-3 rounded-xl">

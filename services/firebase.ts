@@ -7,6 +7,25 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, si
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
+// --- TYPE GUARDS ---
+
+// Type guard for Firebase errors
+interface FirebaseError {
+  code: string;
+  message: string;
+  name: string;
+}
+
+function isFirebaseError(error: unknown): error is FirebaseError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error &&
+    typeof (error as any).code === 'string'
+  );
+}
+
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
 // Set to TRUE for demo/development without Firebase.
@@ -1083,7 +1102,7 @@ class AuthService {
         return snap.docs.map(d => d.data() as AuditLog);
       } catch (error) {
         console.error('Error fetching audit logs:', error);
-        if ((error as any)?.code === 'permission-denied') {
+        if (isFirebaseError(error) && error.code === 'permission-denied') {
           console.warn('⚠️ Permission denied reading audit logs. Check Firestore rules.');
         }
         return [];
@@ -1327,7 +1346,7 @@ class AuthService {
       return snap.docs.map(d => d.data() as Notification);
     } catch (error) {
       console.error('Error loading notifications:', error);
-      if ((error as any)?.code === 'permission-denied') {
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
         console.warn('⚠️ Permission denied reading notifications. Check Firestore rules.');
       }
       return [];
@@ -1444,7 +1463,7 @@ class AuthService {
       });
     } catch (error) {
       console.error('Error fetching announcements:', error);
-      if ((error as any)?.code === 'permission-denied') {
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
         console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
       }
       return [];
@@ -1471,7 +1490,7 @@ class AuthService {
       });
     } catch (error) {
       console.error('Error fetching all announcements:', error);
-      if ((error as any)?.code === 'permission-denied') {
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
         console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
       }
       return [];
