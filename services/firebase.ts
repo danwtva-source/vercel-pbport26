@@ -1,6 +1,6 @@
 // services/firebase.ts
 import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification, Announcement } from '../types';
-import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
+import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS, DEMO_ANNOUNCEMENTS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
@@ -161,19 +161,35 @@ const mapUserToFirestore = (user: User): Partial<User> => {
   };
 };
 
-const mapApplicationFromFirestore = (data: Partial<Application>, docId: string): Application => {
+// Type for legacy application data with old field names
+interface LegacyApplicationData {
+  applicantUid?: string;
+  contactName?: string;
+  applicant?: string;
+  projectSummary?: string;
+}
+
+const mapApplicationFromFirestore = (data: Partial<Application> & Partial<LegacyApplicationData>, docId: string): Application => {
   const applicationId = data.applicationId || data.id || docId;
-  const applicantId = data.applicantId || data.userId || '';
+  const applicantId = data.applicantId || data.userId || data.applicantUid || '';
   const area = resolveAreaName(data.area || null, data.areaId || null);
   const areaId = resolveAreaId(area || undefined, data.areaId || undefined);
+  const now = Date.now();
   return {
     ...data,
     id: applicationId,
     applicationId,
     applicantId,
-    userId: data.userId || applicantId,
+    userId: data.userId || data.applicantUid || applicantId,
+    applicantName: data.applicantName || data.contactName || '',
+    orgName: data.orgName || data.applicant || '',
+    summary: data.summary || data.projectSummary || '',
     area: area as Area,
-    areaId
+    areaId,
+    createdAt: data.createdAt || now,
+    updatedAt: data.updatedAt || now,
+    submissionMethod: data.submissionMethod || 'digital',
+    formData: data.formData || {}
   } as Application;
 };
 
