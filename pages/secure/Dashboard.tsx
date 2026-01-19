@@ -74,14 +74,11 @@ const Dashboard: React.FC = () => {
   const loadData = async (user: User) => {
     setLoading(true);
     setError(null);
-    const errors: string[] = [];
-    
     try {
       // For committee members, fetch applications filtered by their area
       const userArea = isStoredRole(user.role, 'committee') ? user.area : undefined;
 
-      // Load data with individual error handling for graceful fallback
-      const [appsData, votesData, scoresData, assignmentsData, usersData, settings, announcementsData] = await Promise.allSettled([
+      const [appsData, votesData, scoresData, assignmentsData, usersData, settings, announcementsData] = await Promise.all([
         DataService.getApplications(userArea || undefined),
         DataService.getVotes(),
         DataService.getScores(),
@@ -91,70 +88,23 @@ const Dashboard: React.FC = () => {
         DataService.getAnnouncements()
       ]);
 
-      // Extract successful data with fallbacks
-      const apps = appsData.status === 'fulfilled' ? appsData.value : [];
-      const votes = votesData.status === 'fulfilled' ? votesData.value : [];
-      const scores = scoresData.status === 'fulfilled' ? scoresData.value : [];
-      const assignments = assignmentsData.status === 'fulfilled' ? assignmentsData.value : [];
-      const users = usersData.status === 'fulfilled' ? usersData.value : [];
-      const portalSettings = settings.status === 'fulfilled' ? settings.value : {
-        stage1Visible: true,
-        stage1VotingOpen: false,
-        stage2Visible: false,
-        stage2ScoringOpen: false,
-        votingOpen: false,
-        scoringThreshold: 50,
-        resultsReleased: false
-      };
-      const announcements = announcementsData.status === 'fulfilled' ? announcementsData.value : [];
-
-      // Track which collections failed to load
-      if (appsData.status === 'rejected') {
-        console.error('Failed to load applications:', appsData.reason);
-        errors.push('Applications');
-      }
-      if (votesData.status === 'rejected') {
-        console.error('Failed to load votes:', votesData.reason);
-        errors.push('Votes');
-      }
-      if (scoresData.status === 'rejected') {
-        console.error('Failed to load scores:', scoresData.reason);
-        errors.push('Scores');
-      }
-      if (assignmentsData.status === 'rejected') {
-        console.error('Failed to load assignments:', assignmentsData.reason);
-        errors.push('Assignments');
-      }
-      if (usersData.status === 'rejected') {
-        console.error('Failed to load users:', usersData.reason);
-        errors.push('Users');
-      }
-      if (settings.status === 'rejected') {
-        console.error('Failed to load portal settings:', settings.reason);
-        errors.push('Portal Settings');
-      }
-      if (announcementsData.status === 'rejected') {
-        console.error('Failed to load announcements:', announcementsData.reason);
-        errors.push('Announcements');
-      }
-
-      setAllApplications(apps);
-      setVotes(votes);
-      setScores(scores);
-      setAssignments(assignments);
-      setUsers(users);
-      setPortalSettings(portalSettings);
-      setAnnouncements(announcements);
+      setAllApplications(appsData);
+      setVotes(votesData);
+      setScores(scoresData);
+      setAssignments(assignmentsData);
+      setUsers(usersData);
+      setPortalSettings(settings);
+      setAnnouncements(announcementsData);
 
       // Filter applications based on role
       if (isStoredRole(user.role, 'applicant')) {
-        setApplications(apps.filter(app => app.userId === user.uid));
+        setApplications(appsData.filter(app => app.userId === user.uid));
       } else if (isStoredRole(user.role, 'committee')) {
         // AREA-BASED FILTERING: Committee members only see apps in their assigned area
         // First filter by area (already done in getApplications), then by assignments
-        const assignedAppIds = assignments.map(a => a.applicationId);
+        const assignedAppIds = assignmentsData.map(a => a.applicationId);
         // Show both area-matched apps with assignments AND all apps in their area for voting
-        const areaFilteredApps = apps.filter(app => {
+        const areaFilteredApps = appsData.filter(app => {
           // Must be in committee member's area (or cross-area)
           if (user.area && app.area !== user.area && app.area !== 'Cross-Area') {
             return false;
@@ -163,17 +113,7 @@ const Dashboard: React.FC = () => {
         });
         setApplications(areaFilteredApps);
       } else {
-        setApplications(apps);
-      }
-
-      // If there were permission errors, set a warning but don't block the dashboard
-      if (errors.length > 0) {
-        if (isStoredRole(user.role, 'admin')) {
-          setError(`Some collections could not be loaded due to permissions: ${errors.join(', ')}. Please check Firestore rules.`);
-        } else {
-          // Generic message for non-admin users
-          setError(`Some data could not be loaded. Please contact support if this persists.`);
-        }
+        setApplications(appsData);
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -274,8 +214,28 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  // Render dashboard with warning banner if there were permission errors (not blocking)
-  const hasPermissionWarning = error && error.includes('permissions');
+  // Show error state if data loading failed
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle size={20} />
+              <p className="font-bold">Error Loading Dashboard</p>
+            </div>
+            <p className="text-sm">{error}</p>
+          </div>
+          <button
+            onClick={() => loadData(currentUser)}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold transition"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Determine user role from enum or string
   const userRole = toUserRole(currentUser.role);
@@ -283,29 +243,6 @@ const Dashboard: React.FC = () => {
   return (
     <SecureLayout userRole={userRole}>
       <div className="space-y-6">
-        {/* Permission Warning Banner (non-blocking) */}
-        {hasPermissionWarning && (
-          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-lg shadow-md">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
-              <div className="flex-1">
-                <h3 className="font-bold text-amber-900 mb-1">Partial Data Load Warning</h3>
-                <p className="text-sm text-amber-800 mb-2">{error}</p>
-                <p className="text-xs text-amber-700">
-                  The dashboard is functional but some data collections may be restricted. 
-                  Please verify Firestore rules allow admin read access to all collections.
-                </p>
-                <button
-                  onClick={() => loadData(currentUser)}
-                  className="mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition"
-                >
-                  Retry Loading
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
