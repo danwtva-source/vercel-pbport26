@@ -1,11 +1,30 @@
 // services/firebase.ts
-import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification, Announcement, FinancialRecord } from '../types';
-import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS, DEMO_ROUNDS, DEMO_ASSIGNMENTS, DEMO_ANNOUNCEMENTS, DEMO_FINANCIALS, DEMO_AUDIT_LOGS } from '../constants';
+import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification, Announcement } from '../types';
+import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+
+// --- TYPE GUARDS ---
+
+// Type guard for Firebase errors
+interface FirebaseError {
+  code: string;
+  message: string;
+  name: string;
+}
+
+function isFirebaseError(error: unknown): error is FirebaseError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error &&
+    typeof (error as any).code === 'string'
+  );
+}
 
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
@@ -922,33 +941,6 @@ class AuthService {
   }
 
   // --- ANNOUNCEMENTS ---
-  async getAnnouncements(): Promise<Announcement[]> {
-      if (USE_DEMO_MODE) return this.mockGetAnnouncements();
-      if (!db) {
-        console.warn('Firestore not initialized, returning empty announcements');
-        return [];
-      }
-      try {
-        const snap = await getDocs(collection(db, 'announcements'));
-        return snap.docs.map(d => d.data() as Announcement);
-      } catch (error) {
-        console.error('Error fetching announcements:', error);
-        return [];
-      }
-  }
-
-  async saveAnnouncement(announcement: Announcement): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockSaveAnnouncement(announcement);
-      if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
-  }
-
-  async deleteAnnouncement(id: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
-      if (!db) throw new Error('Firestore not initialized');
-      await deleteDoc(doc(db, 'announcements', id));
-  }
-
   // --- FINANCIALS ---
   async getFinancials(): Promise<FinancialRecord[]> {
       if (USE_DEMO_MODE) return this.mockGetFinancials();
@@ -956,13 +948,8 @@ class AuthService {
         console.warn('Firestore not initialized, returning empty financial records');
         return [];
       }
-      try {
-        const snap = await getDocs(collection(db, 'financials'));
-        return snap.docs.map(d => d.data() as FinancialRecord);
-      } catch (error) {
-        console.error('Error fetching financials:', error);
-        return [];
-      }
+      const snap = await getDocs(collection(db, 'financials'));
+      return snap.docs.map(d => d.data() as FinancialRecord);
   }
 
   async saveFinancials(record: FinancialRecord): Promise<void> {
@@ -1049,35 +1036,77 @@ class AuthService {
   // --- SETTINGS ---
   async getPortalSettings(): Promise<PortalSettings> {
       if (USE_DEMO_MODE) return this.mockGetSettings();
-      try {
-        const s = await getDoc(doc(db, 'portalSettings', 'global'));
-        return s.exists() ? { ...DEFAULT_SETTINGS, ...(s.data() as PortalSettings) } : DEFAULT_SETTINGS;
-      } catch (error) {
-        console.error('Error fetching portal settings:', error);
-        return DEFAULT_SETTINGS;
+      const s = await getDoc(doc(db, 'portalSettings', 'global'));
+      if (s.exists()) {
+        // Merge with defaults to ensure all fields exist
+        const data = s.data();
+        return {
+          ...DEFAULT_SETTINGS,
+          ...data,
+          // Ensure boolean fields are actually booleans
+          stage1Visible: data.stage1Visible === true,
+          stage1VotingOpen: data.stage1VotingOpen === true,
+          stage2Visible: data.stage2Visible === true,
+          stage2ScoringOpen: data.stage2ScoringOpen === true,
+          votingOpen: data.votingOpen === true,
+          resultsReleased: data.resultsReleased === true,
+          scoringThreshold: typeof data.scoringThreshold === 'number' ? data.scoringThreshold : 50,
+        };
       }
+      return DEFAULT_SETTINGS;
   }
 
   async updatePortalSettings(s: PortalSettings): Promise<void> {
       if (USE_DEMO_MODE) return this.mockUpdateSettings(s);
-      const cleaned = stripUndefinedFields({ ...DEFAULT_SETTINGS, ...s });
-      await setDoc(doc(db, 'portalSettings', 'global'), cleaned);
+      // Filter out undefined values as Firebase doesn't handle them well
+      const cleanSettings: Record<string, any> = {};
+      for (const [key, value] of Object.entries(s)) {
+        if (value !== undefined) {
+          cleanSettings[key] = value;
+        }
+      }
+      await setDoc(doc(db, 'portalSettings', 'global'), cleanSettings, { merge: true });
   }
 
   // --- AUDIT LOGGING ---
   async logAction(params: { adminId: string; action: string; targetId: string; details?: Record<string, unknown>; }): Promise<void> {
       if (USE_DEMO_MODE) { console.log(`[AUDIT]`, params); return; }
       const id = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-      const cleanedDetails = params.details ? stripUndefinedFields(params.details) : undefined;
-      const payload = stripUndefinedFields({ ...params, details: cleanedDetails, id, timestamp: Date.now() });
-      await setDoc(doc(db, 'auditLogs', id), payload);
+
+      // Clean undefined values from details to avoid Firebase errors
+      let cleanDetails: Record<string, unknown> | undefined;
+      if (params.details) {
+        cleanDetails = {};
+        for (const [key, value] of Object.entries(params.details)) {
+          if (value !== undefined) {
+            cleanDetails[key] = value;
+          }
+        }
+      }
+
+      await setDoc(doc(db, 'auditLogs', id), {
+        adminId: params.adminId,
+        action: params.action,
+        targetId: params.targetId,
+        details: cleanDetails,
+        id,
+        timestamp: Date.now()
+      });
   }
 
   async getAuditLogs(): Promise<AuditLog[]> {
       if (USE_DEMO_MODE) return this.mockGetAuditLogs();
-      const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
-      const snap = await getDocs(q);
-      return snap.docs.map(d => d.data() as AuditLog);
+      try {
+        const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as AuditLog);
+      } catch (error) {
+        console.error('Error fetching audit logs:', error);
+        if (isFirebaseError(error) && error.code === 'permission-denied') {
+          console.warn('⚠️ Permission denied reading audit logs. Check Firestore rules.');
+        }
+        return [];
+      }
   }
 
   // --- BULK ASSIGNMENT ---
@@ -1317,6 +1346,9 @@ class AuthService {
       return snap.docs.map(d => d.data() as Notification);
     } catch (error) {
       console.error('Error loading notifications:', error);
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
+        console.warn('⚠️ Permission denied reading notifications. Check Firestore rules.');
+      }
       return [];
     }
   }
@@ -1393,6 +1425,219 @@ class AuthService {
       notifications[idx].readAt = Date.now();
       this.setLocal('notifications', notifications);
     }
+    return Promise.resolve();
+  }
+
+  // --- ANNOUNCEMENTS ---
+
+  async getAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
+    if (USE_DEMO_MODE) return this.mockGetAnnouncements(visibility);
+    
+    if (!db) {
+      console.warn('Firestore not initialized, returning empty announcements');
+      return [];
+    }
+
+    try {
+      const snap = await getDocs(collection(db, 'announcements'));
+      let announcements = snap.docs.map(d => d.data() as Announcement);
+
+      // Filter by visibility if specified
+      if (visibility) {
+        announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
+      }
+
+      // Filter out announcements outside their date range
+      const now = Date.now();
+      announcements = announcements.filter(a => {
+        if (a.startDate && a.startDate > now) return false;
+        if (a.endDate && a.endDate < now) return false;
+        return true;
+      });
+
+      // Sort: pinned first, then by createdAt desc
+      return announcements.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
+        console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
+      }
+      return [];
+    }
+  }
+
+  async getAllAnnouncements(): Promise<Announcement[]> {
+    if (USE_DEMO_MODE) return this.mockGetAnnouncements();
+    
+    if (!db) {
+      console.warn('Firestore not initialized, returning empty announcements');
+      return [];
+    }
+
+    try {
+      const snap = await getDocs(collection(db, 'announcements'));
+      const announcements = snap.docs.map(d => d.data() as Announcement);
+
+      // Sort: pinned first, then by createdAt desc
+      return announcements.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+    } catch (error) {
+      console.error('Error fetching all announcements:', error);
+      if (isFirebaseError(error) && error.code === 'permission-denied') {
+        console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
+      }
+      return [];
+    }
+  }
+
+  async createAnnouncement(announcement: Announcement): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockCreateAnnouncement(announcement);
+    if (!db) throw new Error('Firestore not initialized');
+
+    try {
+      const id = announcement.id || `announcement_${Date.now()}`;
+      await setDoc(doc(db, 'announcements', id), {
+        ...announcement,
+        id,
+        createdAt: announcement.createdAt || Date.now(),
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      console.error('Error creating announcement:', error);
+      throw new Error('Failed to create announcement. Please check your permissions.');
+    }
+  }
+
+  async updateAnnouncement(id: string, updates: Partial<Announcement>): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockUpdateAnnouncement(id, updates);
+    if (!db) throw new Error('Firestore not initialized');
+
+    try {
+      await setDoc(doc(db, 'announcements', id), {
+        ...updates,
+        updatedAt: Date.now()
+      }, { merge: true });
+    } catch (error) {
+      console.error('Error updating announcement:', error);
+      throw new Error('Failed to update announcement. Please check your permissions.');
+    }
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+    if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
+    if (!db) throw new Error('Firestore not initialized');
+
+    try {
+      await deleteDoc(doc(db, 'announcements', id));
+    } catch (error) {
+      console.error('Error deleting announcement:', error);
+      throw new Error('Failed to delete announcement. Please check your permissions.');
+    }
+  }
+
+  async incrementAnnouncementReadCount(id: string): Promise<void> {
+    if (USE_DEMO_MODE) return;
+
+    const docRef = doc(db, 'announcements', id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const current = snap.data() as Announcement;
+      await setDoc(docRef, { readCount: (current.readCount || 0) + 1 }, { merge: true });
+    }
+  }
+
+  // Get announcements filtered by user role
+  async getAnnouncementsForRole(role: 'admin' | 'committee' | 'applicant' | 'community'): Promise<Announcement[]> {
+    const all = await this.getAnnouncements();
+
+    return all.filter(a => {
+      switch (a.visibility) {
+        case 'all': return true;
+        case 'admin': return role === 'admin';
+        case 'committee': return role === 'admin' || role === 'committee';
+        case 'applicants': return role === 'admin' || role === 'applicant';
+        default: return true;
+      }
+    });
+  }
+
+  // Get public announcements (visibility: 'all')
+  async getPublicAnnouncements(): Promise<Announcement[]> {
+    const all = await this.getAnnouncements();
+    return all.filter(a => a.visibility === 'all');
+  }
+
+  // Mock announcement methods
+  private mockGetAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
+    let announcements = this.getLocal<Announcement>('announcements');
+    
+    // Seed demo data if empty
+    if (announcements.length === 0) {
+      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
+      announcements = DEMO_ANNOUNCEMENTS;
+    }
+
+    if (visibility) {
+      announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
+    }
+
+    // Filter by date range
+    const now = Date.now();
+    announcements = announcements.filter(a => {
+      if (a.startDate && a.startDate > now) return false;
+      if (a.endDate && a.endDate < now) return false;
+      return true;
+    });
+
+    // Sort: pinned first, then by createdAt desc
+    return Promise.resolve(announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    }));
+  }
+
+  private mockCreateAnnouncement(announcement: Announcement): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const id = announcement.id || `announcement_${Date.now()}`;
+    const newAnnouncement = {
+      ...announcement,
+      id,
+      createdAt: announcement.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const existingIdx = announcements.findIndex(a => a.id === id);
+    if (existingIdx >= 0) {
+      announcements[existingIdx] = newAnnouncement;
+    } else {
+      announcements.push(newAnnouncement);
+    }
+
+    this.setLocal('announcements', announcements);
+    return Promise.resolve();
+  }
+
+  private mockUpdateAnnouncement(id: string, updates: Partial<Announcement>): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const idx = announcements.findIndex(a => a.id === id);
+    if (idx >= 0) {
+      announcements[idx] = { ...announcements[idx], ...updates, updatedAt: Date.now() };
+      this.setLocal('announcements', announcements);
+    }
+    return Promise.resolve();
+  }
+
+  private mockDeleteAnnouncement(id: string): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    this.setLocal('announcements', announcements.filter(a => a.id !== id));
     return Promise.resolve();
   }
 
@@ -1612,32 +1857,6 @@ class AuthService {
     return Promise.resolve();
   }
 
-  mockGetAnnouncements(): Promise<Announcement[]> {
-    let announcements = this.getLocal<Announcement>('announcements');
-    if (announcements.length === 0) {
-      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
-      announcements = DEMO_ANNOUNCEMENTS;
-    }
-    return Promise.resolve(announcements);
-  }
-
-  mockSaveAnnouncement(announcement: Announcement): Promise<void> {
-    const announcements = this.getLocal<Announcement>('announcements');
-    const i = announcements.findIndex(item => item.id === announcement.id);
-    if (i >= 0) {
-      announcements[i] = announcement;
-    } else {
-      announcements.push(announcement);
-    }
-    this.setLocal('announcements', announcements);
-    return Promise.resolve();
-  }
-
-  mockDeleteAnnouncement(id: string): Promise<void> {
-    this.setLocal('announcements', this.getLocal<Announcement>('announcements').filter(a => a.id !== id));
-    return Promise.resolve();
-  }
-
   mockGetFinancials(): Promise<FinancialRecord[]> {
     let financials = this.getLocal<FinancialRecord>('financials');
     if (financials.length === 0) {
@@ -1746,4 +1965,267 @@ export const seedDatabase = async () => {
   DEMO_APPS.forEach(a => batch.set(doc(db, "applications", a.id), a));
   batch.set(doc(db, "portalSettings", "global"), DEFAULT_SETTINGS);
   await batch.commit();
+};
+
+// Comprehensive test data seeding function
+export const seedAllTestData = async (adminId: string): Promise<{
+  users: number;
+  rounds: number;
+  applications: number;
+  assignments: number;
+  auditLogs: number;
+  announcements: number;
+  errors: string[];
+}> => {
+  const result = {
+    users: 0,
+    rounds: 0,
+    applications: 0,
+    assignments: 0,
+    auditLogs: 0,
+    announcements: 0,
+    errors: [] as string[]
+  };
+
+  const timestamp = Date.now();
+
+  try {
+    // 1. SEED USERS - Create committee members for each area
+    const testUsers = [
+      { uid: 'test-admin-001', displayName: 'Admin User', email: 'admin@test.local', role: 'admin', area: null },
+      // Blaenavon committee
+      { uid: 'test-comm-bl-001', displayName: 'Sarah Jones (Blaenavon)', email: 'sarah.jones@test.local', role: 'committee', area: 'Blaenavon' },
+      { uid: 'test-comm-bl-002', displayName: 'Tom Williams (Blaenavon)', email: 'tom.williams@test.local', role: 'committee', area: 'Blaenavon' },
+      // Thornhill committee
+      { uid: 'test-comm-th-001', displayName: 'Emma Davies (Thornhill)', email: 'emma.davies@test.local', role: 'committee', area: 'Thornhill & Upper Cwmbran' },
+      { uid: 'test-comm-th-002', displayName: 'James Morgan (Thornhill)', email: 'james.morgan@test.local', role: 'committee', area: 'Thornhill & Upper Cwmbran' },
+      // Trevethin committee
+      { uid: 'test-comm-tr-001', displayName: 'Lisa Evans (Trevethin)', email: 'lisa.evans@test.local', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs' },
+      { uid: 'test-comm-tr-002', displayName: 'David Thomas (Trevethin)', email: 'david.thomas@test.local', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs' },
+      // Applicants
+      { uid: 'test-app-001', displayName: 'Applicant One', email: 'applicant1@test.local', role: 'applicant', area: 'Blaenavon' },
+      { uid: 'test-app-002', displayName: 'Applicant Two', email: 'applicant2@test.local', role: 'applicant', area: 'Thornhill & Upper Cwmbran' },
+    ];
+
+    for (const user of testUsers) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          ...user,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+        result.users++;
+      } catch (e: any) {
+        result.errors.push(`User ${user.email}: ${e.message}`);
+      }
+    }
+
+    // 2. SEED ROUNDS - Create funding rounds
+    const testRounds = [
+      {
+        id: 'round-2025',
+        name: "Communities' Choice 2025",
+        year: 2025,
+        status: 'scoring' as const,
+        startDate: '2025-01-01',
+        endDate: '2025-12-31',
+        areas: ['Blaenavon', 'Thornhill & Upper Cwmbran', 'Trevethin, Penygarn & St. Cadocs'] as any[],
+        stage1Open: true,
+        stage2Open: true,
+        scoringOpen: true
+      },
+      {
+        id: 'round-2026',
+        name: "Communities' Choice 2026",
+        year: 2026,
+        status: 'planning' as const,
+        startDate: '2026-01-01',
+        endDate: '2026-12-31',
+        areas: [] as any[],
+        stage1Open: false,
+        stage2Open: false,
+        scoringOpen: false
+      }
+    ];
+
+    for (const round of testRounds) {
+      try {
+        await setDoc(doc(db, 'rounds', round.id), round);
+        result.rounds++;
+      } catch (e: any) {
+        result.errors.push(`Round ${round.name}: ${e.message}`);
+      }
+    }
+
+    // 3. SEED APPLICATIONS - Create test applications
+    const testApps = [
+      // Blaenavon - Stage 1
+      { ref: 'TEST-BL-001', projectTitle: 'Blaenavon Youth Club Renovation', orgName: 'Blaenavon Youth Association', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 4500, summary: 'Renovating the local youth club to provide better facilities for young people.', priority: 'Youth Services' },
+      { ref: 'TEST-BL-002', projectTitle: 'Heritage Walking Tours', orgName: 'Blaenavon Heritage Trust', area: 'Blaenavon', status: 'Submitted-Stage1', amountRequested: 2800, summary: 'Creating guided walking tours showcasing our industrial heritage.', priority: 'Culture & Heritage' },
+      // Blaenavon - Stage 2
+      { ref: 'TEST-BL-003', projectTitle: 'Community Garden Project', orgName: 'Blaenavon Green Spaces', area: 'Blaenavon', status: 'Submitted-Stage2', amountRequested: 5000, summary: 'Creating a community garden with growing spaces for families.', priority: 'Environment' },
+      { ref: 'TEST-BL-004', projectTitle: 'Senior Fitness Classes', orgName: 'Blaenavon Active Aging', area: 'Blaenavon', status: 'Invited-Stage2', amountRequested: 3500, summary: 'Weekly fitness classes for over-60s to improve health and wellbeing.', priority: 'Health & Wellbeing' },
+
+      // Thornhill - Stage 1
+      { ref: 'TEST-TH-001', projectTitle: 'Thornhill Sports Equipment', orgName: 'Thornhill Sports Club', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage1', amountRequested: 3200, summary: 'Purchasing new sports equipment for community use.', priority: 'Sports & Recreation' },
+      { ref: 'TEST-TH-002', projectTitle: 'Digital Skills Workshop', orgName: 'Upper Cwmbran Community Centre', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage1', amountRequested: 4000, summary: 'Providing digital skills training for seniors.', priority: 'Education & Training' },
+      // Thornhill - Stage 2
+      { ref: 'TEST-TH-003', projectTitle: 'After School Club', orgName: 'Thornhill Primary PTA', area: 'Thornhill & Upper Cwmbran', status: 'Submitted-Stage2', amountRequested: 4800, summary: 'Establishing an after-school club for working parents.', priority: 'Childcare' },
+      { ref: 'TEST-TH-004', projectTitle: 'Community Bus Service', orgName: 'Cwmbran Transport Link', area: 'Thornhill & Upper Cwmbran', status: 'Invited-Stage2', amountRequested: 6000, summary: 'Running a weekly community bus to help residents access services.', priority: 'Transport' },
+
+      // Trevethin - Stage 1
+      { ref: 'TEST-TR-001', projectTitle: 'Penygarn Play Area', orgName: 'Penygarn Residents Group', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 5500, summary: 'Improving the local play area with new equipment.', priority: 'Children & Families' },
+      { ref: 'TEST-TR-002', projectTitle: 'St Cadocs Food Bank', orgName: 'St Cadocs Church', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage1', amountRequested: 2500, summary: 'Expanding food bank services to help more families.', priority: 'Community Support' },
+      // Trevethin - Stage 2
+      { ref: 'TEST-TR-003', projectTitle: 'Trevethin Community Cafe', orgName: 'Trevethin Community Action', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Submitted-Stage2', amountRequested: 4200, summary: 'Setting up a community cafe as a social hub.', priority: 'Social Enterprise' },
+      { ref: 'TEST-TR-004', projectTitle: 'Youth Music Programme', orgName: 'Trevethin Youth Music', area: 'Trevethin, Penygarn & St. Cadocs', status: 'Invited-Stage2', amountRequested: 3800, summary: 'Music lessons and instruments for local young people.', priority: 'Arts & Music' },
+    ];
+
+    for (let i = 0; i < testApps.length; i++) {
+      const app = testApps[i];
+      const id = `test_app_${app.ref.toLowerCase().replace(/-/g, '_')}_${timestamp}`;
+      try {
+        await setDoc(doc(db, 'applications', id), {
+          id,
+          ref: app.ref,
+          projectTitle: app.projectTitle,
+          orgName: app.orgName,
+          area: app.area,
+          status: app.status,
+          amountRequested: app.amountRequested,
+          summary: app.summary,
+          priority: app.priority,
+          roundId: 'round-2025',
+          userId: `test-app-00${(i % 2) + 1}`,
+          applicantName: 'Test Applicant',
+          applicantEmail: 'test@example.com',
+          applicantPhone: '01234 567890',
+          applicantAddress: `Test Address, ${app.area}`,
+          createdAt: timestamp + i,
+          updatedAt: timestamp + i,
+        });
+        result.applications++;
+      } catch (e: any) {
+        result.errors.push(`App ${app.ref}: ${e.message}`);
+      }
+    }
+
+    // 4. SEED ASSIGNMENTS - Create assignments for Stage 2 apps
+    const stage2Apps = testApps.filter(a => a.status === 'Submitted-Stage2' || a.status === 'Invited-Stage2');
+    const areaToCommittee: Record<string, string[]> = {
+      'Blaenavon': ['test-comm-bl-001', 'test-comm-bl-002'],
+      'Thornhill & Upper Cwmbran': ['test-comm-th-001', 'test-comm-th-002'],
+      'Trevethin, Penygarn & St. Cadocs': ['test-comm-tr-001', 'test-comm-tr-002'],
+    };
+
+    for (const app of stage2Apps) {
+      const appId = `test_app_${app.ref.toLowerCase().replace(/-/g, '_')}_${timestamp}`;
+      const committeeIds = areaToCommittee[app.area] || [];
+
+      for (const committeeId of committeeIds) {
+        const assignmentId = `${appId}_${committeeId}`;
+        try {
+          await setDoc(doc(db, 'assignments', assignmentId), {
+            id: assignmentId,
+            applicationId: appId,
+            committeeId: committeeId,
+            assignedDate: new Date().toISOString(),
+            dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            status: 'assigned',
+            stage: 'stage2',
+            area: app.area,
+            assignedBy: adminId
+          });
+          result.assignments++;
+        } catch (e: any) {
+          result.errors.push(`Assignment ${assignmentId}: ${e.message}`);
+        }
+      }
+    }
+
+    // 5. SEED AUDIT LOGS - Create sample audit entries
+    const auditActions = [
+      { action: 'USER_LOGIN', targetId: 'test-admin-001', details: { email: 'admin@test.local' } },
+      { action: 'SETTINGS_UPDATE', targetId: 'global', details: { stage1VotingOpen: true, stage2ScoringOpen: true } },
+      { action: 'ROUND_CREATE', targetId: 'round-2025', details: { name: "Communities' Choice 2025" } },
+      { action: 'APPLICATION_STATUS_CHANGE', targetId: 'TEST-BL-003', details: { from: 'Submitted-Stage1', to: 'Submitted-Stage2' } },
+      { action: 'BULK_ASSIGNMENT', targetId: 'Blaenavon', details: { stage: 'stage2', created: 4 } },
+      { action: 'USER_CREATE', targetId: 'test-comm-bl-001', details: { role: 'committee', area: 'Blaenavon' } },
+      { action: 'ANNOUNCEMENT_SAVE', targetId: 'announcement_1', details: { title: 'Welcome to Communities Choice' } },
+    ];
+
+    for (let i = 0; i < auditActions.length; i++) {
+      const logId = `audit_seed_${timestamp}_${i}`;
+      try {
+        await setDoc(doc(db, 'auditLogs', logId), {
+          id: logId,
+          adminId: adminId,
+          action: auditActions[i].action,
+          targetId: auditActions[i].targetId,
+          details: auditActions[i].details,
+          timestamp: timestamp - (i * 3600000) // Space logs out by 1 hour each
+        });
+        result.auditLogs++;
+      } catch (e: any) {
+        result.errors.push(`AuditLog ${logId}: ${e.message}`);
+      }
+    }
+
+    // 6. SEED ANNOUNCEMENTS - Create sample announcements
+    const testAnnouncements = [
+      {
+        id: `announcement_seed_1_${timestamp}`,
+        title: 'Welcome to Communities Choice 2025',
+        content: 'We are excited to launch this year\'s participatory budgeting programme. Local residents can now submit applications for community projects.',
+        category: 'general' as const,
+        visibility: 'all' as const,
+        priority: 'high' as const,
+        pinned: true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        createdBy: adminId,
+        readCount: 0
+      },
+      {
+        id: `announcement_seed_2_${timestamp}`,
+        title: 'Stage 2 Scoring Now Open',
+        content: 'Committee members can now score Stage 2 applications. Please complete your assigned applications by the deadline.',
+        category: 'deadline' as const,
+        visibility: 'committee' as const,
+        priority: 'urgent' as const,
+        pinned: false,
+        createdAt: timestamp - 86400000,
+        updatedAt: timestamp - 86400000,
+        createdBy: adminId,
+        readCount: 0
+      },
+      {
+        id: `announcement_seed_3_${timestamp}`,
+        title: 'Application Tips',
+        content: 'Make sure your application clearly states the community benefit and includes a realistic budget breakdown.',
+        category: 'update' as const,
+        visibility: 'applicants' as const,
+        priority: 'normal' as const,
+        pinned: false,
+        createdAt: timestamp - 172800000,
+        updatedAt: timestamp - 172800000,
+        createdBy: adminId,
+        readCount: 0
+      }
+    ];
+
+    for (const announcement of testAnnouncements) {
+      try {
+        await setDoc(doc(db, 'announcements', announcement.id), announcement);
+        result.announcements++;
+      } catch (e: any) {
+        result.errors.push(`Announcement ${announcement.id}: ${e.message}`);
+      }
+    }
+
+  } catch (e: any) {
+    result.errors.push(`General error: ${e.message}`);
+  }
+
+  return result;
 };

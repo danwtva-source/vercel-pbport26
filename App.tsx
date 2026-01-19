@@ -11,6 +11,7 @@ import PublicVotingPage from './pages/public/PublicVotingPage';
 import PrioritiesPage from './pages/public/PrioritiesPage';
 import DocumentsPage from './pages/public/DocumentsPage';
 import TimelinePage from './pages/public/TimelinePage';
+import AnnouncementsPage from './pages/public/AnnouncementsPage';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/secure/Dashboard';
 import ScoringMatrix from './pages/secure/ScoringMatrix';
@@ -133,6 +134,7 @@ const AppRoutes: React.FC = () => {
       <Route path={ROUTES.PUBLIC.RESOURCES} element={<DocumentsPage />} />
       <Route path={ROUTES.PUBLIC.ALIASES.RESOURCES} element={<Navigate to={ROUTES.PUBLIC.RESOURCES} replace />} />
       <Route path={ROUTES.PUBLIC.TIMELINE} element={<TimelinePage />} />
+      <Route path={ROUTES.PUBLIC.ANNOUNCEMENTS} element={<AnnouncementsPage />} />
       <Route path={ROUTES.PUBLIC.LOGIN} element={<LoginPage />} />
 
       {/* Protected Routes - All authenticated users */}
