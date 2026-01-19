@@ -1,12 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/Layout';
 import { ArrowRight, MapPin, Users, Vote, FileText, CheckCircle2, Heart, Sparkles } from 'lucide-react';
+import AnnouncementsFeed from '../../components/AnnouncementsFeed';
+import { DataService } from '../../services/firebase';
 import { AREA_DATA } from '../../constants';
+import { Announcement } from '../../types';
 import { ROUTES } from '../../utils';
 
 const LandingPage: React.FC = () => {
   const areas = Object.values(AREA_DATA);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  useEffect(() => {
+    const loadAnnouncements = async () => {
+      try {
+        const data = await DataService.getAnnouncements();
+        setAnnouncements(data);
+      } catch (error) {
+        console.error('Error loading announcements:', error);
+      }
+    };
+    loadAnnouncements();
+  }, []);
 
   return (
     <PublicLayout>
@@ -84,6 +100,10 @@ const LandingPage: React.FC = () => {
             Projects funded through this initiative create lasting positive change in our communities.
           </p>
         </div>
+      </div>
+
+      <div className="mb-16">
+        <AnnouncementsFeed announcements={announcements} userRole="public" />
       </div>
 
       {/* Area Information */}

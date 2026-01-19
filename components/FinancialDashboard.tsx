@@ -36,38 +36,72 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
   const [saving, setSaving] = useState(false);
   const [simulationApp, setSimulationApp] = useState<string | null>(null);
 
-  // Calculate area financials from applications
+  const buildAreaMap = (base: Record<string, number>, overrides?: Record<string, number>) => {
+    const merged: Record<string, number> = { ...base };
+    if (overrides) {
+      Object.entries(overrides).forEach(([area, value]) => {
+        merged[area] = value;
+      });
+    }
+    return merged;
+  };
+
+  const sumValues = (values: Record<string, number>) =>
+    Object.values(values).reduce((total, value) => total + value, 0);
+
+  const calculateSpendByAreaFromApps = () => {
+    const spendTotals: Record<string, number> = {};
+
+    Object.keys(DEFAULT_AREA_BUDGETS).forEach(area => {
+      spendTotals[area] = 0;
+    });
+
+    applications.forEach(app => {
+      if (app.status === 'Funded') {
+        spendTotals[app.area] = (spendTotals[app.area] || 0) + app.amountRequested;
+      }
+    });
+
+    return spendTotals;
+  };
+
+  const baseBudgetByArea = financials?.budgetByArea || DEFAULT_AREA_BUDGETS;
+  const computedSpendByArea = calculateSpendByAreaFromApps();
+  const hasStoredSpendByArea = financials?.spendByArea && Object.keys(financials.spendByArea).length > 0;
+  const baseSpendByArea = hasStoredSpendByArea ? financials!.spendByArea : computedSpendByArea;
+  const mergedBudgetByArea = buildAreaMap(baseBudgetByArea, editData.budgetByArea);
+  const mergedSpendByArea = buildAreaMap(baseSpendByArea, editData.spendByArea);
+  const effectiveBudgetByArea = isEditing ? mergedBudgetByArea : baseBudgetByArea;
+  const effectiveSpendByArea = isEditing ? mergedSpendByArea : baseSpendByArea;
+
+  // Calculate area financials from applications and configured budgets
   const calculateAreaFinancials = (): AreaFinancials[] => {
     const areas: Record<string, AreaFinancials> = {};
 
-    // Initialize areas with default budgets
-    Object.entries(DEFAULT_AREA_BUDGETS).forEach(([area, budget]) => {
+    Object.entries(DEFAULT_AREA_BUDGETS).forEach(([area]) => {
+      const allocated = effectiveBudgetByArea[area] ?? DEFAULT_AREA_BUDGETS[area];
+      const spent = effectiveSpendByArea[area] ?? 0;
+
       areas[area] = {
         area: area as Area,
-        allocated: financials?.spendByArea?.[area] ? budget : budget,
-        spent: 0,
-        remaining: budget,
+        allocated,
+        spent,
+        remaining: allocated - spent,
         projectCount: 0,
         pendingRequests: 0
       };
     });
 
-    // Calculate from applications
+    // Calculate project counts from applications
     applications.forEach(app => {
       const area = app.area;
       if (areas[area]) {
         if (app.status === 'Funded') {
-          areas[area].spent += app.amountRequested;
           areas[area].projectCount += 1;
         } else if (app.status === 'Submitted-Stage2' || app.status === 'Invited-Stage2') {
           areas[area].pendingRequests += app.amountRequested;
         }
       }
-    });
-
-    // Calculate remaining
-    Object.keys(areas).forEach(area => {
-      areas[area].remaining = areas[area].allocated - areas[area].spent;
     });
 
     // Filter for committee view
@@ -119,17 +153,21 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
 
   const areaFinancials = calculateAreaFinancials();
   const prioritySpend = calculatePrioritySpend();
-  const totalSpent = Object.values(prioritySpend).reduce((a, b) => a + b, 0);
-  const totalBudget = financials?.totalFunding ||
-    Object.values(DEFAULT_AREA_BUDGETS).reduce((a, b) => a + b, 0);
-  const remaining = totalBudget - totalSpent;
+  const derivedTotalBudget = sumValues(effectiveBudgetByArea);
+  const derivedTotalSpent = sumValues(effectiveSpendByArea);
+  const totalBudget = financials?.budgetByArea ? derivedTotalBudget : (financials?.totalFunding || derivedTotalBudget);
+  const totalSpent = hasStoredSpendByArea ? derivedTotalSpent : (financials?.totalSpent || derivedTotalSpent);
+  const displayTotalBudget = isEditing ? derivedTotalBudget : totalBudget;
+  const displayTotalSpent = isEditing ? derivedTotalSpent : totalSpent;
+  const remaining = displayTotalBudget - displayTotalSpent;
 
   // Start editing mode
   const handleStartEdit = () => {
     setEditData({
-      totalFunding: financials?.totalFunding || totalBudget,
-      totalSpent: financials?.totalSpent || totalSpent,
-      spendByArea: financials?.spendByArea || {},
+      totalFunding: totalBudget,
+      totalSpent: totalSpent,
+      budgetByArea: baseBudgetByArea,
+      spendByArea: baseSpendByArea,
       spendByPriority: financials?.spendByPriority || prioritySpend
     });
     setIsEditing(true);
@@ -141,13 +179,19 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
 
     setSaving(true);
     try {
+      const nextBudgetByArea = buildAreaMap(baseBudgetByArea, editData.budgetByArea);
+      const nextSpendByArea = buildAreaMap(baseSpendByArea, editData.spendByArea);
+      const nextTotalFunding = sumValues(nextBudgetByArea);
+      const nextTotalSpent = sumValues(nextSpendByArea);
+
       await onSaveFinancials({
         id: roundId,
         roundId,
-        totalFunding: editData.totalFunding || totalBudget,
-        totalSpent: editData.totalSpent || totalSpent,
-        remainingPot: (editData.totalFunding || totalBudget) - (editData.totalSpent || totalSpent),
-        spendByArea: editData.spendByArea || {},
+        totalFunding: nextTotalFunding,
+        totalSpent: nextTotalSpent,
+        remainingPot: nextTotalFunding - nextTotalSpent,
+        budgetByArea: nextBudgetByArea,
+        spendByArea: nextSpendByArea,
         spendByPriority: editData.spendByPriority || prioritySpend,
         updatedAt: Date.now(),
         updatedBy: 'admin'
@@ -204,12 +248,12 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
           {isEditing ? (
             <Input
               type="number"
-              value={editData.totalFunding || ''}
-              onChange={(e) => setEditData({ ...editData, totalFunding: Number(e.target.value) })}
+              value={displayTotalBudget}
+              readOnly
               className="text-2xl font-bold bg-white/20 border-white/30 text-white"
             />
           ) : (
-            <div className="text-3xl font-bold">{formatCurrency(totalBudget)}</div>
+            <div className="text-3xl font-bold">{formatCurrency(displayTotalBudget)}</div>
           )}
         </Card>
 
@@ -222,15 +266,15 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
           {isEditing ? (
             <Input
               type="number"
-              value={editData.totalSpent || ''}
-              onChange={(e) => setEditData({ ...editData, totalSpent: Number(e.target.value) })}
+              value={displayTotalSpent}
+              readOnly
               className="text-2xl font-bold bg-white/20 border-white/30 text-white"
             />
           ) : (
-            <div className="text-3xl font-bold">{formatCurrency(totalSpent)}</div>
+            <div className="text-3xl font-bold">{formatCurrency(displayTotalSpent)}</div>
           )}
           <div className="text-sm text-amber-200 mt-1">
-            {Math.round((totalSpent / totalBudget) * 100)}% of budget
+            {Math.round((displayTotalSpent / displayTotalBudget) * 100)}% of budget
           </div>
         </Card>
 
@@ -258,7 +302,7 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         </h3>
         <div className="space-y-4">
           {areaFinancials.map(area => {
-            const percentage = (area.spent / area.allocated) * 100;
+            const percentage = area.allocated > 0 ? (area.spent / area.allocated) * 100 : 0;
             const isOverBudget = area.spent > area.allocated;
             const areaColor = getAreaColor(area.area);
 
@@ -270,9 +314,48 @@ export const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                     <span className="font-semibold text-gray-800">{area.area}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600">
-                      {formatCurrency(area.spent)} / {formatCurrency(area.allocated)}
-                    </span>
+                    {isEditing ? (
+                      <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <span>Budget</span>
+                          <Input
+                            type="number"
+                            value={effectiveBudgetByArea[area.area] ?? 0}
+                            onChange={(e) =>
+                              setEditData(prev => ({
+                                ...prev,
+                                budgetByArea: {
+                                  ...(prev.budgetByArea || baseBudgetByArea),
+                                  [area.area]: Number(e.target.value)
+                                }
+                              }))
+                            }
+                            className="w-28 text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <span>Spent</span>
+                          <Input
+                            type="number"
+                            value={effectiveSpendByArea[area.area] ?? 0}
+                            onChange={(e) =>
+                              setEditData(prev => ({
+                                ...prev,
+                                spendByArea: {
+                                  ...(prev.spendByArea || baseSpendByArea),
+                                  [area.area]: Number(e.target.value)
+                                }
+                              }))
+                            }
+                            className="w-28 text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-600">
+                        {formatCurrency(area.spent)} / {formatCurrency(area.allocated)}
+                      </span>
+                    )}
                     <Badge variant={isOverBudget ? 'red' : percentage > 80 ? 'amber' : 'green'}>
                       {Math.round(percentage)}%
                     </Badge>
