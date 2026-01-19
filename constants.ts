@@ -464,11 +464,11 @@ export const DEMO_APPLICATIONS: any[] = [
 ];
 
 export const DEMO_USERS: User[] = [
-  { uid: 'demo-admin', displayName: 'Demo Admin', email: 'admin@demo.com', role: 'admin' },
-  { uid: 'demo-comm-bl', displayName: 'Demo Comm (Blaenavon)', email: 'blaenavon@demo.com', role: 'committee', area: 'Blaenavon' },
-  { uid: 'demo-comm-th', displayName: 'Demo Comm (Thornhill)', email: 'thornhill@demo.com', role: 'committee', area: 'Thornhill & Upper Cwmbran' },
-  { uid: 'demo-comm-tr', displayName: 'Demo Comm (Trevethin)', email: 'trevethin@demo.com', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs' },
-  { uid: 'demo-app', displayName: 'Demo Applicant', email: 'applicant@demo.com', role: 'applicant', area: 'Blaenavon' },
+  { uid: 'demo-admin', displayName: 'Demo Admin', email: 'admin@demo.com', password: 'password', role: 'admin' },
+  { uid: 'demo-comm-bl', displayName: 'Demo Comm (Blaenavon)', email: 'blaenavon@demo.com', password: 'password', role: 'committee', area: 'Blaenavon' },
+  { uid: 'demo-comm-th', displayName: 'Demo Comm (Thornhill)', email: 'thornhill@demo.com', password: 'password', role: 'committee', area: 'Thornhill & Upper Cwmbran' },
+  { uid: 'demo-comm-tr', displayName: 'Demo Comm (Trevethin)', email: 'trevethin@demo.com', password: 'password', role: 'committee', area: 'Trevethin, Penygarn & St. Cadocs' },
+  { uid: 'demo-app', displayName: 'Demo Applicant', email: 'applicant@demo.com', password: 'password', role: 'applicant', area: 'Blaenavon' },
 ];
 
 // Demo Document Folders for demo mode

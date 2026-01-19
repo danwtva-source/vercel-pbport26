@@ -1,6 +1,6 @@
 // services/firebase.ts
 import { User, Application, Score, PortalSettings, DocumentFolder, DocumentItem, DocumentVisibility, Round, Assignment, Vote, PublicVote, ApplicationStatus, AuditLog, Area, Notification, Announcement } from '../types';
-import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS } from '../constants';
+import { DEMO_USERS, DEMO_APPS, SCORING_CRITERIA, DEMO_DOCUMENTS, DEMO_DOCUMENT_FOLDERS, DEMO_ANNOUNCEMENTS } from '../constants';
 import { toStoredRole } from '../utils';
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword, fetchSignInMethodsForEmail } from "firebase/auth";
@@ -29,7 +29,7 @@ function isFirebaseError(error: unknown): error is FirebaseError {
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
 // Set to TRUE for demo/development without Firebase.
-export const USE_DEMO_MODE = false; // Production mode with Firebase
+export const USE_DEMO_MODE = true; // Demo mode for testing without Firebase
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
