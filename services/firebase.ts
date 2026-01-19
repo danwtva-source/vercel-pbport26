@@ -130,6 +130,13 @@ const resolveAreaName = (area?: Area | null, areaId?: string | null): Area | nul
   return area || (areaId ? AREA_ID_TO_NAME[areaId] || null : null);
 };
 
+const isPermissionDeniedError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const typedError = error as { code?: string; message?: string };
+  return typedError.code === 'permission-denied'
+    || typedError.message?.includes('Missing or insufficient permissions') === true;
+};
+
 const mapUserFromFirestore = (data: Partial<User>, docId: string): User => {
   const normalizedRole = toStoredRole(data.role);
   const area = resolveAreaName(data.area || null, data.areaId || null);
