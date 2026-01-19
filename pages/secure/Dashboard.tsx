@@ -87,7 +87,8 @@ const Dashboard: React.FC = () => {
         isStoredRole(user.role, 'admin') ? DataService.getUsers() : Promise.resolve([]),
         DataService.getPortalSettings(),
         DataService.getAnnouncements(),
-        DataService.getFinancials()
+        // Only fetch financials for admin and committee (they have read permissions)
+        (isStoredRole(user.role, 'admin') || isStoredRole(user.role, 'committee')) ? DataService.getFinancials() : Promise.resolve([])
       ]);
 
       setAllApplications(appsData);

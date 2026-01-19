@@ -167,6 +167,26 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
+    // Announcements collection
+    match /announcements/{announcementId} {
+      // Anyone authenticated can read announcements
+      allow read: if isAuthenticated();
+
+      // Only admins can create, update, delete announcements
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Financials collection (budget tracking per round)
+    match /financials/{financialId} {
+      // Admins can read and write all financial records
+      allow read, write: if isAdmin();
+
+      // Committee members can read financial records (to see their area budget)
+      allow read: if isCommittee();
+
+      // No one else has access
+    }
+
     function canReadVisibility(visibility) {
       return isAdmin()
         || visibility == 'public'
