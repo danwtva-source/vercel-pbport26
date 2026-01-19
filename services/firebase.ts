@@ -161,9 +161,17 @@ const mapUserToFirestore = (user: User): Partial<User> => {
   };
 };
 
-const mapApplicationFromFirestore = (data: Partial<Application>, docId: string): Application => {
+// Type for legacy application data with old field names
+interface LegacyApplicationData {
+  applicantUid?: string;
+  contactName?: string;
+  applicant?: string;
+  projectSummary?: string;
+}
+
+const mapApplicationFromFirestore = (data: Partial<Application> & Partial<LegacyApplicationData>, docId: string): Application => {
   const applicationId = data.applicationId || data.id || docId;
-  const applicantId = data.applicantId || data.userId || (data as any).applicantUid || '';
+  const applicantId = data.applicantId || data.userId || data.applicantUid || '';
   const area = resolveAreaName(data.area || null, data.areaId || null);
   const areaId = resolveAreaId(area || undefined, data.areaId || undefined);
   const now = Date.now();
@@ -172,10 +180,10 @@ const mapApplicationFromFirestore = (data: Partial<Application>, docId: string):
     id: applicationId,
     applicationId,
     applicantId,
-    userId: data.userId || (data as any).applicantUid || applicantId,
-    applicantName: data.applicantName || (data as any).contactName || '',
-    orgName: data.orgName || (data as any).applicant || '',
-    summary: data.summary || (data as any).projectSummary || '',
+    userId: data.userId || data.applicantUid || applicantId,
+    applicantName: data.applicantName || data.contactName || '',
+    orgName: data.orgName || data.applicant || '',
+    summary: data.summary || data.projectSummary || '',
     area: area as Area,
     areaId,
     createdAt: data.createdAt || now,
