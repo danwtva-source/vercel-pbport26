@@ -604,6 +604,8 @@ export interface FinancialRecord {
   roundId: string;
   /** Total funding allocated for this round */
   totalFunding: number;
+  /** Budget allocation per geographic area */
+  budgetByArea: Record<string, number>;
   /** Total funding spent to date */
   totalSpent: number;
   /** Remaining pot (totalFunding - totalSpent) */
