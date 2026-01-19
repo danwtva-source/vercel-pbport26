@@ -135,6 +135,17 @@ export interface Vote {
   createdAt: string;
 }
 
+// --- PUBLIC VOTING ---
+
+export interface PublicVote {
+  id: string;
+  applicationId: string;
+  voterId: string;
+  area?: Area;
+  eligibilityCheckedAt?: number;
+  createdAt: string;
+}
+
 // --- SCORING (Stage 2) ---
 
 export interface ScoreBreakdown {
@@ -594,6 +605,8 @@ export interface FinancialRecord {
   roundId: string;
   /** Total funding allocated for this round */
   totalFunding: number;
+  /** Budget allocation per geographic area */
+  budgetByArea: Record<string, number>;
   /** Total funding spent to date */
   totalSpent: number;
   /** Remaining pot (totalFunding - totalSpent) */
