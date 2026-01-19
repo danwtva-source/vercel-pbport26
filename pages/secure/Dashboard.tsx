@@ -2,11 +2,11 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { DataService, uploadFile } from '../../services/firebase';
-import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification, Announcement } from '../../types';
+import { UserRole, Application, Vote, Score, Assignment, User, Area, PortalSettings, Notification, Announcement, FinancialRecord } from '../../types';
 import { ScoringModal } from '../../components/ScoringModal';
 import { AnnouncementsBanner } from '../../components/AnnouncementsBanner';
 import { useAuth } from '../../context/AuthContext';
-import { ROUTES, isStoredRole, toUserRole } from '../../utils';
+import { ROUTES, isStoredRole, toUserRole, formatCurrency } from '../../utils';
 import { getAreaColor } from '../../constants';
 import {
   Plus,
@@ -49,6 +49,7 @@ const Dashboard: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [financials, setFinancials] = useState<FinancialRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null);
@@ -78,14 +79,15 @@ const Dashboard: React.FC = () => {
       // For committee members, fetch applications filtered by their area
       const userArea = isStoredRole(user.role, 'committee') ? user.area : undefined;
 
-      const [appsData, votesData, scoresData, assignmentsData, usersData, settings, announcementsData] = await Promise.all([
+      const [appsData, votesData, scoresData, assignmentsData, usersData, settings, announcementsData, financialsData] = await Promise.all([
         DataService.getApplications(userArea || undefined),
         DataService.getVotes(),
         DataService.getScores(),
         isStoredRole(user.role, 'committee') ? DataService.getAssignments(user.uid) : Promise.resolve([]),
         isStoredRole(user.role, 'admin') ? DataService.getUsers() : Promise.resolve([]),
         DataService.getPortalSettings(),
-        DataService.getAnnouncements()
+        DataService.getAnnouncements(),
+        DataService.getFinancials()
       ]);
 
       setAllApplications(appsData);
@@ -95,6 +97,7 @@ const Dashboard: React.FC = () => {
       setUsers(usersData);
       setPortalSettings(settings);
       setAnnouncements(announcementsData);
+      setFinancials(financialsData);
 
       // Filter applications based on role
       if (isStoredRole(user.role, 'applicant')) {
@@ -360,6 +363,7 @@ const Dashboard: React.FC = () => {
             onRefresh={() => loadData(currentUser)}
             portalSettings={portalSettings}
             announcements={announcements}
+            financials={financials}
           />
         )}
 
@@ -756,6 +760,7 @@ interface CommitteeDashboardProps {
   onRefresh: () => Promise<void>;
   portalSettings: PortalSettings | null;
   announcements: Announcement[];
+  financials: FinancialRecord[];
 }
 
 const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
@@ -767,7 +772,8 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
   navigate,
   onRefresh,
   portalSettings,
-  announcements
+  announcements,
+  financials
 }) => {
   const [scoringApp, setScoringApp] = useState<Application | null>(null);
   const myVotes = votes.filter(v => v.voterId === currentUser.uid);
@@ -808,6 +814,27 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
     setScoringApp(null);
     await onRefresh(); // Refresh data without full page reload
   };
+
+  // Calculate area-specific financial summary for committee member
+  const areaFinancialSummary = (() => {
+    if (!currentUser.area || financials.length === 0) return null;
+
+    // Find the most recent financial record (assuming it's for the current round)
+    const latestFinancial = financials.length > 0 ? financials[0] : null;
+    if (!latestFinancial || !latestFinancial.budgetByArea || !latestFinancial.spendByArea) return null;
+
+    const allocated = latestFinancial.budgetByArea[currentUser.area] || 0;
+    const spent = latestFinancial.spendByArea[currentUser.area] || 0;
+    const remaining = allocated - spent;
+    const percentageUsed = allocated > 0 ? (spent / allocated) * 100 : 0;
+
+    return {
+      allocated,
+      spent,
+      remaining,
+      percentageUsed
+    };
+  })();
 
   return (
     <div className="space-y-6">
@@ -865,6 +892,70 @@ const CommitteeDashboard: React.FC<CommitteeDashboardProps> = ({
             </div>
             <div className="text-sm text-gray-600">
               You can only view and interact with applications in your assigned area
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Area Financial Summary - Committee View */}
+      {areaFinancialSummary && currentUser.area && (
+        <div className="rounded-xl shadow-md p-6 bg-gradient-to-br from-purple-50 to-white border border-purple-100">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Coins className="text-purple-600" size={22} />
+              {currentUser.area} Budget Overview
+            </h3>
+            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+              areaFinancialSummary.percentageUsed > 90
+                ? 'bg-red-100 text-red-700'
+                : areaFinancialSummary.percentageUsed > 70
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-green-100 text-green-700'
+            }`}>
+              {Math.round(areaFinancialSummary.percentageUsed)}% Used
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-sm text-gray-600 mb-1">Total Allocated</div>
+              <div className="text-2xl font-bold text-purple-700">
+                {formatCurrency(areaFinancialSummary.allocated)}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-sm text-gray-600 mb-1">Spent / Committed</div>
+              <div className="text-2xl font-bold text-amber-600">
+                {formatCurrency(areaFinancialSummary.spent)}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <div className="text-sm text-gray-600 mb-1">Remaining</div>
+              <div className={`text-2xl font-bold ${
+                areaFinancialSummary.remaining >= 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {formatCurrency(areaFinancialSummary.remaining)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Budget Utilisation</span>
+              <span>{formatCurrency(areaFinancialSummary.spent)} of {formatCurrency(areaFinancialSummary.allocated)}</span>
+            </div>
+            <div className="relative h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="absolute h-full rounded-full transition-all"
+                style={{
+                  width: `${Math.min(areaFinancialSummary.percentageUsed, 100)}%`,
+                  backgroundColor: areaFinancialSummary.percentageUsed > 90
+                    ? '#ef4444'
+                    : areaFinancialSummary.percentageUsed > 70
+                    ? '#f59e0b'
+                    : getAreaColor(currentUser.area)
+                }}
+              />
             </div>
           </div>
         </div>

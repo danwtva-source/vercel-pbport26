@@ -685,9 +685,14 @@ export const DEMO_FINANCIALS: FinancialRecord[] = [
     id: 'round_2026',
     roundId: 'round_2026',
     totalFunding: 150000,
+    budgetByArea: { ...DEFAULT_AREA_BUDGETS },
     totalSpent: 45000,
+    spendByArea: {
+      'Blaenavon': 15000,
+      'Thornhill & Upper Cwmbran': 18000,
+      'Trevethin, Penygarn & St. Cadocs': 12000
+    },
     remainingPot: 105000,
-    spendByArea: { ...DEFAULT_AREA_BUDGETS },
     spendByPriority: {
       'Community Spaces': 15000,
       'Youth Services': 10000,

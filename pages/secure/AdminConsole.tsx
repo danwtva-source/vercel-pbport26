@@ -4,7 +4,7 @@ import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
 import { DataService, exportToCSV, uploadFile as uploadToStorage, seedAllTestData } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement } from '../../types';
+import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement, FinancialRecord } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
 import { formatCurrency, ROUTES } from '../../utils';
 import { AREA_NAMES, getAreaColor } from '../../constants';
@@ -188,7 +188,7 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData] = await Promise.all([
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData, financialsData] = await Promise.all([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -200,7 +200,8 @@ const AdminConsole: React.FC = () => {
         DataService.getVotes(),
         DataService.getPublicVotes(),
         DataService.getAssignments(),
-        DataService.getAllAnnouncements()
+        DataService.getAllAnnouncements(),
+        DataService.getFinancials()
       ]);
 
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
@@ -233,6 +234,14 @@ const AdminConsole: React.FC = () => {
       setSettings(settingsData);
       setAssignments(assignmentsData);
       setAnnouncements(announcementsData);
+
+      // Convert financials array to Record<roundId, FinancialRecord> for easy lookup
+      const financialsMap = financialsData.reduce<Record<string, any>>((acc, record) => {
+        acc[record.roundId] = record;
+        return acc;
+      }, {});
+      setFinancialRecords(financialsMap);
+
       void runAuthConsistencyCheck(usersData);
     } catch (error) {
       console.error('Error loading data:', error);

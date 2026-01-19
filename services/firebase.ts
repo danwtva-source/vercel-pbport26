@@ -519,6 +519,13 @@ class AuthService {
   // --- VOTING & SCORING ---
   async saveVote(vote: Vote): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveVote(vote);
+
+      // Backend validation: Check if Stage 1 voting is open
+      const settings = await this.getPortalSettings();
+      if (!settings.stage1VotingOpen) {
+        throw new Error('Stage 1 committee voting is currently closed.');
+      }
+
       const voteId = vote.id || `${vote.appId}_${vote.voterId}`;
       const mapped = mapVoteToFirestore({ ...vote, id: voteId } as Vote);
       await setDoc(doc(db, 'votes', voteId), mapped);
@@ -561,22 +568,17 @@ class AuthService {
       }
   }
 
-  async savePublicVote(vote: PublicVote): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockSavePublicVote(vote);
-      if (!db) throw new Error('Firestore not initialized');
-      const voteId = vote.id || `${vote.applicationId}_${vote.voterId}`;
-      await setDoc(doc(db, 'publicVotes', voteId), { ...vote, id: voteId });
-  }
-
-  async getPublicVotes(): Promise<PublicVote[]> {
-      if (USE_DEMO_MODE) return this.mockGetPublicVotes();
-      if (!db) throw new Error('Firestore not initialized');
-      const snap = await getDocs(collection(db, 'publicVotes'));
-      return snap.docs.map(d => ({ ...(d.data() as PublicVote), id: d.id }));
-  }
+  // --- SCORES (Committee Stage 2 Scoring) ---
 
   async saveScore(score: Score): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveScore(score);
+
+      // Backend validation: Check if Stage 2 scoring is open
+      const settings = await this.getPortalSettings();
+      if (!settings.stage2ScoringOpen) {
+        throw new Error('Stage 2 committee scoring is currently closed.');
+      }
+
       const scoreId = score.id || `${score.appId}_${score.scorerId}`;
       const mapped = mapScoreToFirestore({ ...score, id: scoreId } as Score);
       await setDoc(doc(db, 'scores', scoreId), mapped);
@@ -956,29 +958,6 @@ class AuthService {
         console.error('Error updating document:', error);
         throw new Error('Failed to update document. Please check your permissions.');
       }
-  }
-
-  // --- ANNOUNCEMENTS ---
-  async getAnnouncements(): Promise<Announcement[]> {
-      if (USE_DEMO_MODE) return this.mockGetAnnouncements();
-      if (!db) {
-        console.warn('Firestore not initialized, returning empty announcements');
-        return [];
-      }
-      const snap = await getDocs(collection(db, 'announcements'));
-      return snap.docs.map(d => d.data() as Announcement);
-  }
-
-  async saveAnnouncement(announcement: Announcement): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockSaveAnnouncement(announcement);
-      if (!db) throw new Error('Firestore not initialized');
-      await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
-  }
-
-  async deleteAnnouncement(id: string): Promise<void> {
-      if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
-      if (!db) throw new Error('Firestore not initialized');
-      await deleteDoc(doc(db, 'announcements', id));
   }
 
   // --- FINANCIALS ---
@@ -1521,12 +1500,6 @@ class AuthService {
     }, { merge: true });
   }
 
-  async deleteAnnouncement(id: string): Promise<void> {
-    if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
-
-    await deleteDoc(doc(db, 'announcements', id));
-  }
-
   async incrementAnnouncementReadCount(id: string): Promise<void> {
     if (USE_DEMO_MODE) return;
 
@@ -1833,32 +1806,6 @@ class AuthService {
     const docs = this.getLocal<DocumentItem>('documents');
     const i = docs.findIndex(doc => doc.id === id);
     if (i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('documents', docs); }
-    return Promise.resolve();
-  }
-
-  mockGetAnnouncements(): Promise<Announcement[]> {
-    let announcements = this.getLocal<Announcement>('announcements');
-    if (announcements.length === 0) {
-      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
-      announcements = DEMO_ANNOUNCEMENTS;
-    }
-    return Promise.resolve(announcements);
-  }
-
-  mockSaveAnnouncement(announcement: Announcement): Promise<void> {
-    const announcements = this.getLocal<Announcement>('announcements');
-    const i = announcements.findIndex(item => item.id === announcement.id);
-    if (i >= 0) {
-      announcements[i] = announcement;
-    } else {
-      announcements.push(announcement);
-    }
-    this.setLocal('announcements', announcements);
-    return Promise.resolve();
-  }
-
-  mockDeleteAnnouncement(id: string): Promise<void> {
-    this.setLocal('announcements', this.getLocal<Announcement>('announcements').filter(a => a.id !== id));
     return Promise.resolve();
   }
 

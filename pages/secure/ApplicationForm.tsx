@@ -99,6 +99,14 @@ const ApplicationForm: React.FC = () => {
         return;
       }
 
+      // Check area permissions - committee members can only view applications in their area
+      if (toUserRole(userProfile?.role) === UserRole.COMMITTEE &&
+          app.area !== userProfile?.area && app.area !== 'Cross-Area') {
+        setError('You do not have permission to view applications outside your area');
+        setTimeout(() => navigate(ROUTES.PORTAL.APPLICATIONS), 2000);
+        return;
+      }
+
       setApplication(app);
 
       // Determine which stage to show
