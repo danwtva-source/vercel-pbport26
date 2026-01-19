@@ -687,12 +687,7 @@ export const DEMO_FINANCIALS: FinancialRecord[] = [
     totalFunding: 150000,
     totalSpent: 45000,
     remainingPot: 105000,
-    budgetByArea: { ...DEFAULT_AREA_BUDGETS },
-    spendByArea: {
-      Blaenavon: 15000,
-      'Thornhill & Upper Cwmbran': 15000,
-      'Trevethin, Penygarn & St. Cadocs': 15000
-    },
+    spendByArea: { ...DEFAULT_AREA_BUDGETS },
     spendByPriority: {
       'Community Spaces': 15000,
       'Youth Services': 10000,

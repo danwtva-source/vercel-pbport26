@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SecureLayout } from '../../components/Layout';
 import { Button, Card, Input, Modal, Badge, BarChart } from '../../components/UI';
-import { DataService, exportToCSV, uploadFile as uploadToStorage } from '../../services/firebase';
+import { DataService, exportToCSV, uploadFile as uploadToStorage, seedAllTestData } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, Application, User, Round, AuditLog, PortalSettings, Score, Vote, PublicVote, DocumentFolder, DocumentItem, DocumentVisibility, Assignment, Announcement } from '../../types';
 import { ScoringMonitor } from '../../components/ScoringMonitor';
@@ -71,6 +71,7 @@ const AdminConsole: React.FC = () => {
   );
   const tabParam = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isScoringMode, setIsScoringMode] = useState(false);
   const [authCheckRunning, setAuthCheckRunning] = useState(false);
   const [authCheckResult, setAuthCheckResult] = useState<{
@@ -115,9 +116,14 @@ const AdminConsole: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [settings, setSettings] = useState<PortalSettings>({
     stage1Visible: true,
+    stage1VotingOpen: false,
     stage2Visible: false,
+    stage2ScoringOpen: false,
     votingOpen: false,
-    scoringThreshold: 50
+    publicVotingStartDate: undefined,
+    publicVotingEndDate: undefined,
+    scoringThreshold: 50,
+    resultsReleased: false
   });
 
   // UI state
@@ -175,28 +181,6 @@ const AdminConsole: React.FC = () => {
     return acc;
   }, {});
 
-  const handleExportPublicVotes = () => {
-    if (publicVotes.length === 0) {
-      alert('No public votes available to export yet.');
-      return;
-    }
-    const exportRows = publicVotes.map(vote => {
-      const app = applications.find(item => item.id === vote.applicationId);
-      return {
-        applicationId: vote.applicationId,
-        projectTitle: app?.projectTitle || '',
-        organisation: app?.orgName || '',
-        area: app?.area || vote.area || '',
-        voterId: vote.voterId,
-        eligibilityCheckedAt: vote.eligibilityCheckedAt
-          ? new Date(vote.eligibilityCheckedAt).toISOString()
-          : '',
-        createdAt: vote.createdAt
-      };
-    });
-    exportToCSV(exportRows, `public-votes-${new Date().toISOString().slice(0, 10)}.csv`);
-  };
-
   // Load all data
   useEffect(() => {
     loadAllData();
@@ -205,7 +189,8 @@ const AdminConsole: React.FC = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData, financialsData] = await Promise.all([
+      // Use Promise.allSettled to handle individual failures gracefully
+      const results = await Promise.allSettled([
         DataService.getApplications(),
         DataService.getUsers(),
         DataService.getRounds(),
@@ -217,14 +202,52 @@ const AdminConsole: React.FC = () => {
         DataService.getVotes(),
         DataService.getPublicVotes(),
         DataService.getAssignments(),
-        DataService.getAnnouncements(),
-        DataService.getFinancials()
+        DataService.getAllAnnouncements()
       ]);
 
+      // Extract successful results with fallbacks
+      const [appsData, usersData, roundsData, folderData, docsData, logsData, scoresData, settingsData, votesData, publicVotesData, assignmentsData, announcementsData] = results;
+
+      const apps = appsData.status === 'fulfilled' ? appsData.value : [];
+      const users = usersData.status === 'fulfilled' ? usersData.value : [];
+      const rounds = roundsData.status === 'fulfilled' ? roundsData.value : [];
+      const folders = folderData.status === 'fulfilled' ? folderData.value : [];
+      const docs = docsData.status === 'fulfilled' ? docsData.value : [];
+      const logs = logsData.status === 'fulfilled' ? logsData.value : [];
+      const scores = scoresData.status === 'fulfilled' ? scoresData.value : [];
+      const settings = settingsData.status === 'fulfilled' ? settingsData.value : {
+        stage1Visible: true,
+        stage1VotingOpen: false,
+        stage2Visible: false,
+        stage2ScoringOpen: false,
+        votingOpen: false,
+        scoringThreshold: 50,
+        resultsReleased: false
+      };
+      const votes = votesData.status === 'fulfilled' ? votesData.value : [];
+      const publicVotes = publicVotesData.status === 'fulfilled' ? publicVotesData.value : [];
+      const assignments = assignmentsData.status === 'fulfilled' ? assignmentsData.value : [];
+      const announcements = announcementsData.status === 'fulfilled' ? announcementsData.value : [];
+
+      // Log any failures for debugging
+      const failures: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const collectionNames = ['applications', 'users', 'rounds', 'documentFolders', 'documents', 'auditLogs', 'scores', 'portalSettings', 'votes', 'publicVotes', 'assignments', 'announcements'];
+          console.error(`Failed to load ${collectionNames[index]}:`, result.reason);
+          failures.push(collectionNames[index]);
+        }
+      });
+
+      if (failures.length > 0) {
+        console.warn(`⚠️ Admin Console: Failed to load ${failures.length} collection(s): ${failures.join(', ')}`);
+        console.warn('Please check Firestore rules to ensure admin has read access to all collections.');
+      }
+
       // CRITICAL: Enrich apps with computed metrics (matching v7 implementation)
-      const enrichedApps = appsData.map(app => {
-        const appScores = scoresData.filter(s => s.appId === app.id);
-        const appVotes = votesData.filter(v => v.appId === app.id);
+      const enrichedApps = apps.map(app => {
+        const appScores = scores.filter(s => s.appId === app.id);
+        const appVotes = votes.filter(v => v.appId === app.id);
         const avg = appScores.length > 0
           ? Math.round(appScores.reduce((sum, curr) => sum + curr.weightedTotal, 0) / appScores.length)
           : 0;
@@ -241,25 +264,20 @@ const AdminConsole: React.FC = () => {
       });
 
       setApplications(enrichedApps);
-      setUsers(usersData);
-      setRounds(roundsData);
-      setDocumentFolders(folderData);
-      setDocuments(docsData);
-      setAuditLogs(logsData);
-      setScores(scoresData);
-      setPublicVotes(publicVotesData);
-      setSettings(settingsData);
-      setAssignments(assignmentsData);
-      setAnnouncements(announcementsData);
-      setFinancialRecords(
-        financialsData.reduce<Record<string, any>>((acc, record) => {
-          acc[record.roundId] = record;
-          return acc;
-        }, {})
-      );
-      void runAuthConsistencyCheck(usersData);
+      setUsers(users);
+      setRounds(rounds);
+      setDocumentFolders(folders);
+      setDocuments(docs);
+      setAuditLogs(logs);
+      setScores(scores);
+      setPublicVotes(publicVotes);
+      setSettings(settings);
+      setAssignments(assignments);
+      setAnnouncements(announcements);
+      void runAuthConsistencyCheck(users);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading admin console data:', error);
+      setLoadError('Some admin console data failed to load. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -2077,7 +2095,10 @@ const AdminConsole: React.FC = () => {
   const AnnouncementsTab = () => {
     const handleSaveAnnouncement = async (announcement: Announcement) => {
       try {
-        await DataService.saveAnnouncement(announcement);
+        // Persist to Firebase
+        await DataService.createAnnouncement(announcement);
+
+        // Update local state
         setAnnouncements(prev => {
           const existingIndex = prev.findIndex(a => a.id === announcement.id);
           if (existingIndex >= 0) {
@@ -2087,11 +2108,12 @@ const AdminConsole: React.FC = () => {
           }
           return [...prev, announcement];
         });
+
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'ANNOUNCEMENT_SAVE',
           targetId: announcement.id,
-          details: { title: announcement.title }
+          details: { title: announcement.title, visibility: announcement.visibility }
         });
       } catch (error) {
         console.error('Error saving announcement:', error);
@@ -2101,8 +2123,12 @@ const AdminConsole: React.FC = () => {
 
     const handleDeleteAnnouncement = async (id: string) => {
       try {
+        // Delete from Firebase
         await DataService.deleteAnnouncement(id);
+
+        // Update local state
         setAnnouncements(prev => prev.filter(a => a.id !== id));
+
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
           action: 'ANNOUNCEMENT_DELETE',
@@ -2617,7 +2643,53 @@ const AdminConsole: React.FC = () => {
   // ============================================================================
 
   const SettingsTab = () => {
-    const [localSettings, setLocalSettings] = useState(settings);
+    // Ensure localSettings has all fields with proper defaults
+    const [localSettings, setLocalSettings] = useState<PortalSettings>({
+      stage1Visible: settings.stage1Visible ?? true,
+      stage1VotingOpen: settings.stage1VotingOpen ?? false,
+      stage2Visible: settings.stage2Visible ?? false,
+      stage2ScoringOpen: settings.stage2ScoringOpen ?? false,
+      votingOpen: settings.votingOpen ?? false,
+      publicVotingStartDate: settings.publicVotingStartDate,
+      publicVotingEndDate: settings.publicVotingEndDate,
+      scoringThreshold: settings.scoringThreshold ?? 50,
+      resultsReleased: settings.resultsReleased ?? false
+    });
+
+    // Sync localSettings when parent settings change (e.g., after data reload)
+    useEffect(() => {
+      setLocalSettings({
+        stage1Visible: settings.stage1Visible ?? true,
+        stage1VotingOpen: settings.stage1VotingOpen ?? false,
+        stage2Visible: settings.stage2Visible ?? false,
+        stage2ScoringOpen: settings.stage2ScoringOpen ?? false,
+        votingOpen: settings.votingOpen ?? false,
+        publicVotingStartDate: settings.publicVotingStartDate,
+        publicVotingEndDate: settings.publicVotingEndDate,
+        scoringThreshold: settings.scoringThreshold ?? 50,
+        resultsReleased: settings.resultsReleased ?? false
+      });
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
+
+    useEffect(() => {
+      setLocalSettings(settings);
+    }, [settings]);
 
     useEffect(() => {
       setLocalSettings(settings);
@@ -2630,6 +2702,7 @@ const AdminConsole: React.FC = () => {
         const stage2ScoringChanged = settings.stage2ScoringOpen !== localSettings.stage2ScoringOpen;
         const publicVotingChanged = settings.votingOpen !== localSettings.votingOpen;
 
+        // Save settings first - this is the critical operation
         await DataService.updatePortalSettings(localSettings);
         await DataService.logAction({
           adminId: currentUser?.uid || 'admin',
@@ -2638,48 +2711,58 @@ const AdminConsole: React.FC = () => {
           details: localSettings as unknown as Record<string, unknown>
         });
 
-        // Send notifications for workflow changes
-        if (stage1VotingChanged) {
-          const isOpen = localSettings.stage1VotingOpen;
-          // Notify all committee members across all areas
-          for (const area of AREA_NAMES) {
-            await DataService.notifyCommitteeByArea({
-              area,
-              type: isOpen ? 'stage_opened' : 'stage_closed',
-              title: isOpen ? 'Part 1 Voting Now Open' : 'Part 1 Voting Closed',
-              message: isOpen
-                ? 'You can now vote on Part 1 EOI applications in your area.'
-                : 'Part 1 EOI voting has been closed by Admin.',
-              link: '/portal/dashboard'
-            });
-          }
-        }
+        // Update local state immediately after successful save
+        setSettings(localSettings);
 
-        if (stage2ScoringChanged) {
-          const isOpen = localSettings.stage2ScoringOpen;
-          for (const area of AREA_NAMES) {
-            await DataService.notifyCommitteeByArea({
-              area,
-              type: isOpen ? 'stage_opened' : 'stage_closed',
-              title: isOpen ? 'Part 2 Scoring Now Open' : 'Part 2 Scoring Closed',
-              message: isOpen
-                ? 'You can now score Part 2 full applications in your area.'
-                : 'Part 2 application scoring has been closed by Admin.',
-              link: '/portal/scoring'
-            });
+        // Send notifications for workflow changes (non-blocking)
+        // Wrap in try-catch so notification failures don't affect the save confirmation
+        let notificationsSent = false;
+        try {
+          if (stage1VotingChanged) {
+            const isOpen = localSettings.stage1VotingOpen;
+            // Notify all committee members across all areas
+            for (const area of AREA_NAMES) {
+              await DataService.notifyCommitteeByArea({
+                area,
+                type: isOpen ? 'stage_opened' : 'stage_closed',
+                title: isOpen ? 'Part 1 Voting Now Open' : 'Part 1 Voting Closed',
+                message: isOpen
+                  ? 'You can now vote on Part 1 EOI applications in your area.'
+                  : 'Part 1 EOI voting has been closed by Admin.',
+                link: '/portal/dashboard'
+              });
+            }
+            notificationsSent = true;
           }
+
+          if (stage2ScoringChanged) {
+            const isOpen = localSettings.stage2ScoringOpen;
+            for (const area of AREA_NAMES) {
+              await DataService.notifyCommitteeByArea({
+                area,
+                type: isOpen ? 'stage_opened' : 'stage_closed',
+                title: isOpen ? 'Part 2 Scoring Now Open' : 'Part 2 Scoring Closed',
+                message: isOpen
+                  ? 'You can now score Part 2 full applications in your area.'
+                  : 'Part 2 application scoring has been closed by Admin.',
+                link: '/portal/scoring'
+              });
+            }
+            notificationsSent = true;
+          }
+        } catch (notifError) {
+          console.warn('Failed to send notifications, but settings were saved:', notifError);
         }
 
         if (publicVotingChanged && localSettings.votingOpen) {
-          // Public voting opened - could notify applicants/community
           console.log('Public voting status changed');
         }
 
-        setSettings(localSettings);
-        alert('Settings saved successfully' + (stage1VotingChanged || stage2ScoringChanged ? '\nCommittee members have been notified.' : ''));
-      } catch (error) {
+        alert('Settings saved successfully' + (notificationsSent ? '\nCommittee members have been notified.' : ''));
+      } catch (error: any) {
         console.error('Error saving settings:', error);
-        alert('Failed to save settings');
+        const errorMsg = error?.message || error?.code || 'Unknown error';
+        alert(`Failed to save settings: ${errorMsg}`);
       }
     };
 
@@ -2860,19 +2943,14 @@ const AdminConsole: React.FC = () => {
             </div>
 
             <div className="bg-white border border-purple-100 rounded-lg p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="font-bold text-gray-800">Public Vote Totals</p>
                   <p className="text-sm text-gray-600">Live count of public votes per eligible project</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-purple-700">
-                    Total votes: {publicVotes.length}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={handleExportPublicVotes}>
-                    Export CSV
-                  </Button>
-                </div>
+                <span className="text-sm font-semibold text-purple-700">
+                  Total votes: {publicVotes.length}
+                </span>
               </div>
               {applications.filter(app => app.status === 'Funded' && app.publicVotePackComplete).length === 0 ? (
                 <p className="text-sm text-gray-500">No funded applications with completed vote packs yet.</p>
@@ -3066,6 +3144,78 @@ const AdminConsole: React.FC = () => {
           </div>
         </Card>
 
+        {/* Comprehensive Test Data Seeding */}
+        <Card className="border-2 border-dashed border-gray-300 bg-gray-50">
+          <h3 className="text-xl font-bold text-gray-700 mb-4 flex items-center gap-2">
+            <Activity size={24} />
+            Development: Seed All Test Data
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Populate all tabs with comprehensive test data including users, rounds, applications, assignments, audit logs, and announcements.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 text-sm">
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Users</p>
+              <p className="text-gray-500">Admin + 6 committee + 2 applicants</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Rounds</p>
+              <p className="text-gray-500">2025 (active) + 2026 (planning)</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Applications</p>
+              <p className="text-gray-500">12 apps across 3 areas</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Assignments</p>
+              <p className="text-gray-500">Stage 2 apps assigned to committee</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Audit Logs</p>
+              <p className="text-gray-500">Sample admin activity logs</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <p className="font-bold text-purple-700">Announcements</p>
+              <p className="text-gray-500">Public + committee + applicant</p>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              if (!confirm('This will create comprehensive test data in your database including users, rounds, applications, assignments, audit logs, and announcements. Continue?')) return;
+
+              try {
+                const result = await seedAllTestData(currentUser?.uid || 'admin');
+
+                let message = `Test Data Seeding Complete!\n\n`;
+                message += `Users: ${result.users}\n`;
+                message += `Rounds: ${result.rounds}\n`;
+                message += `Applications: ${result.applications}\n`;
+                message += `Assignments: ${result.assignments}\n`;
+                message += `Audit Logs: ${result.auditLogs}\n`;
+                message += `Announcements: ${result.announcements}\n`;
+
+                if (result.errors.length > 0) {
+                  message += `\nErrors (${result.errors.length}):\n`;
+                  message += result.errors.slice(0, 5).join('\n');
+                  if (result.errors.length > 5) {
+                    message += `\n... and ${result.errors.length - 5} more`;
+                  }
+                }
+
+                alert(message);
+                await loadAllData();
+              } catch (error: any) {
+                console.error('Seeding error:', error);
+                alert(`Failed to seed test data: ${error.message}`);
+              }
+            }}
+          >
+            <Plus size={18} />
+            Seed All Test Data
+          </Button>
+        </Card>
+
         <div className="flex justify-end">
           <Button onClick={handleSaveSettings}>
             <Save size={18} />
@@ -3104,6 +3254,39 @@ const AdminConsole: React.FC = () => {
   return (
     <SecureLayout userRole={UserRole.ADMIN}>
       <div className="space-y-6">
+        {/* Load Error Banner */}
+        {loadError && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-lg shadow-md">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h3 className="font-bold text-amber-900 mb-1">Data Load Warning</h3>
+                <p className="text-sm text-amber-800 mb-2">{loadError}</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  Some data collections may be restricted. The admin console is functional but may show incomplete data.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setLoadError(null);
+                      loadAllData();
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition"
+                  >
+                    Retry Loading
+                  </button>
+                  <button
+                    onClick={() => setLoadError(null)}
+                    className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-sm font-bold transition"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-purple-100 p-3 rounded-xl">
