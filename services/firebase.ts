@@ -7,25 +7,6 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, si
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, where, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
-// --- TYPE GUARDS ---
-
-// Type guard for Firebase errors
-interface FirebaseError {
-  code: string;
-  message: string;
-  name: string;
-}
-
-function isFirebaseError(error: unknown): error is FirebaseError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    'message' in error &&
-    typeof (error as any).code === 'string'
-  );
-}
-
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
 // Set to TRUE for demo/development without Firebase.
@@ -580,6 +561,20 @@ class AuthService {
       }
   }
 
+  async savePublicVote(vote: PublicVote): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSavePublicVote(vote);
+      if (!db) throw new Error('Firestore not initialized');
+      const voteId = vote.id || `${vote.applicationId}_${vote.voterId}`;
+      await setDoc(doc(db, 'publicVotes', voteId), { ...vote, id: voteId });
+  }
+
+  async getPublicVotes(): Promise<PublicVote[]> {
+      if (USE_DEMO_MODE) return this.mockGetPublicVotes();
+      if (!db) throw new Error('Firestore not initialized');
+      const snap = await getDocs(collection(db, 'publicVotes'));
+      return snap.docs.map(d => ({ ...(d.data() as PublicVote), id: d.id }));
+  }
+
   async saveScore(score: Score): Promise<void> {
       if (USE_DEMO_MODE) return this.mockSaveScore(score);
       const scoreId = score.id || `${score.appId}_${score.scorerId}`;
@@ -964,6 +959,28 @@ class AuthService {
   }
 
   // --- ANNOUNCEMENTS ---
+  async getAnnouncements(): Promise<Announcement[]> {
+      if (USE_DEMO_MODE) return this.mockGetAnnouncements();
+      if (!db) {
+        console.warn('Firestore not initialized, returning empty announcements');
+        return [];
+      }
+      const snap = await getDocs(collection(db, 'announcements'));
+      return snap.docs.map(d => d.data() as Announcement);
+  }
+
+  async saveAnnouncement(announcement: Announcement): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockSaveAnnouncement(announcement);
+      if (!db) throw new Error('Firestore not initialized');
+      await setDoc(doc(db, 'announcements', announcement.id), announcement, { merge: true });
+  }
+
+  async deleteAnnouncement(id: string): Promise<void> {
+      if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
+      if (!db) throw new Error('Firestore not initialized');
+      await deleteDoc(doc(db, 'announcements', id));
+  }
+
   // --- FINANCIALS ---
   async getFinancials(): Promise<FinancialRecord[]> {
       if (USE_DEMO_MODE) return this.mockGetFinancials();
@@ -1119,17 +1136,9 @@ class AuthService {
 
   async getAuditLogs(): Promise<AuditLog[]> {
       if (USE_DEMO_MODE) return this.mockGetAuditLogs();
-      try {
-        const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
-        const snap = await getDocs(q);
-        return snap.docs.map(d => d.data() as AuditLog);
-      } catch (error) {
-        console.error('Error fetching audit logs:', error);
-        if (isFirebaseError(error) && error.code === 'permission-denied') {
-          console.warn('⚠️ Permission denied reading audit logs. Check Firestore rules.');
-        }
-        return [];
-      }
+      const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(100));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as AuditLog);
   }
 
   // --- BULK ASSIGNMENT ---
@@ -1369,9 +1378,6 @@ class AuthService {
       return snap.docs.map(d => d.data() as Notification);
     } catch (error) {
       console.error('Error loading notifications:', error);
-      if (isFirebaseError(error) && error.code === 'permission-denied') {
-        console.warn('⚠️ Permission denied reading notifications. Check Firestore rules.');
-      }
       return [];
     }
   }
@@ -1455,114 +1461,70 @@ class AuthService {
 
   async getAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
     if (USE_DEMO_MODE) return this.mockGetAnnouncements(visibility);
-    
-    if (!db) {
-      console.warn('Firestore not initialized, returning empty announcements');
-      return [];
+
+    const snap = await getDocs(collection(db, 'announcements'));
+    let announcements = snap.docs.map(d => d.data() as Announcement);
+
+    // Filter by visibility if specified
+    if (visibility) {
+      announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
     }
 
-    try {
-      const snap = await getDocs(collection(db, 'announcements'));
-      let announcements = snap.docs.map(d => d.data() as Announcement);
+    // Filter out announcements outside their date range
+    const now = Date.now();
+    announcements = announcements.filter(a => {
+      if (a.startDate && a.startDate > now) return false;
+      if (a.endDate && a.endDate < now) return false;
+      return true;
+    });
 
-      // Filter by visibility if specified
-      if (visibility) {
-        announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
-      }
-
-      // Filter out announcements outside their date range
-      const now = Date.now();
-      announcements = announcements.filter(a => {
-        if (a.startDate && a.startDate > now) return false;
-        if (a.endDate && a.endDate < now) return false;
-        return true;
-      });
-
-      // Sort: pinned first, then by createdAt desc
-      return announcements.sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
-    } catch (error) {
-      console.error('Error fetching announcements:', error);
-      if (isFirebaseError(error) && error.code === 'permission-denied') {
-        console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
-      }
-      return [];
-    }
+    // Sort: pinned first, then by createdAt desc
+    return announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
   }
 
   async getAllAnnouncements(): Promise<Announcement[]> {
     if (USE_DEMO_MODE) return this.mockGetAnnouncements();
-    
-    if (!db) {
-      console.warn('Firestore not initialized, returning empty announcements');
-      return [];
-    }
 
-    try {
-      const snap = await getDocs(collection(db, 'announcements'));
-      const announcements = snap.docs.map(d => d.data() as Announcement);
+    const snap = await getDocs(collection(db, 'announcements'));
+    const announcements = snap.docs.map(d => d.data() as Announcement);
 
-      // Sort: pinned first, then by createdAt desc
-      return announcements.sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      });
-    } catch (error) {
-      console.error('Error fetching all announcements:', error);
-      if (isFirebaseError(error) && error.code === 'permission-denied') {
-        console.warn('⚠️ Permission denied reading announcements. Check Firestore rules.');
-      }
-      return [];
-    }
+    // Sort: pinned first, then by createdAt desc
+    return announcements.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
   }
 
   async createAnnouncement(announcement: Announcement): Promise<void> {
     if (USE_DEMO_MODE) return this.mockCreateAnnouncement(announcement);
-    if (!db) throw new Error('Firestore not initialized');
 
-    try {
-      const id = announcement.id || `announcement_${Date.now()}`;
-      await setDoc(doc(db, 'announcements', id), {
-        ...announcement,
-        id,
-        createdAt: announcement.createdAt || Date.now(),
-        updatedAt: Date.now()
-      });
-    } catch (error) {
-      console.error('Error creating announcement:', error);
-      throw new Error('Failed to create announcement. Please check your permissions.');
-    }
+    const id = announcement.id || `announcement_${Date.now()}`;
+    await setDoc(doc(db, 'announcements', id), {
+      ...announcement,
+      id,
+      createdAt: announcement.createdAt || Date.now(),
+      updatedAt: Date.now()
+    });
   }
 
   async updateAnnouncement(id: string, updates: Partial<Announcement>): Promise<void> {
     if (USE_DEMO_MODE) return this.mockUpdateAnnouncement(id, updates);
-    if (!db) throw new Error('Firestore not initialized');
 
-    try {
-      await setDoc(doc(db, 'announcements', id), {
-        ...updates,
-        updatedAt: Date.now()
-      }, { merge: true });
-    } catch (error) {
-      console.error('Error updating announcement:', error);
-      throw new Error('Failed to update announcement. Please check your permissions.');
-    }
+    await setDoc(doc(db, 'announcements', id), {
+      ...updates,
+      updatedAt: Date.now()
+    }, { merge: true });
   }
 
   async deleteAnnouncement(id: string): Promise<void> {
     if (USE_DEMO_MODE) return this.mockDeleteAnnouncement(id);
-    if (!db) throw new Error('Firestore not initialized');
 
-    try {
-      await deleteDoc(doc(db, 'announcements', id));
-    } catch (error) {
-      console.error('Error deleting announcement:', error);
-      throw new Error('Failed to delete announcement. Please check your permissions.');
-    }
+    await deleteDoc(doc(db, 'announcements', id));
   }
 
   async incrementAnnouncementReadCount(id: string): Promise<void> {
@@ -1600,12 +1562,6 @@ class AuthService {
   // Mock announcement methods
   private mockGetAnnouncements(visibility?: Announcement['visibility']): Promise<Announcement[]> {
     let announcements = this.getLocal<Announcement>('announcements');
-    
-    // Seed demo data if empty
-    if (announcements.length === 0) {
-      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
-      announcements = DEMO_ANNOUNCEMENTS;
-    }
 
     if (visibility) {
       announcements = announcements.filter(a => a.visibility === visibility || a.visibility === 'all');
@@ -1877,6 +1833,32 @@ class AuthService {
     const docs = this.getLocal<DocumentItem>('documents');
     const i = docs.findIndex(doc => doc.id === id);
     if (i >= 0) { docs[i] = { ...docs[i], ...updates }; this.setLocal('documents', docs); }
+    return Promise.resolve();
+  }
+
+  mockGetAnnouncements(): Promise<Announcement[]> {
+    let announcements = this.getLocal<Announcement>('announcements');
+    if (announcements.length === 0) {
+      this.setLocal('announcements', DEMO_ANNOUNCEMENTS);
+      announcements = DEMO_ANNOUNCEMENTS;
+    }
+    return Promise.resolve(announcements);
+  }
+
+  mockSaveAnnouncement(announcement: Announcement): Promise<void> {
+    const announcements = this.getLocal<Announcement>('announcements');
+    const i = announcements.findIndex(item => item.id === announcement.id);
+    if (i >= 0) {
+      announcements[i] = announcement;
+    } else {
+      announcements.push(announcement);
+    }
+    this.setLocal('announcements', announcements);
+    return Promise.resolve();
+  }
+
+  mockDeleteAnnouncement(id: string): Promise<void> {
+    this.setLocal('announcements', this.getLocal<Announcement>('announcements').filter(a => a.id !== id));
     return Promise.resolve();
   }
 
