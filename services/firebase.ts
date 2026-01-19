@@ -163,17 +163,25 @@ const mapUserToFirestore = (user: User): Partial<User> => {
 
 const mapApplicationFromFirestore = (data: Partial<Application>, docId: string): Application => {
   const applicationId = data.applicationId || data.id || docId;
-  const applicantId = data.applicantId || data.userId || '';
+  const applicantId = data.applicantId || data.userId || (data as any).applicantUid || '';
   const area = resolveAreaName(data.area || null, data.areaId || null);
   const areaId = resolveAreaId(area || undefined, data.areaId || undefined);
+  const now = Date.now();
   return {
     ...data,
     id: applicationId,
     applicationId,
     applicantId,
-    userId: data.userId || applicantId,
+    userId: data.userId || (data as any).applicantUid || applicantId,
+    applicantName: data.applicantName || (data as any).contactName || '',
+    orgName: data.orgName || (data as any).applicant || '',
+    summary: data.summary || (data as any).projectSummary || '',
     area: area as Area,
-    areaId
+    areaId,
+    createdAt: data.createdAt || now,
+    updatedAt: data.updatedAt || now,
+    submissionMethod: data.submissionMethod || 'digital',
+    formData: data.formData || {}
   } as Application;
 };
 
