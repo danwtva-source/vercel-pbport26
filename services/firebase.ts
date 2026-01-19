@@ -29,7 +29,7 @@ function isFirebaseError(error: unknown): error is FirebaseError {
 // --- CONFIGURATION ---
 // Set to FALSE for production with Firebase configured.
 // Set to TRUE for demo/development without Firebase.
-export const USE_DEMO_MODE = true; // Demo mode for testing without Firebase
+export const USE_DEMO_MODE = false; // Production mode with Firebase
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
